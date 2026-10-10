@@ -265,6 +265,8 @@ export function mockFetch(): typeof fetch {
       if (s) return json({ total_results: s === "G" ? 900 : s === "Q" ? 600 : s === "M" ? 500 : 50 });
       return json({ total_pages: 1, results: [{ nom_complet: "Entreprise (fictive)", section_activite_principale: "Q", activite_principale: "86.10Z", matching_etablissements: [{ siret: "00000000000000", commune: "60159", tranche_effectif_salarie: "42", activite_principale: "86.10Z" }] }] });
     }
+    if (h === "api-adresse.data.gouv.fr")
+      return json({ features: [{ type: "Feature", geometry: { type: "Point", coordinates: [LON0 + 0.01 + Math.random() * 0.02, LAT0 + 0.01 + Math.random() * 0.02] }, properties: { label: url.searchParams.get("q") } }] });
     if (h === "www.data.gouv.fr") {
       // Recherche plein texte : jeu REU (bureaux de vote et adresses) ; pas de contours.
       if (p === "/api/1/datasets/") {
@@ -298,7 +300,7 @@ export function mockFetch(): typeof fetch {
       const one = url.searchParams.get("page_size") === "1";
       // REU : libellés et adresses géolocalisées des 6 bureaux fictifs de 60159.
       if (rid === "reu-bv") {
-        const rows = Array.from({ length: 6 }, (_, i) => ({ code_commune_ref: "60159", id_bv: `60159_${i + 1}`, libelle_reu: `École fictive ${String.fromCharCode(65 + i)}` }));
+        const rows = Array.from({ length: 6 }, (_, i) => ({ code_commune_ref: "60159", id_bv: `60159_${i + 1}`, libelle_reu: `École fictive ${String.fromCharCode(65 + i)}`, num_voie_reu: String(i + 1), voie_reu: "rue fictive", cp_reu: "60200", commune_reu: "Compiègne" }));
         return json({ data: one ? rows.slice(0, 1) : rows, links: { next: null } });
       }
       if (rid === "reu-adr") {

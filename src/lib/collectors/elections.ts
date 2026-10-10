@@ -110,7 +110,7 @@ export function aggregateRows(rows: Record<string, unknown>[]) {
   const labelFor = (s: string) =>
     findCol(
       cols.filter((c) => suffix(c) === s),
-      /^libell[ée] (abr[ée]g[ée] )?(de la )?liste/i,
+      /^libell[ée] (abr[ée]g[ée] )?(de (la )?)?liste/i,
       /^nuance (candidat|liste)?/i,
       /^nom (candidat)?/i,
       /^nom(_x\d+)?$/i,

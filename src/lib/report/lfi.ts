@@ -385,8 +385,35 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
         weight: 70,
       });
 
-    // Cartes par bureau.
+    // Cartes par bureau : contours si disponibles, sinon lieux de vote (points).
     const geo = c.bvGeo?.features ?? [];
+    const pts = c.bvGeo?.points ?? [];
+    if (!geo.length && pts.length) {
+      const byBv = new Map(ranked.map((b) => [b.bv, b]));
+      const vals = ranked.map((b) => b.lfiPctIns);
+      const br = quantileBreaks(vals, Math.min(5, vals.length));
+      const classes: { min: number; max: number; color: string }[] = [];
+      for (let i = 0; i < br.length - 1; i++) classes.push({ min: br[i], max: br[i + 1], color: SEQ_COLORS[Math.min(4, Math.round((i * 4) / Math.max(1, br.length - 2)))] });
+      const colorOf = (v: number | null) => (v == null ? MISSING_COLOR : (classes.find((k) => v <= k.max) ?? classes[classes.length - 1])?.color ?? MISSING_COLOR);
+      const features = pts.map((f) => {
+        const b = byBv.get(String(f.properties?.bv));
+        return { ...f, properties: { ...f.properties, name: `BV ${f.properties?.bv} — ${f.properties?.label} : LFI ${b ? pct(b.lfiPctIns) : "n.d."} des inscrits, abstention ${b ? pct(b.abstPct) : "n.d."}`, color: colorOf(b ? b.lfiPctIns : null) } };
+      });
+      const contour = commune.contour ? [{ type: "Feature" as const, geometry: commune.contour, properties: { nom: commune.nom } }] : [];
+      const all = turf.featureCollection([...features, ...contour] as GeoJSON.Feature[]);
+      out.maps.push({
+        id: "lfi_map_bv",
+        title: `Lieux de vote colorés selon le vote LFI (${bvRef.election.label}, % des inscrits)`,
+        theme: "strategie",
+        bbox: turf.bbox(turf.buffer(all, 0.3, { units: "kilometers" })!) as [number, number, number, number],
+        layers: [
+          ...(contour.length ? [{ id: "contour", label: `Limite communale de ${commune.nom}`, kind: "polygons" as const, data: { type: "FeatureCollection" as const, features: contour }, color: "#374151", outlineOnly: true, visible: true, source: c.geoSource ?? c.bvGeo!.source }] : []),
+          { id: "lieux", label: "Lieux de vote", kind: "points", data: { type: "FeatureCollection", features }, visible: true, source: c.bvGeo!.source },
+        ],
+        legend: { title: "Vote LFI (% inscrits)", unit: "%", categories: classes.map((k) => ({ label: `${fmtNumber(k.min, 1)} – ${fmtNumber(k.max, 1)} %`, color: k.color })) },
+        note: "Contours des bureaux non disponibles : chaque point est le lieu de vote (adresse du Répertoire électoral unique géocodée par la Base adresse nationale).",
+      });
+    }
     if (geo.length) {
       const byBv = new Map(ranked.map((b) => [b.bv, b]));
       const fc = (prop: (b: BvRow) => number): GeoJSON.FeatureCollection => ({
@@ -404,7 +431,12 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
       };
       const bbox = turf.bbox(turf.featureCollection(geo)) as [number, number, number, number];
       const src = c.bvGeo!.source;
-      const approx = c.bvGeo!.method === "enveloppe" ? "Contours approximatifs (enveloppe des adresses d'électeurs du REU)." : "";
+      const approx =
+        c.bvGeo!.method === "enveloppe"
+          ? "Contours approximatifs (enveloppe des adresses d'électeurs du REU)."
+          : c.bvGeo!.method === "contours"
+            ? "Contours proposés par l'INSEE (méthode statistique) : ils peuvent différer du découpage arrêté par la mairie."
+            : "";
       out.maps.push({
         id: "lfi_map_bv",
         group: "lfi_bv",
@@ -481,7 +513,10 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
 
   /* ------------------------------------------------------------ comment : lieux d'action */
   const centroids = new Map<string, [number, number]>();
+  // Lieu de vote en priorité (repère concret), sinon centre du contour.
+  for (const f of c.bvGeo?.points ?? []) centroids.set(String(f.properties?.bv), f.geometry.coordinates as [number, number]);
   for (const f of c.bvGeo?.features ?? []) {
+    if (centroids.has(String(f.properties?.bv))) continue;
     try {
       centroids.set(String(f.properties?.bv), turf.centroid(f).geometry.coordinates as [number, number]);
     } catch {
@@ -547,7 +582,12 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
         .slice(0, 2)
         .map((x) => x.s.nom);
     actions.push({
-      text: `Porte-à-porte (priorité) : bureaux ${prio.map((p) => `${p.bv}${labels.has(p.bv) ? ` — ${p.label}` : ""}${near(p.bv).length ? ` (près de ${near(p.bv).join(", ")})` : ""}`).join(" ; ")}.`,
+      text: `Porte-à-porte (priorité) : bureaux ${prio
+        .map((p) => {
+          const adr = c.bvGeo?.points.find((f) => String(f.properties?.bv) === p.bv)?.properties?.adresse;
+          return `${p.bv}${labels.has(p.bv) ? ` — ${p.label}` : ""}${adr ? ` (${adr})` : near(p.bv).length ? ` (près de ${near(p.bv).join(", ")})` : ""}`;
+        })
+        .join(" ; ")}.`,
     });
     const reservoir = ranked.filter((b) => b.type === "reservoir_abstention").slice(0, 3);
     if (reservoir.length) actions.push({ text: `Mobilisation des abstentionnistes et inscription sur les listes électorales : bureaux ${reservoir.map((b) => b.bv).join(", ")} (abstention élevée).` });

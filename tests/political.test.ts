@@ -25,6 +25,12 @@ describe("familles politiques", () => {
   it("reconnaît LFI selon le scrutin", () => {
     expect(familyVotes("EU24", { inscrits: 100, votants: 50, exprimes: 50, candidates: [{ label: "LA FRANCE INSOUMISE - UNION POPULAIRE", voix: 10 }, { label: "AUTRE", voix: 40 }] }, "lfi")).toBe(10);
     expect(familyVotes("PR22T1", { inscrits: 100, votants: 50, exprimes: 50, candidates: [{ label: "MÉLENCHON", voix: 12 }] }, "lfi")).toBe(12);
+    // Européennes 2024 : nuances de liste du ministère (LFI, LRN, LENS, LUG…).
+    const eu = { inscrits: 100, votants: 60, exprimes: 60, candidates: [{ label: "LRN", voix: 20 }, { label: "LFI", voix: 9 }, { label: "LUG", voix: 8 }, { label: "LCOM", voix: 2 }] };
+    expect(familyVotes("EU24", eu, "rn")).toBe(20);
+    expect(familyVotes("EU24", eu, "lfi")).toBe(9);
+    expect(familyVotes("EU24", eu, "ps")).toBe(8);
+    expect(familyVotes("EU24", eu, "pcf")).toBe(2);
     // Pas de liste LFI identifiable aux législatives 2024 (candidatures NFP).
     expect(familyVotes("LG24T1", { inscrits: 100, votants: 50, exprimes: 50, candidates: [{ label: "UG", voix: 12 }] }, "lfi")).toBeNull();
     expect(score("EU24", { inscrits: 200, votants: 100, exprimes: 80, candidates: [{ label: "LFI", voix: 20 }] }, "lfi")).toEqual({ voix: 20, pctInscrits: 10, pctExprimes: 25 });

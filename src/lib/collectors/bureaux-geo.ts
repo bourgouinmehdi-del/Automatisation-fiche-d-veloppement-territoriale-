@@ -8,16 +8,17 @@ import { findCol, normBv } from "./elections";
 /**
  * Noms et géométries des bureaux de vote d'une commune.
  *
- * Trois sources, essayées dans l'ordre :
+ * Sources, essayées dans l'ordre :
  *  1. un GeoJSON fourni par l'utilisateur : `data/interne/bv-<code INSEE>.geojson`
  *     (contours officiels obtenus auprès de la mairie, par exemple) ;
- *  2. les contours de bureaux de vote publiés sur data.gouv.fr (si la
- *     ressource n'excède pas BV_CONTOURS_MAX_MB) ;
- *  3. le Répertoire électoral unique (INSEE) — « bureaux de vote et adresses de
- *     leurs électeurs » — interrogé via l'API tabulaire : libellé de chaque
- *     bureau et enveloppe approximative calculée à partir des adresses géolocalisées.
+ *  2. les contours publiés sur data.gouv.fr (« proposition de contours des bureaux
+ *     de vote selon la méthode de l'INSEE », ~100 Mo pour la France) : le fichier
+ *     est parcouru en texte et seules les entités de la commune sont décodées ;
+ *  3. le Répertoire électoral unique (INSEE), table des bureaux (`table-bv-reu`) :
+ *     libellé et adresse du lieu de vote, géocodés par la Base adresse nationale.
  *
- * Les contours calculés (3) sont des approximations : ils sont signalés comme tels.
+ * Les contours (2) sont une proposition statistique de l'INSEE, pas le découpage
+ * arrêté par la mairie : ils sont signalés comme tels.
  */
 
 const DATAGOUV = "https://www.data.gouv.fr/api/1";
@@ -26,9 +27,11 @@ const TABULAR = "https://tabular-api.data.gouv.fr/api/resources";
 export interface BureauGeo {
   /** Polygones par bureau (propriétés : bv, label). */
   features: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>[];
+  /** Lieux de vote géocodés (propriétés : bv, label, adresse). */
+  points: GeoJSON.Feature<GeoJSON.Point>[];
   /** Libellés (souvent le lieu de vote : école, mairie…). */
   labels: Map<string, string>;
-  method: "fourni" | "contours" | "enveloppe" | "libelles";
+  method: "fourni" | "contours" | "enveloppe" | "lieux" | "libelles";
   sourceName: string;
   url: string;
   retrievedAt: string;
@@ -47,11 +50,20 @@ interface DgDataset {
   resources?: DgResource[];
 }
 
-const BV_PROPS = ["bv", "code_bv", "codebv", "id_bv", "numero_bv", "num_bv", "numero", "bureau", "code_bureau", "bureau_de_vote"];
-const COM_PROPS = ["code_commune", "codecommune", "code_insee", "insee", "codeinsee", "insee_com", "com_code", "commune"];
-const LABEL_PROPS = ["libelle", "libelle_bv", "nom", "nom_bv", "lieu", "libelle_reu", "label"];
-
 const lowerKeys = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.toLowerCase(), v]));
+
+/** Propriété identifiant le bureau : nom exact connu, sinon toute clé évoquant un bureau. */
+function bvKey(p: Record<string, unknown>) {
+  const exact = ["bv", "code_bv", "codebv", "id_bv", "numero_bv", "num_bv", "codebureauvote", "code_bureau_vote", "id_bureau", "code_bureau", "bureau", "numero", "num"];
+  return exact.find((k) => p[k] != null) ?? Object.keys(p).find((k) => /bureau|(^|_)bv($|_)/.test(k) && p[k] != null && !/libel|nom|label/.test(k));
+}
+function comKey(p: Record<string, unknown>) {
+  const exact = ["code_commune", "codecommune", "code_insee", "insee", "codeinsee", "insee_com", "com_code", "codgeo", "com"];
+  return exact.find((k) => p[k] != null) ?? Object.keys(p).find((k) => /commune|insee/.test(k) && /code|insee/.test(k) && p[k] != null);
+}
+function labelKey(p: Record<string, unknown>) {
+  return ["libelle", "libelle_bv", "libelle_reu", "nom", "nom_bv", "lieu", "label", "libellebureauvote"].find((k) => p[k] != null && typeof p[k] === "string");
+}
 
 /** Normalise une FeatureCollection de bureaux (filtre éventuel sur la commune). */
 export function normalizeBvFeatures(fc: GeoJSON.FeatureCollection, codeInsee?: string) {
@@ -60,19 +72,67 @@ export function normalizeBvFeatures(fc: GeoJSON.FeatureCollection, codeInsee?: s
   for (const f of fc.features ?? []) {
     if (!f.geometry || (f.geometry.type !== "Polygon" && f.geometry.type !== "MultiPolygon")) continue;
     const p = lowerKeys((f.properties ?? {}) as Record<string, unknown>);
-    if (codeInsee) {
-      const ck = COM_PROPS.find((k) => p[k] != null);
-      if (ck && String(p[ck]).padStart(5, "0") !== codeInsee) continue;
+    const ck = comKey(p);
+    if (codeInsee && ck) {
+      const v = String(p[ck]);
+      // Le code commune peut être isolé (« 60159 ») ou préfixer l'identifiant du bureau (« 60159_3 »).
+      if (v.padStart(5, "0") !== codeInsee && !v.startsWith(codeInsee)) continue;
     }
-    const bk = BV_PROPS.find((k) => p[k] != null);
+    const bk = bvKey(p);
     if (!bk) continue;
+    if (codeInsee && !ck && !String(p[bk]).startsWith(codeInsee)) continue;
     const bv = normBv(p[bk]);
-    const lk = LABEL_PROPS.find((k) => p[k] != null && typeof p[k] === "string");
+    const lk = labelKey(p);
     const label = lk ? String(p[lk]) : `Bureau ${bv}`;
     labels.set(bv, label);
     out.push({ type: "Feature", geometry: f.geometry as GeoJSON.Polygon, properties: { bv, label } });
   }
   return { features: out, labels };
+}
+
+/** Fin de l'objet JSON commençant à `start` (accolades équilibrées, chaînes ignorées). */
+function balancedEnd(text: string, start: number): number {
+  let depth = 0;
+  let inStr = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    if (inStr) {
+      if (ch === 92) i++; // antislash
+      else if (ch === 34) inStr = false;
+      continue;
+    }
+    if (ch === 34) inStr = true;
+    else if (ch === 123) depth++;
+    else if (ch === 125 && --depth === 0) return i + 1;
+  }
+  return -1;
+}
+
+/**
+ * Extrait d'un GeoJSON national les seules entités mentionnant la commune,
+ * sans décoder tout le fichier (évite plusieurs Go de mémoire).
+ */
+export function extractFeaturesByText(text: string, codeInsee: string): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  const re = /\{\s*"type"\s*:\s*"Feature"/g;
+  let m: RegExpExecArray | null;
+  let lastEnd = 0;
+  while ((m = re.exec(text))) {
+    if (m.index < lastEnd) continue;
+    const end = balancedEnd(text, m.index);
+    if (end < 0) break;
+    lastEnd = end;
+    re.lastIndex = end;
+    // Test rapide sur les propriétés avant décodage.
+    const chunk = text.slice(m.index, end);
+    if (!chunk.includes(codeInsee)) continue;
+    try {
+      features.push(JSON.parse(chunk));
+    } catch {
+      /* entité illisible */
+    }
+  }
+  return { type: "FeatureCollection", features };
 }
 
 async function fromUserFile(codeInsee: string): Promise<BureauGeo | null> {
@@ -82,7 +142,7 @@ async function fromUserFile(codeInsee: string): Promise<BureauGeo | null> {
     const n = normalizeBvFeatures(fc, codeInsee);
     if (!n.features.length) return null;
     const st = await fs.stat(file);
-    return { ...n, method: "fourni", sourceName: "Contours fournis par l'utilisateur", url: `data/interne/bv-${codeInsee}.geojson`, retrievedAt: st.mtime.toISOString() };
+    return { ...n, points: [], method: "fourni", sourceName: "Contours fournis par l'utilisateur", url: `data/interne/bv-${codeInsee}.geojson`, retrievedAt: st.mtime.toISOString() };
   } catch {
     return null;
   }
@@ -94,15 +154,17 @@ async function searchDatasets(http: TrackedHttp, q: string) {
 }
 
 async function fromContours(http: TrackedHttp, codeInsee: string): Promise<BureauGeo | null> {
-  const maxBytes = Number(process.env.BV_CONTOURS_MAX_MB ?? 200) * 1024 * 1024;
+  const maxBytes = Number(process.env.BV_CONTOURS_MAX_MB ?? 250) * 1024 * 1024;
   for (const d of await searchDatasets(http, "contours des bureaux de vote")) {
     if (!/contour/i.test(d.title ?? "") || !/bureau/i.test(d.title ?? "")) continue;
-    const res = (d.resources ?? []).find((r) => /geo\+?json/i.test(r.format ?? "") || /\.geojson$/i.test(r.url ?? ""));
-    if (!res?.url || (res.filesize && res.filesize > maxBytes)) continue;
-    const r = await http.json<GeoJSON.FeatureCollection>(res.url, { timeoutMs: 600000, retries: 1 });
-    if (!r.data) continue;
-    const n = normalizeBvFeatures(r.data, codeInsee);
-    if (n.features.length) return { ...n, method: "contours", sourceName: `Contours des bureaux de vote (data.gouv.fr — ${d.title})`, url: res.url, retrievedAt: r.retrievedAt };
+    const res = (d.resources ?? [])
+      .filter((r) => (/json/i.test(r.format ?? "") || /\.(geo)?json$/i.test(r.url ?? "")) && r.url && (!r.filesize || r.filesize <= maxBytes))
+      .sort((x, y) => (x.filesize ?? 0) - (y.filesize ?? 0))[0];
+    if (!res?.url) continue;
+    const r = await http.text(res.url, { timeoutMs: 900000, retries: 1 });
+    const n = normalizeBvFeatures(extractFeaturesByText(r.data, codeInsee), codeInsee);
+    if (n.features.length)
+      return { ...n, points: [], method: "contours", sourceName: `${d.title} (data.gouv.fr)`, url: res.url, retrievedAt: r.retrievedAt };
   }
   return null;
 }
@@ -115,6 +177,7 @@ async function fromReu(http: TrackedHttp, codeInsee: string): Promise<BureauGeo 
     const resBv = (d.resources ?? []).find((r) => tab(r) && /table[-_ ]?bv|bureaux?/i.test(r.title ?? "") && !/adresse/i.test(r.title ?? ""));
     const resAdr = (d.resources ?? []).find((r) => tab(r) && /adresse/i.test(r.title ?? ""));
     const labels = new Map<string, string>();
+    const addresses = new Map<string, string>();
     let url = "";
     let retrievedAt = "";
     // Libellés des bureaux.
@@ -123,9 +186,17 @@ async function fromReu(http: TrackedHttp, codeInsee: string): Promise<BureauGeo 
         const rows = await tabularCommune(http, resBv.id, codeInsee);
         for (const r of rows.rows) {
           const cols = Object.keys(r);
-          const cBv = findCol(cols, /^id_bv$/i, /^code_?bv$/i, /^num(ero)?_?bv$/i, /bv/i);
+          const cBv = findCol(cols, /^id_bv$/i, /^code_?bv$/i, /^num(ero)?_?bv$/i, /^code$/i, /bv/i);
           const cLab = findCol(cols, /^libelle_reu$/i, /^libelle/i, /^nom/i);
-          if (cBv && cLab && r[cLab]) labels.set(normBv(r[cBv]), String(r[cLab]));
+          if (!cBv || !cLab || !r[cLab]) continue;
+          const bv = normBv(r[cBv]);
+          labels.set(bv, String(r[cLab]).trim());
+          const g = (re: RegExp) => {
+            const c = findCol(cols, re);
+            return c && r[c] != null ? String(r[c]).trim() : "";
+          };
+          const adresse = [g(/^num_voie/i), g(/^voie/i), g(/^cp/i), g(/^commune_reu$/i)].filter(Boolean).join(" ");
+          if (adresse) addresses.set(bv, adresse);
         }
         url = rows.url;
         retrievedAt = rows.retrievedAt;
@@ -165,11 +236,26 @@ async function fromReu(http: TrackedHttp, codeInsee: string): Promise<BureauGeo 
         /* adresses indisponibles */
       }
     }
+    // Lieux de vote géocodés (Base adresse nationale).
+    const points: BureauGeo["points"] = [];
+    for (const [bv, adresse] of addresses) {
+      try {
+        const g = await http.json<{ features?: GeoJSON.Feature<GeoJSON.Point>[] }>(
+          `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(adresse)}&citycode=${codeInsee}&limit=1`,
+          { minIntervalMs: 120, retries: 1 },
+        );
+        const f = g.data?.features?.[0];
+        if (f) points.push({ type: "Feature", geometry: f.geometry, properties: { bv, label: labels.get(bv) ?? `Bureau ${bv}`, adresse } });
+      } catch {
+        http.partial = true;
+      }
+    }
     if (features.length || labels.size)
       return {
         features,
+        points,
         labels,
-        method: features.length ? "enveloppe" : "libelles",
+        method: features.length ? "enveloppe" : points.length ? "lieux" : "libelles",
         sourceName: `Répertoire électoral unique — ${d.title} (INSEE, data.gouv.fr)`,
         url,
         retrievedAt,
@@ -199,14 +285,30 @@ async function tabularCommune(http: TrackedHttp, rid: string, codeInsee: string,
 
 export async function collectBureauxGeo(http: TrackedHttp, codeInsee: string): Promise<BureauGeo | null> {
   const user = await fromUserFile(codeInsee);
-  if (user) return user;
-  try {
-    const c = await fromContours(http, codeInsee);
-    if (c) return c;
-  } catch {
-    http.notes.push("Contours de bureaux de vote indisponibles");
+  let contours: BureauGeo | null = null;
+  if (!user) {
+    try {
+      contours = await fromContours(http, codeInsee);
+    } catch {
+      http.notes.push("Contours de bureaux de vote indisponibles");
+    }
   }
-  return fromReu(http, codeInsee);
+  // Libellés et lieux de vote : complètent les contours (ou s'y substituent).
+  let reu: BureauGeo | null = null;
+  try {
+    reu = await fromReu(http, codeInsee);
+  } catch {
+    http.notes.push("Table des bureaux (REU) indisponible");
+  }
+  const base = user ?? contours;
+  if (!base) return reu;
+  if (reu) {
+    for (const [bv, l] of reu.labels) base.labels.set(bv, l);
+    for (const f of base.features) if (reu.labels.has(String(f.properties?.bv))) f.properties = { ...f.properties, label: reu.labels.get(String(f.properties?.bv)) };
+    base.points = reu.points;
+    base.sourceName += ` ; libellés et lieux de vote : ${reu.sourceName}`;
+  }
+  return base;
 }
 
 /** Diagnostic détaillé (check:sources) : jeux trouvés, ressources, indexation tabulaire. */
@@ -231,6 +333,21 @@ export async function diagnoseBureauxGeo(http: TrackedHttp, codeInsee: string): 
       }
     }
   }
-  void codeInsee;
+  // Aperçu du fichier de contours (structure, présence de la commune).
+  for (const d of await searchDatasets(http, "contours des bureaux de vote")) {
+    if (!/contour/i.test(d.title ?? "") || !/bureau/i.test(d.title ?? "")) continue;
+    const res = (d.resources ?? []).find((r) => /json/i.test(r.format ?? "") && r.filesize && r.filesize < 250e6);
+    if (!res?.url) continue;
+    try {
+      const r = await http.text(res.url, { timeoutMs: 900000, retries: 1 });
+      const fc = extractFeaturesByText(r.data, codeInsee);
+      lines.push(`contours « ${res.title} » : début du fichier = ${r.data.slice(0, 160).replace(/\s+/g, " ")}`);
+      lines.push(`  entités mentionnant ${codeInsee} : ${fc.features.length} ; propriétés de la 1re : ${JSON.stringify(fc.features[0]?.properties ?? {}).slice(0, 300)}`);
+      const idx = r.data.indexOf(codeInsee);
+      if (idx >= 0) lines.push(`  contexte de la 1re occurrence : …${r.data.slice(Math.max(0, idx - 150), idx + 100).replace(/\s+/g, " ")}…`);
+    } catch (e) {
+      lines.push(`contours « ${res.title} » : ${e instanceof Error ? e.message : e}`);
+    }
+  }
   return lines;
 }
