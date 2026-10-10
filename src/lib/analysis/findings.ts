@@ -281,4 +281,5 @@ export const THEME_LABELS: Record<ThemeId, string> = {
   immobilier: "Marché immobilier",
   risques: "Risques et environnement",
   elections: "Contexte électoral",
+  strategie: "Approche militante",
 };

@@ -190,7 +190,7 @@ export function renderReportHtml(r: Report, opts: { standalone?: boolean } = {})
   const cit = new Citations();
   // Le corps est rendu en premier pour numéroter les sources dans l'ordre d'apparition.
   const body = r.sections
-    .map((s) => `<section class="part" id="part-${s.id}"><h2>${s.letter}. ${esc(s.title)}</h2>${s.blocks.map((b) => blockHtml(r, b, cit)).join("\n")}</section>`)
+    .map((s) => `<section class="part" id="part-${s.id}"><h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>${s.blocks.map((b) => blockHtml(r, b, cit)).join("\n")}</section>`)
     .join("\n");
   const statusClass = (s: string) => (s === "ok" || s === "cache" ? "ok" : s === "failed" ? "ko" : "wa");
   const STATUS_FR: Record<string, string> = { ok: "Réussi", cache: "Cache", stale: "Cache périmé", partial: "Partiel", failed: "Échec", skipped: "Non exécuté" };
@@ -220,7 +220,7 @@ export function renderReportHtml(r: Report, opts: { standalone?: boolean } = {})
   const cover = `<section class="cover"><div><div class="kicker">Diagnostic territorial</div><h1>${esc(r.commune.nom)}</h1><div class="sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}) · ${esc(r.commune.region.nom)}${r.commune.epci ? ` · ${esc(r.commune.epci.nom)}` : ""}</div><p class="sub" style="margin-top:4mm">Périmètre d'analyse : ${esc(scopeLabel)} — ${esc(r.perimeter.label)}</p>
 ${r.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
 <div class="warn" style="border-color:#2a78d6;background:#eef5fd">Ce document est produit automatiquement à partir de statistiques publiques agrégées. Ses constats doivent être confrontés à la connaissance de terrain des acteurs locaux.</div></div>
-<div class="toc"><h3>Sommaire</h3><ol type="A">${r.sections.map((s) => `<li>${esc(s.title)}</li>`).join("")}</ol><p>Annexe : méthodologie, journal de collecte et bibliographie.</p></div>
+<div class="toc"><h3>Sommaire</h3><ul style="list-style:none;padding-left:0">${r.sections.map((s) => `<li>${s.letter ? `<strong>${s.letter}.</strong> ` : "★ "}${esc(s.title)}</li>`).join("")}</ul><p>Annexe : méthodologie, journal de collecte et bibliographie.</p></div>
 <div class="meta">Code INSEE ${esc(r.commune.code)} · Généré le ${esc(fmtDate(r.updatedAt))} (version ${r.version}) · Identifiant ${esc(r.id)}<br>Fraîcheur des données : ${esc(freshness(r))}</div></section>`;
 
   const html = `${cover}\n${body}\n${method}`;

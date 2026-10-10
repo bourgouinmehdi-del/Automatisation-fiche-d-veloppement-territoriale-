@@ -17,7 +17,9 @@ import { loadDataset } from "../src/lib/collectors/insee";
 import { collectDvf } from "../src/lib/collectors/dvf";
 import { collectEquipments } from "../src/lib/collectors/osm";
 import { collectEntreprises, collectRisques, collectSchools, collectStations } from "../src/lib/collectors/public-apis";
-import { collectElection, ELECTIONS, resolveResource } from "../src/lib/collectors/elections";
+import { collectBureaux, collectElection, ELECTIONS, resolveResource } from "../src/lib/collectors/elections";
+import { collectBureauxGeo } from "../src/lib/collectors/bureaux-geo";
+import { loadInternalData } from "../src/lib/collectors/interne";
 import { collectInsee } from "../src/lib/collectors/insee-indicators";
 import { CollectContext } from "../src/lib/collectors/context";
 
@@ -110,6 +112,27 @@ async function main() {
       const com = r.find((x) => x.level === "commune")!;
       return `inscrits ${com.inscrits}, votants ${com.votants}, ${com.candidates.length} listes/candidats`;
     });
+  // Bureaux de vote
+  for (const e of ELECTIONS)
+    await check(`Bureaux ${e.id} (ressource)`, async () => {
+      const r = await resolveResource(h(), e, "bureau");
+      if (!r) throw new Error("aucune ressource « par bureau de vote » trouvée");
+      return `« ${r.title} » (${r.format}) ${r.url}`;
+    });
+  for (const e of ELECTIONS)
+    await check(`Bureaux ${e.id}`, async () => {
+      const r = await collectBureaux(h(), e, c.code, c.departement.code);
+      return `${r.length} bureaux : ${r.slice(0, 4).map((b) => `BV ${b.bv} (${b.inscrits} inscrits)`).join(", ")}…`;
+    });
+  await check("Géographie des bureaux", async () => {
+    const g = await collectBureauxGeo(h(), c.code);
+    if (!g) throw new Error("aucune source (déposer data/interne/bv-" + c.code + ".geojson)");
+    return `${g.method} — ${g.features.length} contours, ${g.labels.size} libellés (${g.sourceName})`;
+  });
+  await check("Données internes (data/interne)", async () => {
+    const d = await loadInternalData();
+    return d.files.length ? `${d.files.join(", ")} : ${d.parrains.size} communes avec parrains, ${d.groupes.length} groupes` : "aucun fichier (facultatif)";
+  });
 }
 
 main();

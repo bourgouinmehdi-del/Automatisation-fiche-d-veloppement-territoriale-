@@ -26,10 +26,16 @@ function entryPath(key: string) {
   return path.join(cacheDir(), key.slice(0, 2), key + ".json");
 }
 
+/**
+ * Le corps de la réponse est stocké à part (fichier `.body`) : les fichiers
+ * nationaux (résultats par bureau de vote, plusieurs centaines de Mo) ne
+ * passent ainsi jamais par JSON.stringify / JSON.parse.
+ */
 export async function readCache(key: string): Promise<CacheEntry | null> {
   try {
-    const raw = await fs.readFile(entryPath(key), "utf8");
-    return JSON.parse(raw) as CacheEntry;
+    const meta = JSON.parse(await fs.readFile(entryPath(key), "utf8")) as CacheEntry;
+    if (meta.body == null) meta.body = await fs.readFile(entryPath(key).replace(/\.json$/, ".body"), "utf8");
+    return meta;
   } catch {
     return null;
   }
@@ -38,8 +44,13 @@ export async function readCache(key: string): Promise<CacheEntry | null> {
 export async function writeCache(entry: CacheEntry): Promise<void> {
   const p = entryPath(entry.key);
   await fs.mkdir(path.dirname(p), { recursive: true });
-  const tmp = p + "." + process.pid + ".tmp";
-  await fs.writeFile(tmp, JSON.stringify(entry));
+  const tmp = p + "." + process.pid + "." + Date.now() + ".tmp";
+  const bodyPath = p.replace(/\.json$/, ".body");
+  await fs.writeFile(tmp + ".body", entry.body);
+  await fs.rename(tmp + ".body", bodyPath);
+  const { body: _omit, ...meta } = entry;
+  void _omit;
+  await fs.writeFile(tmp, JSON.stringify(meta));
   await fs.rename(tmp, p);
 }
 

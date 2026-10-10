@@ -108,7 +108,25 @@ export const SOURCES: Record<string, SourceInfo> = {
     license: "Licence Ouverte 2.0",
     access: "Fichiers CSV interrogés via l'API tabulaire de data.gouv.fr.",
     limits:
-      "Résultats agrégés par commune ; chapitre strictement descriptif, sans inférence sur les comportements individuels.",
+      "Résultats agrégés par commune et par bureau de vote ; le découpage des bureaux peut changer d'un scrutin à l'autre ; aucune inférence sur les comportements individuels.",
+  },
+  bureaux_geo: {
+    id: "bureaux_geo",
+    name: "Géographie des bureaux de vote",
+    producer: "INSEE — Répertoire électoral unique (adresses des électeurs) / Etalab ; ou fichier fourni",
+    homepage: "https://www.data.gouv.fr/fr/datasets/bureaux-de-vote-et-adresses-de-leurs-electeurs/",
+    license: "Licence Ouverte 2.0",
+    access: "API tabulaire de data.gouv.fr ; ou GeoJSON déposé dans data/interne/.",
+    limits: "Enveloppes calculées à partir des adresses : contours approximatifs, pouvant se chevaucher. Découpage susceptible d'avoir changé depuis le scrutin.",
+  },
+  interne: {
+    id: "interne",
+    name: "Données militantes internes",
+    producer: "Fichiers fournis par l'utilisateur (data/interne/)",
+    homepage: "",
+    license: "Usage interne",
+    access: "Fichiers CSV locaux, non versionnés.",
+    limits: "Données non publiques, non vérifiées par l'application ; agrégats par commune uniquement.",
   },
   osm_tiles: {
     id: "osm_tiles",

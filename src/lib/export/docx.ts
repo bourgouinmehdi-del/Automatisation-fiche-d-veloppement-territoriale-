@@ -183,7 +183,7 @@ export async function reportToDocx(r: Report): Promise<Buffer> {
   const cit = new Citations();
   const body: (Paragraph | Table | TableOfContents)[] = [];
   for (const s of r.sections) {
-    body.push(new Paragraph({ heading: HeadingLevel.HEADING_1, pageBreakBefore: true, children: [new TextRun({ text: `${s.letter}. ${s.title}`, font: FONT })] }));
+    body.push(new Paragraph({ heading: HeadingLevel.HEADING_1, pageBreakBefore: true, children: [new TextRun({ text: s.letter ? `${s.letter}. ${s.title}` : s.title, font: FONT })] }));
     for (const b of s.blocks) body.push(...blockDocx(r, b, cit));
   }
   // Annexe

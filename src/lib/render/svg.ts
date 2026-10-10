@@ -52,7 +52,7 @@ function legend(series: { label: string }[], x: number, y: number) {
   let cx = x;
   return series
     .map((s, i) => {
-      const w = 22 + s.label.length * 6.2;
+      const w = 30 + s.label.length * 6.8;
       const out = `<rect x="${cx}" y="${y - 9}" width="12" height="12" rx="3" fill="${PALETTE.series[i]}"/><text x="${cx + 17}" y="${y + 1}" font-size="11" fill="${PALETTE.text2}" ${FONT}>${esc(s.label)}</text>`;
       cx += w;
       return out;

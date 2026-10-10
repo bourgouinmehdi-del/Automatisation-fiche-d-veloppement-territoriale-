@@ -147,6 +147,41 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
           : ""),
     }),
   ),
+  {
+    id: "part_locataires",
+    label: "Part des ménages locataires (tous parcs)",
+    theme: "logement",
+    unit: "%",
+    datasets: ["DS_RP_LOGEMENT_PRINC"],
+    kind: "ratio",
+    num: [
+      { dims: ["OCS"], spec: { codes: ["DW_MAIN"] }, optional: true },
+      { dims: ["TSH"], spec: { codes: ["200"] } },
+    ],
+    den: [[{ dims: ["OCS"], spec: { codes: ["DW_MAIN"] }, optional: true }]],
+    method: "Ménages locataires ou sous-locataires (vide, meublé, HLM) / ensemble des résidences principales × 100.",
+    limits: RP_LIMITS,
+  },
+  ...(
+    [
+      ["part_ouvriers", "Part des ouvriers parmi les 15 ans et plus", "6"],
+      ["part_employes", "Part des employés parmi les 15 ans et plus", "5"],
+      ["part_cadres", "Part des cadres et professions intellectuelles supérieures parmi les 15 ans et plus", "3"],
+      ["part_retraites", "Part des retraités parmi les 15 ans et plus", "7"],
+    ] as const
+  ).map(
+    ([id, label, code]): IndicatorDef => ({
+      id,
+      label,
+      theme: "emploi",
+      unit: "%",
+      datasets: ["DS_RP_POPULATION_COMP"],
+      kind: "ratio",
+      num: [{ dims: ["PCS"], spec: { codes: [code] } }],
+      method: "Population de 15 ans et plus de la catégorie socioprofessionnelle / population de 15 ans et plus × 100.",
+      limits: RP_LIMITS,
+    }),
+  ),
   /* ----------------------------------------------------------- emploi */
   {
     id: "taux_chomage_rp",

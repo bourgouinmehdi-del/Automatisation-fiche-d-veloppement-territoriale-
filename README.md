@@ -2,7 +2,7 @@
 
 Application web (Next.js / TypeScript) qui produit, à partir d'un **code postal** ou d'un **nom de commune**, une fiche de diagnostic territorial **sourcée, reproductible et exportable** (PDF, DOCX, CSV, JSON, GeoJSON), en s'appuyant exclusivement sur des données publiques françaises.
 
-Le plan de la fiche (parties A à I) suit le cahier des charges : présentation générale, profil sociodémographique, économie et emploi, services et équipements, mobilité, logement et cadre de vie, contexte électoral (strictement descriptif), analyse transversale, synthèse opérationnelle — complété d'une annexe méthodologique, d'un journal de collecte et d'une bibliographie numérotée.
+Le rapport s'ouvre sur une **fiche d'action (approche LFI)** puis suit le plan du cahier des charges : présentation générale, profil sociodémographique, économie et emploi, services et équipements, mobilité, logement et cadre de vie, contexte électoral (strictement descriptif), analyse transversale, synthèse opérationnelle — complété d'une annexe méthodologique, d'un journal de collecte et d'une bibliographie numérotée.
 
 > **Principe directeur** : aucune valeur n'est estimée ni inventée. Une donnée indisponible est affichée « n.d. », listée parmi les données manquantes, et l'étape de collecte correspondante figure en échec dans le journal.
 
@@ -38,7 +38,7 @@ L'application interroge les hôtes suivants (HTTPS) ; ils doivent être joignabl
 | `data.education.gouv.fr` | annuaire de l'éducation |
 | `ressources.data.sncf.com` | gares et fréquentation |
 | `recherche-entreprises.api.gouv.fr` | base SIRENE |
-| `www.data.gouv.fr`, `tabular-api.data.gouv.fr` | résultats électoraux |
+| `www.data.gouv.fr`, `tabular-api.data.gouv.fr`, `static.data.gouv.fr` | résultats électoraux (commune, bureau de vote), Répertoire électoral unique |
 | `tile.openstreetmap.org` (navigateur) | fond des cartes interactives |
 
 Le référentiel administratif (codes postaux, communes, EPCI, populations légales) est **embarqué** : la recherche fonctionne sans réseau.
@@ -82,6 +82,32 @@ Produit `<id>.pdf`, `.docx`, `.html`, `.json`, `-indicateurs.csv`, `-series.csv`
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | — | clé et modèle si `LLM_PROVIDER=anthropic` |
 
 ---
+
+## 2 bis. Fiche d'action — approche LFI
+
+Chaque rapport commence par une **fiche d'action** inspirée du document de référence « PEE · Développement territorial » :
+
+1. **Profil sociodémographique** : puces comparant la commune au département (revenu médian, pauvreté, HLM, âges, CSP, chômage, pôle d'emploi) et tableau comparatif commune / EPCI / département / région / France.
+2. **Profil politique** : tableau *Inscrits (2024) · LFI (P22) · LFI (E24) · Parrains · Abstention 2022 · Abstention 2024* (voix et % des inscrits), pour la commune, les bureaux prioritaires et la moyenne départementale ; surperformance par rapport aux communes de taille comparable du département ; évolution de l'abstention entre scrutins ; forces de gauche et RN comparées au département.
+3. **Où** : analyse **par bureau de vote** (européennes 2024, appariée à la présidentielle 2022), carte, classement et profil de chaque bureau (vote LFI élevé / forte abstention…).
+4. **Pourquoi** : hypothèses explicites, reliées aux indicateurs (pauvreté, jeunesse, logement social, écarts entre quartiers) — toujours à confirmer sur le terrain.
+5. **Comment** : actions recommandées — porte-à-porte dans les bureaux prioritaires (avec les écoles proches comme repères), mobilisation des abstentionnistes, marchés (horaires OpenStreetMap), gares (fréquentation SNCF), supermarchés, sorties de collèges et lycées ; tableau des lieux d'action avec le bureau le plus proche ; encadré d'accessibilité.
+
+**Méthode de priorisation des bureaux** : potentiel = moyenne de deux scores z calculés entre les bureaux de la commune — part LFI des exprimés (réservoir) et taux d'abstention (marge de mobilisation) ; priorité 1 = tiers supérieur.
+
+**Géographie des bureaux de vote** (dans l'ordre) : fichier fourni `data/interne/bv-<code INSEE>.geojson` (contours officiels de la mairie, propriété `bv` ou `numero`), contours publiés sur data.gouv.fr, ou enveloppes approximatives calculées à partir des adresses du Répertoire électoral unique (INSEE).
+
+**Données internes (facultatives)** — à déposer dans `data/interne/` (jamais versionné) :
+
+| Fichier | Colonnes | Usage |
+|---|---|---|
+| `parrains.csv` | `code_commune;parrains` | colonne « Parrains » et ratio parrains / voix LFI vs département |
+| `groupes.csv` | `code_commune;nom;membres;statut;description` | encadré « Implantation militante » |
+| `bv-<code>.geojson` | polygones avec propriété `bv` | carte exacte des bureaux |
+
+Exemples dans `docs/exemples-interne/`. Uniquement des agrégats par commune : aucun nom de personne.
+
+**Garde-fous** : uniquement des agrégats publics (commune, bureau de vote) ; aucune donnée individuelle ; aucune variable d'origine ou de nationalité ; explications présentées comme hypothèses.
 
 ## 3. Architecture
 

@@ -14,7 +14,9 @@ import {
 } from "../collectors/admin";
 import { CollectContext } from "../collectors/context";
 import { collectDvf, DvfStat } from "../collectors/dvf";
-import { collectElection, ELECTIONS, ElectionResult } from "../collectors/elections";
+import { BureauResult, collectBureaux, collectElection, ELECTIONS, ElectionConfig, ElectionResult } from "../collectors/elections";
+import { BureauGeo, collectBureauxGeo } from "../collectors/bureaux-geo";
+import { InternalData, loadInternalData } from "../collectors/interne";
 import { collectInsee, InseeResult } from "../collectors/insee-indicators";
 import { collectCycleways, collectEquipments, collectNearest } from "../collectors/osm";
 import { collectEntreprises, collectRisques, collectSchools, collectStations, Employer, RisquesResult, School, Station } from "../collectors/public-apis";
@@ -63,6 +65,10 @@ export interface Collected {
   entreprises?: { bySection: { section: string; label: string; count: number }[]; employers: Employer[]; source: SourceRef };
   risques?: { data: RisquesResult; source: SourceRef };
   elections: { results: ElectionResult[]; source: SourceRef }[];
+  /** Résultats par bureau de vote, par scrutin. */
+  bureaux: { election: ElectionConfig; results: BureauResult[]; source: SourceRef }[];
+  bvGeo?: BureauGeo & { source: SourceRef };
+  interne: InternalData;
   ctx: CollectContext;
   warnings: string[];
 }
@@ -85,6 +91,7 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
     "entreprises",
     "risques",
     "elections",
+    "bureaux",
   ];
   let done = 0;
   const step = (id: string, label: string) => progress({ step: id, label, done: done++, total: steps.length + 3, status: "running" });
@@ -151,6 +158,8 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
     perimeterInsee: [],
     comparables: [],
     elections: [],
+    bureaux: [],
+    interne: { parrains: new Map(), groupes: [], files: [] },
     ctx,
     warnings: [],
   };
@@ -397,6 +406,36 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
       { theme: "elections", label: `Résultats — ${e.label}` },
     );
   }
+
+  /* 13. Bureaux de vote */
+  step("bureaux", "Résultats par bureau de vote et géographie des bureaux");
+  for (const e of ELECTIONS) {
+    await ctx.step(
+      "elections",
+      `bureaux:${e.id}`,
+      async (http) => {
+        const res = await collectBureaux(http, e, commune.code, commune.departement.code);
+        c.bureaux.push({ election: e, results: res, source: ctx.ref("elections", res[0].sourceUrl, res[0].retrievedAt, { vintage: e.date.slice(0, 4), dataset: e.dataset }) });
+      },
+      { theme: "elections", label: `Résultats par bureau de vote — ${e.label}` },
+    );
+  }
+  if (c.bureaux.length)
+    await ctx.step(
+      "bureaux_geo",
+      "bureaux:geo",
+      async (http) => {
+        const g = await collectBureauxGeo(http, commune.code);
+        if (!g) throw new Error("Aucune géographie des bureaux de vote disponible (fournir data/interne/bv-<code>.geojson)");
+        c.bvGeo = { ...g, source: { id: "bureaux_geo", name: g.sourceName, url: g.url, retrievedAt: g.retrievedAt || new Date().toISOString() } };
+      },
+      { theme: "elections", label: "Contours / libellés des bureaux de vote" },
+    );
+
+  /* 14. Données internes facultatives */
+  c.interne = await loadInternalData();
+  if (c.interne.files.length)
+    ctx.runs.push({ sourceId: "interne", name: "Données militantes internes (fichiers fournis)", step: "interne", status: "ok", message: c.interne.files.join(", "), durationMs: 0, requests: 0, fromCache: 0, retrievedAt: new Date().toISOString() });
 
   progress({ step: "collecte", label: "Collecte terminée", done: done, total: steps.length + 3, status: "running" });
   return c;

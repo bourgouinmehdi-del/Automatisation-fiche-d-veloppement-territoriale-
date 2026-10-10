@@ -232,7 +232,8 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
   const sections = r.sections.map((s) => (
     <section key={s.id} id={`part-${s.id}`} className="card mb-6 scroll-mt-4 p-5 md:p-7">
       <h2 className="mb-4 border-b-2 border-[#2a78d6] pb-2 text-xl font-bold text-[var(--accent-strong)]">
-        {s.letter}. {s.title}
+        {s.letter ? `${s.letter}. ` : ""}
+        {s.title}
       </h2>
       {s.blocks.map(renderBlock)}
     </section>
@@ -299,7 +300,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
             {r.sections.map((s) => (
               <li key={s.id}>
                 <a href={`#part-${s.id}`} className="block rounded px-2 py-1 text-[var(--ink)] no-underline hover:bg-[var(--accent-soft)]">
-                  <span className="font-semibold text-[var(--accent)]">{s.letter}.</span> {s.title}
+                  {s.letter && <span className="font-semibold text-[var(--accent)]">{s.letter}.</span>} {s.title}
                 </a>
               </li>
             ))}

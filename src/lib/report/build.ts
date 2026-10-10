@@ -6,6 +6,7 @@ import type { GeoRef, ProgressEvent, Report, ReportQuery } from "../types";
 import { assemble } from "./assemble";
 import { collect } from "./collect";
 import { buildSections } from "./sections";
+import { buildLfi } from "./lfi";
 
 /**
  * Chaîne complète de génération d'une fiche :
@@ -39,8 +40,16 @@ export async function buildReport(
     population: c.commune.population,
   });
 
+  // Fiche d'action (approche LFI) : bureaux de vote, atouts, hypothèses, actions.
+  const lfi = buildLfi(c, a.indicators);
+  a.indicators.push(...lfi.indicators);
+  a.tables.push(...lfi.tables);
+  a.charts.push(...lfi.charts);
+  a.maps.push(...lfi.maps);
+  findings.push(...lfi.findings);
+
   emit({ step: "redaction", label: "Rédaction des commentaires", done: 14, total, status: "running" });
-  const sections = buildSections({ c, indicators: a.indicators, tables: a.tables, charts: a.charts, maps: a.maps, findings });
+  const sections = [...(lfi.section ? [lfi.section] : []), ...buildSections({ c, indicators: a.indicators, tables: a.tables, charts: a.charts, maps: a.maps, findings })];
   const provider = getProvider();
   for (const s of sections)
     for (const b of s.blocks)

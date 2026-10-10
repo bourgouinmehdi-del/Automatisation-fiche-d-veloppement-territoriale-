@@ -265,13 +265,89 @@ export function mockFetch(): typeof fetch {
       if (s) return json({ total_results: s === "G" ? 900 : s === "Q" ? 600 : s === "M" ? 500 : 50 });
       return json({ total_pages: 1, results: [{ nom_complet: "Entreprise (fictive)", section_activite_principale: "Q", activite_principale: "86.10Z", matching_etablissements: [{ siret: "00000000000000", commune: "60159", tranche_effectif_salarie: "42", activite_principale: "86.10Z" }] }] });
     }
-    if (h === "www.data.gouv.fr") return json({ resources: [{ id: "rid-" + p.split("/")[4], title: "Résultats définitifs par commune", format: "csv" }] });
+    if (h === "www.data.gouv.fr") {
+      // Recherche plein texte : jeu REU (bureaux de vote et adresses) ; pas de contours.
+      if (p === "/api/1/datasets/") {
+        const q = url.searchParams.get("q") ?? "";
+        if (/adresses/i.test(q))
+          return json({
+            data: [
+              {
+                slug: "bureaux-de-vote-et-adresses-de-leurs-electeurs",
+                title: "Bureaux de vote et adresses de leurs électeurs",
+                resources: [
+                  { id: "reu-bv", title: "table-bv-reu.csv", format: "csv", url: "https://static.data.gouv.fr/reu-bv.csv" },
+                  { id: "reu-adr", title: "table-adresses-reu.csv", format: "csv", url: "https://static.data.gouv.fr/reu-adr.csv" },
+                ],
+              },
+            ],
+          });
+        return json({ data: [] });
+      }
+      const slug = p.split("/")[4];
+      return json({
+        slug,
+        resources: [
+          { id: "rid-" + slug, title: "Résultats définitifs par commune", format: "csv" },
+          { id: "bv-" + slug, title: "Résultats définitifs par bureau de vote", format: "csv" },
+        ],
+      });
+    }
     if (h === "tabular-api.data.gouv.fr") {
-      const row = (code: string, ins: number, vot: number) => ({ "Code département": "60", "Code commune": code, Inscrits: ins, Votants: vot, Abstentions: ins - vot, Blancs: 50, Nuls: 20, Exprimés: vot - 70, "Libellé de la liste 1": "Liste A", "Voix 1": Math.round((vot - 70) * 0.4), "Libellé de la liste 2": "Liste B", "Voix 2": Math.round((vot - 70) * 0.35), "Libellé de la liste 3": "Liste C", "Voix 3": vot - 70 - Math.round((vot - 70) * 0.4) - Math.round((vot - 70) * 0.35) });
-      const all = GRID.map(([code, , pop], i) => row(code, Math.round(pop * 0.7), Math.round(pop * 0.7 * (0.45 + i * 0.03))));
+      const rid = p.split("/")[3];
+      const one = url.searchParams.get("page_size") === "1";
+      // REU : libellés et adresses géolocalisées des 6 bureaux fictifs de 60159.
+      if (rid === "reu-bv") {
+        const rows = Array.from({ length: 6 }, (_, i) => ({ code_commune_ref: "60159", id_bv: `60159_${i + 1}`, libelle_reu: `École fictive ${String.fromCharCode(65 + i)}` }));
+        return json({ data: one ? rows.slice(0, 1) : rows, links: { next: null } });
+      }
+      if (rid === "reu-adr") {
+        const rows = [];
+        for (let i = 0; i < 6; i++)
+          for (let k = 0; k < 5; k++)
+            rows.push({ code_commune_ref: "60159", id_bv: `60159_${i + 1}`, longitude: LON0 + 0.005 + (i % 3) * 0.012 + (k % 2) * 0.006, latitude: LAT0 + 0.005 + Math.floor(i / 3) * 0.015 + Math.floor(k / 2) * 0.005 });
+        return json({ data: one ? rows.slice(0, 1) : rows, links: { next: null } });
+      }
+      // Libellés réalistes selon le scrutin (le motif LFI doit les reconnaître).
+      const lists = rid.includes("presidentielle")
+        ? ["MÉLENCHON", "LE PEN", "MACRON"]
+        : rid.includes("legislatives")
+          ? ["UG", "RN", "ENS"]
+          : ["LA FRANCE INSOUMISE - UNION POPULAIRE", "LA FRANCE REVIENT ! AVEC JORDAN BARDELLA ET MARINE LE PEN", "REVEILLER L'EUROPE"];
+      const labelCol = rid.includes("presidentielle") ? "Nom candidat" : rid.includes("legislatives") ? "Nuance candidat" : "Libellé de la liste";
+      const row = (code: string, ins: number, vot: number, lfiShare: number, bv?: string) => {
+        const exp = vot - 70;
+        const v1 = Math.round(exp * lfiShare);
+        const v2 = Math.round(exp * 0.35);
+        return {
+          "Code département": "60",
+          "Code commune": code,
+          ...(bv ? { "Code BV": bv } : {}),
+          Inscrits: ins,
+          Votants: vot,
+          Abstentions: ins - vot,
+          Blancs: 50,
+          Nuls: 20,
+          Exprimés: exp,
+          [`${labelCol} 1`]: lists[0],
+          "Voix 1": v1,
+          [`${labelCol} 2`]: lists[1],
+          "Voix 2": v2,
+          [`${labelCol} 3`]: lists[2],
+          "Voix 3": exp - v1 - v2,
+        };
+      };
+      let all;
+      if (rid.startsWith("bv-")) {
+        // 6 bureaux à Compiègne : vote LFI et abstention contrastés.
+        all = [
+          ...Array.from({ length: 6 }, (_, i) => row("60159", 1200, [700, 500, 760, 520, 640, 800][i], [0.2, 0.35, 0.12, 0.3, 0.18, 0.1][i], String(i + 1).padStart(4, "0"))),
+          row("60382", 3000, 1600, 0.15, "0001"),
+        ];
+      } else all = GRID.map(([code, , pop], i) => row(code, Math.round(pop * 0.7), Math.round(pop * 0.7 * (0.45 + i * 0.03)), 0.12 + (code === "60159" ? 0.1 : 0)));
       const com = url.searchParams.get("Code commune__exact");
       const data = com ? all.filter((r) => r["Code commune"] === com) : all;
-      return json({ data: url.searchParams.get("page_size") === "1" ? data.slice(0, 1) : data, links: { next: null } });
+      return json({ data: one ? data.slice(0, 1) : data, links: { next: null } });
     }
     throw new TypeError(`fetch failed (hôte non simulé : ${h}${p})`);
   }) as typeof fetch;

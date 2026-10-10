@@ -52,7 +52,8 @@ export type ThemeId =
   | "mobilite"
   | "immobilier"
   | "risques"
-  | "elections";
+  | "elections"
+  | "strategie";
 
 /** Référence documentaire d'une donnée. */
 export interface SourceRef {

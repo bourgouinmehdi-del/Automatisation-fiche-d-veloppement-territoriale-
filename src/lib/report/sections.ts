@@ -261,7 +261,7 @@ function sectionG(x: Ctx): Section {
   const blocks: Block[] = [
     {
       type: "note",
-      text: "Chapitre strictement descriptif. Les résultats présentés sont des agrégats officiels publiés par le ministère de l'Intérieur. Ils ne permettent pas de déduire les opinions d'individus ou de groupes sociaux, et ne doivent pas servir au ciblage de personnes ou de quartiers.",
+      text: "Résultats officiels agrégés publiés par le ministère de l'Intérieur (commune, département). Ils décrivent des comportements collectifs et ne permettent pas de déduire le vote d'un individu. L'analyse par bureau de vote figure dans la fiche d'action en tête de document.",
     },
   ];
   if (!x.c.elections.length) blocks.push(para("Les résultats électoraux n'ont pas pu être récupérés lors de la génération de cette fiche (voir la liste des sources).", []));

@@ -18,6 +18,10 @@ let build: typeof import("@/lib/report/build").buildReport;
 beforeAll(async () => {
   process.env.DATA_DIR = dir;
   process.env.INSEE_MIN_INTERVAL_MS = "0";
+  // Données internes facultatives (fictives).
+  await fs.mkdir(path.join(dir, "interne"), { recursive: true });
+  await fs.writeFile(path.join(dir, "interne", "parrains.csv"), "code_commune;parrains\n60159;40\n60382;5\n60057;20\n");
+  await fs.writeFile(path.join(dir, "interne", "groupes.csv"), "code_commune;nom;membres;statut\n60159;Groupe d'action fictif;9;actif\n");
   vi.stubGlobal("fetch", mockFetch());
   build = (await import("@/lib/report/build")).buildReport;
   report = await build({ codeInsee: "60159", scope: "commune" });
@@ -111,14 +115,32 @@ describe("chaîne de génération (API simulées)", () => {
     expect(report.findings.length).toBeGreaterThan(10);
     const vig = report.findings.filter((f) => f.kind === "vigilance");
     expect(vig.length).toBeGreaterThan(0);
-    for (const f of report.findings.filter((x) => x.kind !== "a_verifier")) expect(f.evidence.length).toBeGreaterThan(0);
+    // Toute affirmation chiffrée est reliée à des indicateurs (les pistes d'action et vérifications en sont exemptées).
+    for (const f of report.findings.filter((x) => x.kind !== "a_verifier" && x.kind !== "piste")) expect(f.evidence.length, f.text).toBeGreaterThan(0);
     // Toute preuve citée correspond à un indicateur existant.
     const ids = new Set(report.indicators.map((i) => `${i.id}@${i.geo.level}:${i.geo.code}`));
     for (const f of report.findings) for (const e of f.evidence) expect(ids.has(e)).toBe(true);
   });
 
-  it("produit les 9 parties A à I", () => {
-    expect(report.sections.map((s) => s.letter).join("")).toBe("ABCDEFGHI");
+  it("produit la fiche d'action puis les 9 parties A à I", () => {
+    expect(report.sections[0].id).toBe("LFI");
+    expect(report.sections.slice(1).map((s) => s.letter).join("")).toBe("ABCDEFGHI");
+  });
+
+  it("fiche d'action : bureaux de vote, carte, profil politique, actions", () => {
+    const bv = report.tables.find((t) => t.id === "lfi_bureaux")!;
+    expect(bv.rows).toHaveLength(6);
+    expect(bv.rows[0].bv).toBe("2"); // vote LFI 35 % des exprimés, forte abstention
+    expect(bv.rows[0].libelle).toBe("École fictive B");
+    expect(report.maps.find((m) => m.id === "lfi_map_bv")!.layers[0].data.features).toHaveLength(6);
+    const pol = report.tables.find((t) => t.id === "lfi_politique")!;
+    expect(pol.columns.map((c) => c.key)).toContain("parrains");
+    expect(String(pol.rows[0].parrains)).toMatch(/^40 /);
+    const kinds = new Set(report.findings.filter((f) => f.theme === "strategie").map((f) => f.kind));
+    for (const k of ["atout", "hypothese", "piste"]) expect(kinds).toContain(k);
+    expect(report.findings.some((f) => f.theme === "strategie" && /Porte-à-porte/.test(f.text))).toBe(true);
+    expect(report.tables.find((t) => t.id === "lfi_lieux")!.rows.length).toBeGreaterThan(0);
+    expect(report.tables.find((t) => t.id === "lfi_socio")!.rows.length).toBeGreaterThanOrEqual(4);
   });
 
   it("exports HTML, DOCX et CSV", async () => {

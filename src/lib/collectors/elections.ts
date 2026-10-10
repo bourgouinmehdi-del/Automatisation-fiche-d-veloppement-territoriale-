@@ -2,20 +2,16 @@ import Papa from "papaparse";
 import type { TrackedHttp } from "./context";
 
 /**
- * Résultats électoraux officiels (ministère de l'Intérieur, publiés sur data.gouv.fr).
+ * Résultats électoraux officiels (ministère de l'Intérieur, publiés sur data.gouv.fr),
+ * à l'échelle de la commune et du bureau de vote.
  *
- * Accès : l'API de data.gouv.fr permet de retrouver la ressource CSV
- * « résultats par commune » d'un jeu de données ; l'API tabulaire
- * (tabular-api.data.gouv.fr) permet ensuite de filtrer les lignes d'une
- * commune ou d'un département sans télécharger le fichier complet.
+ * Accès : l'API de data.gouv.fr permet de retrouver les ressources « résultats
+ * par commune » et « résultats par bureau de vote » d'un scrutin ; on interroge
+ * l'API tabulaire si la ressource y est indexée, sinon on lit le fichier
+ * national en flux en ne gardant que le département (extraction mise en cache).
  *
- * Usage : ce module ne produit que des résultats AGRÉGÉS par commune et par
- * département, à vocation descriptive. Aucune donnée individuelle n'est
- * collectée et aucune inférence sur les opinions des habitants n'est réalisée.
- *
- * Les identifiants de jeux (slug data.gouv) sont configurables ici. Si un jeu
- * n'est pas trouvé ou si la structure du fichier diffère, le scrutin est
- * signalé comme indisponible.
+ * Seuls des résultats AGRÉGÉS (commune, bureau de vote) sont manipulés ;
+ * aucune donnée individuelle n'est collectée.
  */
 
 export interface ElectionConfig {
@@ -74,8 +70,8 @@ export interface ElectionResult {
   exprimes: number;
   /** Voix par liste / candidat / nuance, agrégées. */
   candidates: { label: string; voix: number }[];
-  /** Participation par commune (niveau départemental uniquement, pour la carte). */
-  byCommune?: { code: string; inscrits: number; votants: number }[];
+  /** Résultats par commune du département (niveau départemental uniquement). */
+  byCommune?: { code: string; inscrits: number; votants: number; exprimes: number; candidates: { label: string; voix: number }[] }[];
   sourceUrl: string;
   retrievedAt: string;
 }
@@ -161,6 +157,7 @@ interface DgResource {
   title?: string;
   format?: string;
   url?: string;
+  filesize?: number;
 }
 interface DgDataset {
   slug: string;
@@ -169,33 +166,45 @@ interface DgDataset {
   resources?: DgResource[];
 }
 
-/** Choisit la ressource « résultats par commune » (CSV de préférence) d'un jeu. */
-export function pickCommuneResource(resources: DgResource[]): DgResource | null {
-  const isCommune = (x: DgResource) => /commun|subcom/i.test(x.title ?? "") && !/bureau|circonscription|d[ée]partement|r[ée]gion/i.test(x.title ?? "");
+export type ResultLevel = "commune" | "bureau";
+
+const BV_RE = /bureau|burvot|b\.?\s?vote|\bbv\b/i;
+
+/** Choisit la ressource tabulaire (CSV/TXT) « par commune » ou « par bureau de vote » d'un jeu. */
+export function pickResource(resources: DgResource[], level: ResultLevel = "commune"): DgResource | null {
   const tab = (x: DgResource) => /csv|txt/i.test(x.format ?? "") || /\.(csv|txt)$/i.test(x.url ?? "");
-  return resources.find((x) => isCommune(x) && tab(x)) ?? null;
+  const ok =
+    level === "bureau"
+      ? (x: DgResource) => BV_RE.test(x.title ?? "") || BV_RE.test(x.url ?? "")
+      : (x: DgResource) => /commun|subcom/i.test(x.title ?? "") && !BV_RE.test(x.title ?? "") && !/circonscription|d[ée]partement|r[ée]gion/i.test(x.title ?? "");
+  return resources.find((x) => ok(x) && tab(x)) ?? null;
 }
 
+/** Rétrocompatibilité. */
+export const pickCommuneResource = (r: DgResource[]) => pickResource(r, "commune");
+
 /**
- * Trouve la ressource « résultats par commune » d'un scrutin :
- * 1. identifiant de ressource configuré ;
+ * Trouve la ressource d'un scrutin :
+ * 1. identifiant de ressource configuré (niveau commune) ;
  * 2. jeu de données désigné par son slug ;
  * 3. à défaut, recherche plein texte sur data.gouv.fr, limitée aux jeux publiés
  *    par le ministère de l'Intérieur.
  */
-export async function resolveResource(http: TrackedHttp, e: ElectionConfig): Promise<ResourceInfo | null> {
+export async function resolveResource(http: TrackedHttp, e: ElectionConfig, level: ResultLevel = "commune"): Promise<ResourceInfo | null> {
   const candidates: DgDataset[] = [];
   const bySlug = await http.json<DgDataset>(`${DATAGOUV}/datasets/${e.dataset}/`, { allow404: true });
   if (bySlug.data?.resources) candidates.push(bySlug.data);
-  if (e.resourceId) {
+  if (e.resourceId && level === "commune") {
     const r = candidates.flatMap((d) => d.resources ?? []).find((x) => x.id === e.resourceId);
     return { id: e.resourceId, url: r?.url ?? "", title: r?.title ?? e.resourceId, format: r?.format ?? "csv", dataset: e.dataset };
   }
-  const search = await http.json<{ data?: DgDataset[] }>(`${DATAGOUV}/datasets/?q=${encodeURIComponent(e.search)}&page_size=20`);
-  for (const d of search.data?.data ?? [])
-    if (/int[ée]rieur/i.test(d.organization?.name ?? "") && e.titleRe.test(d.title ?? "")) candidates.push(d);
+  if (!candidates.some((d) => pickResource(d.resources ?? [], level))) {
+    const search = await http.json<{ data?: DgDataset[] }>(`${DATAGOUV}/datasets/?q=${encodeURIComponent(e.search)}&page_size=20`);
+    for (const d of search.data?.data ?? [])
+      if (/int[ée]rieur/i.test(d.organization?.name ?? "") && e.titleRe.test(d.title ?? "")) candidates.push(d);
+  }
   for (const d of candidates) {
-    const r = pickCommuneResource(d.resources ?? []);
+    const r = pickResource(d.resources ?? [], level);
     if (r) return { id: r.id, url: r.url ?? "", title: r.title ?? "", format: r.format ?? "", dataset: d.slug };
   }
   return null;
@@ -223,16 +232,18 @@ async function tabularRows(http: TrackedHttp, rid: string, filters: Record<strin
 interface Columns {
   cCom: string;
   cDep: string | null;
+  cBv: string | null;
   shortCodes: boolean;
 }
 
 function detectColumns(cols: string[], sampleRow: Record<string, unknown> | undefined, label: string): Columns {
   const cCom = findCol(cols, /^code (de la )?commune$/i, /^code ?commune$/i, /^codecommune$/i);
   const cDep = findCol(cols, /^code (du )?d[ée]partement$/i, /^code ?d[ée]partement$/i);
+  const cBv = findCol(cols, /^code (du )?b\.?\s?vote$/i, /^code ?bv$/i, /^code (du )?bureau( de vote)?$/i, /^bureau de vote$/i);
   if (!cCom) throw new Error(`Colonne « code commune » introuvable (${label})`);
   // Anciens formats : code département + code commune sur 3 caractères.
   const shortCodes = String(sampleRow?.[cCom] ?? "").length <= 3;
-  return { cCom, cDep, shortCodes };
+  return { cCom, cDep, cBv, shortCodes };
 }
 
 /**
@@ -305,75 +316,105 @@ function rowCode(r: Record<string, unknown>, c: Columns, dep: string) {
   return d + raw.padStart(3, "0").slice(d.length === 3 ? -2 : -3);
 }
 
-function buildResults(
-  e: ElectionConfig,
-  comRows: Record<string, unknown>[],
-  depRows: Record<string, unknown>[] | null,
-  c: Columns,
-  codeInsee: string,
-  dep: string,
-  src: { com: string; dep: string; retrievedAt: string },
-): ElectionResult[] {
-  const out: ElectionResult[] = [];
+/** Numéro de bureau normalisé (« 0003 », « 3 », « 60159_3 » → « 3 »). */
+export function normBv(v: unknown): string {
+  const s = String(v ?? "").trim();
+  const last = s.split(/[_\-\s]/).pop() ?? s;
+  const digits = last.replace(/^0+(?=\d)/, "");
+  return digits || s;
+}
+
+/** Extractions départementales déjà lues pendant ce processus. */
+const extractMemo = new Map<string, { rows: Record<string, unknown>[]; c: Columns; url: string; retrievedAt: string }>();
+
+/**
+ * Lignes d'un département pour un scrutin et un niveau (commune ou bureau de vote).
+ * Ordre : extraction en mémoire → API tabulaire → fichier national lu en flux.
+ */
+async function departmentRows(http: TrackedHttp, e: ElectionConfig, dep: string, level: ResultLevel) {
+  const memoKey = `${e.id}|${level}|${dep}`;
+  const memo = extractMemo.get(memoKey);
+  if (memo) return memo;
+  const res = await resolveResource(http, e, level);
+  if (!res) throw new Error(`Ressource « résultats par ${level === "bureau" ? "bureau de vote" : "commune"} » introuvable pour ${e.label}`);
+  let out: { rows: Record<string, unknown>[]; c: Columns; url: string; retrievedAt: string } | null = null;
+  try {
+    const probe = await http.json<{ data?: Record<string, unknown>[] }>(`${TABULAR}/${res.id}/data/?page_size=1`, { retries: 0 });
+    const first = probe.data?.data?.[0];
+    const c = detectColumns(Object.keys(first ?? {}).filter((x) => x !== "__id"), first, e.label);
+    if (!c.cDep) throw new Error("pas de colonne département");
+    let t = await tabularRows(http, res.id, { [c.cDep]: dep }, 150);
+    // Certains fichiers écrivent « 1 » au lieu de « 01 ».
+    if (!t.rows.length && dep.startsWith("0")) t = await tabularRows(http, res.id, { [c.cDep]: dep.slice(1) }, 150);
+    if (!t.rows.length) throw new Error("aucune ligne");
+    out = { rows: t.rows, c, url: t.url, retrievedAt: t.retrievedAt };
+  } catch {
+    if (!res.url) throw new Error(`Ressource sans URL de téléchargement (${e.label})`);
+    http.notes.push(`${e.id} (${level}) : lecture du fichier national`);
+    const f = await http.text(res.url, { timeoutMs: 600000, retries: 1, decodeLatin1: true });
+    const { rows: raw, fields } = filterCsv(f.data, dep, e.label);
+    const rows = expandExtraColumns(raw, fields);
+    if (!rows.length) throw new Error(`Aucune ligne pour le département ${dep} (${e.label})`);
+    out = { rows, c: detectColumns(Object.keys(rows[0]), rows[0], e.label), url: res.url, retrievedAt: f.retrievedAt };
+  }
+  extractMemo.set(memoKey, out);
+  return out;
+}
+
+/** Résultats de la commune et du département (avec le détail par commune). */
+export async function collectElection(http: TrackedHttp, e: ElectionConfig, codeInsee: string, dep: string): Promise<ElectionResult[]> {
+  const d = await departmentRows(http, e, dep, "commune");
+  const comRows = d.rows.filter((r) => rowCode(r, d.c, dep) === codeInsee);
   const agg = aggregateRows(comRows);
   if (!agg) throw new Error(`Aucun résultat pour la commune (${e.label})`);
-  out.push({ election: e, level: "commune", code: codeInsee, ...agg, sourceUrl: src.com, retrievedAt: src.retrievedAt });
-  if (depRows?.length) {
-    const a2 = aggregateRows(depRows);
-    if (a2) {
-      const groups = new Map<string, Record<string, unknown>[]>();
-      for (const r of depRows) {
-        const k = rowCode(r, c, dep);
-        if (!groups.has(k)) groups.set(k, []);
-        groups.get(k)!.push(r);
-      }
-      const byCommune = [...groups.entries()]
-        .map(([code, rows]) => ({ code, a: aggregateRows(rows) }))
-        .filter((x) => x.a)
-        .map((x) => ({ code: x.code, inscrits: x.a!.inscrits, votants: x.a!.votants }));
-      out.push({ election: e, level: "departement", code: dep, ...a2, byCommune, sourceUrl: src.dep, retrievedAt: src.retrievedAt });
+  const out: ElectionResult[] = [{ election: e, level: "commune", code: codeInsee, ...agg, sourceUrl: d.url, retrievedAt: d.retrievedAt }];
+  const a2 = aggregateRows(d.rows);
+  if (a2) {
+    const groups = new Map<string, Record<string, unknown>[]>();
+    for (const r of d.rows) {
+      const k = rowCode(r, d.c, dep);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(r);
     }
+    const byCommune = [...groups.entries()]
+      .map(([code, rows]) => ({ code, a: aggregateRows(rows) }))
+      .filter((x) => x.a)
+      .map((x) => ({ code: x.code, inscrits: x.a!.inscrits, votants: x.a!.votants, exprimes: x.a!.exprimes, candidates: x.a!.candidates }));
+    out.push({ election: e, level: "departement", code: dep, ...a2, byCommune, sourceUrl: d.url, retrievedAt: d.retrievedAt });
   }
   return out;
 }
 
-/**
- * Collecte un scrutin : via l'API tabulaire de data.gouv.fr si la ressource y
- * est indexée, sinon par téléchargement du fichier CSV (mis en cache).
- */
-export async function collectElection(
-  http: TrackedHttp,
-  e: ElectionConfig,
-  codeInsee: string,
-  dep: string,
-): Promise<ElectionResult[]> {
-  const res = await resolveResource(http, e);
-  if (!res) throw new Error(`Ressource « résultats par commune » introuvable pour ${e.label}`);
+export interface BureauResult {
+  election: ElectionConfig;
+  bv: string;
+  inscrits: number;
+  votants: number;
+  abstentions: number;
+  exprimes: number;
+  blancs: number | null;
+  nuls: number | null;
+  candidates: { label: string; voix: number }[];
+  sourceUrl: string;
+  retrievedAt: string;
+}
 
-  // 1. API tabulaire
-  try {
-    const probe = await http.json<{ data?: Record<string, unknown>[] }>(`${TABULAR}/${res.id}/data/?page_size=1`, { retries: 0 });
-    const first = probe.data?.data?.[0];
-    const cols = Object.keys(first ?? {}).filter((x) => x !== "__id");
-    const c = detectColumns(cols, first, e.label);
-    const comFilters: Record<string, string> =
-      c.shortCodes && c.cDep ? { [c.cDep]: dep, [c.cCom]: codeInsee.slice(dep.length === 3 ? 3 : 2) } : { [c.cCom]: codeInsee };
-    const com = await tabularRows(http, res.id, comFilters, 2);
-    const depRows = c.cDep ? await tabularRows(http, res.id, { [c.cDep]: dep }, 40) : null;
-    return buildResults(e, com.rows, depRows?.rows ?? null, c, codeInsee, dep, { com: com.url, dep: depRows?.url ?? com.url, retrievedAt: com.retrievedAt });
-  } catch (err) {
-    if (!res.url) throw err;
-    http.notes.push(`API tabulaire indisponible pour ${e.id} : téléchargement du fichier`);
+/** Résultats par bureau de vote d'une commune. */
+export async function collectBureaux(http: TrackedHttp, e: ElectionConfig, codeInsee: string, dep: string): Promise<BureauResult[]> {
+  const d = await departmentRows(http, e, dep, "bureau");
+  if (!d.c.cBv) throw new Error(`Colonne « bureau de vote » introuvable (${e.label})`);
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const r of d.rows) {
+    if (rowCode(r, d.c, dep) !== codeInsee) continue;
+    const k = normBv(r[d.c.cBv]);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k)!.push(r);
   }
-
-  // 2. Fichier complet (France entière, plusieurs dizaines de Mo) : lecture
-  // ligne à ligne en ne conservant que les lignes du département, pour éviter
-  // de matérialiser des centaines de milliers d'objets en mémoire.
-  const f = await http.text(res.url, { timeoutMs: 180000, retries: 1, decodeLatin1: true });
-  const { rows: depRowsRaw, fields } = filterCsv(f.data, dep, e.label);
-  const depRows = expandExtraColumns(depRowsRaw, fields);
-  if (!depRows.length) throw new Error(`Aucune ligne pour le département ${dep} (${e.label})`);
-  const c = detectColumns(Object.keys(depRows[0]), depRows[0], e.label);
-  const comRows = depRows.filter((r) => rowCode(r, c, dep) === codeInsee);
-  return buildResults(e, comRows, depRows, c, codeInsee, dep, { com: res.url, dep: res.url, retrievedAt: f.retrievedAt });
+  const out: BureauResult[] = [];
+  for (const [bv, rows] of groups) {
+    const a = aggregateRows(rows);
+    if (a) out.push({ election: e, bv, ...a, sourceUrl: d.url, retrievedAt: d.retrievedAt });
+  }
+  if (!out.length) throw new Error(`Aucun bureau de vote trouvé pour la commune (${e.label})`);
+  return out.sort((x, y) => Number(x.bv) - Number(y.bv) || x.bv.localeCompare(y.bv));
 }

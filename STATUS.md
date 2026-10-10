@@ -32,6 +32,14 @@ Deuxième exécution : codes `EPCI-…`, `DEP-…`, `REG-…` validés ; 26 indi
 
 **Reste à confirmer** : code « France » accepté par Melodi, lecture effective des trois fichiers électoraux.
 
+## Fiche d'action « approche LFI » (version 0.2)
+
+Ajouts : résultats par bureau de vote (E24, P22, LG24), géographie des bureaux (GeoJSON fourni, contours data.gouv.fr ou enveloppes REU), moteur d'analyse `src/lib/analysis/political.ts` (familles politiques, surperformance, potentiel et priorités par bureau), fiche d'action `src/lib/report/lfi.ts` sur le modèle du document de référence, import des données internes (parrains, groupes d'action).
+
+**À valider sur les API réelles** avec `npm run check:sources -- --insee 60159` : ressources « par bureau de vote » trouvées pour les trois scrutins, colonne « Code BV », source de géographie des bureaux (le jeu REU doit être indexé par l'API tabulaire ; sinon déposer un GeoJSON).
+
+Limites : les législatives 2024 ne permettent pas d'isoler LFI (candidatures NFP, nuance « UG ») ; le découpage des bureaux peut avoir changé entre 2022 et 2024 (appariement limité aux bureaux dont les inscrits varient de moins de 25 %) ; les heures de pointe des gares sont indicatives ; les quartiers prioritaires (QPV) et les données IRIS ne sont pas encore croisés avec les bureaux.
+
 ## Critères d'acceptation
 
 | # | Critère | État |
@@ -57,7 +65,8 @@ Deuxième exécution : codes `EPCI-…`, `DEP-…`, `REG-…` validés ; 26 indi
 ✓ tests/integration.test.ts  (14 tests)
 ✓ tests/degraded.test.ts     (2 tests)
 ✓ tests/elections-file.test.ts (2 tests)
-Test Files  5 passed (5) — Tests  44 passed (44)
+✓ tests/political.test.ts    (8 tests)
+Test Files  6 passed (6) — Tests  52 passed (52)
 ```
 
 Test e2e navigateur (`tests/e2e/smoke.mjs`, serveur de production) : parcours 60350 → Pierrefonds → génération → rapport → exports PDF/DOCX/CSV/JSON (HTTP 200).

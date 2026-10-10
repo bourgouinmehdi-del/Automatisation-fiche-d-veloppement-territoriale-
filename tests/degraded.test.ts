@@ -45,7 +45,7 @@ describe("génération en mode dégradé", () => {
     expect(r.maps.find((m) => m.id === "map_equipements")).toBeUndefined();
     // Les autres sources restent exploitées.
     expect(r.indicators.find((i) => i.id === "prix_m2_appartement")).toBeDefined();
-    expect(r.sections).toHaveLength(9);
+    expect(r.sections).toHaveLength(10); // fiche d'action + A à I
   }, 60000);
 
   it("mode hors ligne : n'émet aucune requête et réutilise le cache", async () => {

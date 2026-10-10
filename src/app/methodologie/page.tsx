@@ -12,7 +12,7 @@ export default function Methodologie() {
         <li>Valeur atypique : score z robuste (médiane et écart absolu médian) d&apos;au moins 2 parmi des communes comparables (même région, population à ±30 %, densité comprise entre la moitié et le double).</li>
         <li>Les énoncés sont typés : constat, atout, point de vigilance, hypothèse (à vérifier), piste d&apos;action, élément à vérifier.</li>
         <li>La rédaction repose sur des gabarits ; un modèle de langage peut, en option, reformuler les paragraphes, sous contrôle automatique interdisant tout ajout de chiffre.</li>
-        <li>Le chapitre électoral est strictement descriptif et agrégé ; aucune inférence individuelle ni aucun ciblage n&apos;est produit.</li>
+        <li>Les résultats électoraux sont exploités à l&apos;échelle de la commune et du bureau de vote uniquement (agrégats officiels) ; aucune donnée individuelle ni aucune variable d&apos;origine ou de nationalité n&apos;est utilisée. Les priorités de terrain par bureau de vote reposent sur une règle publique : moyenne des scores z de la part LFI des exprimés et du taux d&apos;abstention.</li>
       </ul>
       <h2 className="mb-2 mt-6 text-lg font-semibold">Sources</h2>
       <ul className="space-y-3">
