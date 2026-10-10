@@ -45,7 +45,15 @@ beforeAll(() => {
         resources: [{ id: is22 ? "r22" : "r24", title: is22 ? "resultats-par-niveau-subcom-t1-france-entiere.txt" : "resultats-definitifs-par-commune.csv", format: is22 ? "txt" : "csv", url: `https://static.data.gouv.fr/${is22 ? "f22.txt" : "f24.csv"}` }],
       });
     }
-    if (u.host === "tabular-api.data.gouv.fr") return json({ message: "not found" }, 404);
+    if (u.host === "tabular-api.data.gouv.fr") {
+      // Ressource 2022 indexée, mais sans les blocs candidats anonymes (comportement réel de l'API).
+      if (u.pathname.includes("r22"))
+        return json({
+          data: [{ "Code du département": "60", "Code de la commune": "159", Inscrits: 1000, Abstentions: 300, Votants: 700, Blancs: 10, Nuls: 10, Exprimés: 680, "N°Panneau": 1, Sexe: "F", Nom: "ALPHA", Prénom: "Anne", Voix: 400 }],
+          links: { next: null },
+        });
+      return json({ message: "not found" }, 404);
+    }
     if (u.host === "static.data.gouv.fr") return new Response(u.pathname.includes("f22") ? file2022() : file2024());
     throw new TypeError("fetch failed");
   }) as typeof fetch);
@@ -73,7 +81,7 @@ describe("élections — lecture du fichier national", () => {
     expect(process.memoryUsage().heapUsed - before).toBeLessThan(400 * 1024 * 1024);
   }, 60000);
 
-  it("format 2022 : blocs candidats sans en-tête et codes sur 3 caractères", async () => {
+  it("format 2022 : blocs candidats sans en-tête (API tabulaire incomplète → fichier) et codes sur 3 caractères", async () => {
     const { collectElection, ELECTIONS } = await import("@/lib/collectors/elections");
     const { TrackedHttp } = await import("@/lib/collectors/context");
     const r = await collectElection(new TrackedHttp(), ELECTIONS.find((e) => e.id === "PR22T1")!, "60159", "60");

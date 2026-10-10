@@ -6,9 +6,8 @@
  *
  * Sert à vérifier la disponibilité des API et à ajuster les correspondances
  * de `src/lib/collectors/insee-indicators.ts` si la nomenclature INSEE évolue.
- * Le cache est contourné (CACHE_TTL_HOURS=0).
+ * Les réponses sont mises en cache (data/cache) : supprimer ce dossier pour tout retélécharger.
  */
-process.env.CACHE_TTL_HOURS = "0";
 
 import { TrackedHttp } from "../src/lib/collectors/context";
 import { enrichCommune, communeFromReferentiel } from "../src/lib/collectors/admin";
@@ -18,7 +17,8 @@ import { collectDvf } from "../src/lib/collectors/dvf";
 import { collectEquipments } from "../src/lib/collectors/osm";
 import { collectEntreprises, collectRisques, collectSchools, collectStations } from "../src/lib/collectors/public-apis";
 import { collectBureaux, collectElection, ELECTIONS, resolveResource } from "../src/lib/collectors/elections";
-import { collectBureauxGeo } from "../src/lib/collectors/bureaux-geo";
+import { collectBureauxGeo, diagnoseBureauxGeo } from "../src/lib/collectors/bureaux-geo";
+import { rankBureaux, score } from "../src/lib/analysis/political";
 import { loadInternalData } from "../src/lib/collectors/interne";
 import { collectInsee } from "../src/lib/collectors/insee-indicators";
 import { CollectContext } from "../src/lib/collectors/context";
@@ -124,9 +124,28 @@ async function main() {
       const r = await collectBureaux(h(), e, c.code, c.departement.code);
       return `${r.length} bureaux : ${r.slice(0, 4).map((b) => `BV ${b.bv} (${b.inscrits} inscrits)`).join(", ")}…`;
     });
+  // Scores LFI reconnus (contrôle des libellés de listes / candidats).
+  for (const e of ELECTIONS.filter((x) => x.id !== "LG24T1"))
+    await check(`Score LFI ${e.id}`, async () => {
+      const r = (await collectElection(h(), e, c.code, c.departement.code)).find((x) => x.level === "commune")!;
+      const s = score(e.id, r, "lfi");
+      console.log(`      listes/candidats : ${r.candidates.slice(0, 6).map((x) => `${x.label} (${x.voix})`).join(" | ")}`);
+      if (!s?.voix) throw new Error("aucune voix LFI reconnue");
+      return `${s.voix} voix, ${s.pctInscrits.toFixed(1)} % des inscrits, ${s.pctExprimes.toFixed(1)} % des exprimés`;
+    });
+  await check("Classement des bureaux (E24)", async () => {
+    const eu = ELECTIONS.find((x) => x.id === "EU24")!;
+    const pr = ELECTIONS.find((x) => x.id === "PR22T1")!;
+    const rows = rankBureaux(await collectBureaux(h(), eu, c.code, c.departement.code), await collectBureaux(h(), pr, c.code, c.departement.code), new Map());
+    for (const b of rows.slice(0, 6)) console.log(`      BV ${b.bv} : LFI ${b.lfiPctExp.toFixed(1)} % des exprimés, abstention ${b.abstPct.toFixed(1)} %, priorité ${b.priorite}`);
+    return `${rows.length} bureaux classés, ${rows.filter((r) => r.lfi2PctIns != null).length} appariés avec P22`;
+  });
   await check("Géographie des bureaux", async () => {
     const g = await collectBureauxGeo(h(), c.code);
-    if (!g) throw new Error("aucune source (déposer data/interne/bv-" + c.code + ".geojson)");
+    if (!g) {
+      for (const l of await diagnoseBureauxGeo(h(), c.code)) console.log("      " + l);
+      throw new Error("aucune source (déposer data/interne/bv-" + c.code + ".geojson)");
+    }
     return `${g.method} — ${g.features.length} contours, ${g.labels.size} libellés (${g.sourceName})`;
   });
   await check("Données internes (data/interne)", async () => {

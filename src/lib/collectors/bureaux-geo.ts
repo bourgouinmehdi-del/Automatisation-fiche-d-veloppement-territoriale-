@@ -208,3 +208,29 @@ export async function collectBureauxGeo(http: TrackedHttp, codeInsee: string): P
   }
   return fromReu(http, codeInsee);
 }
+
+/** Diagnostic détaillé (check:sources) : jeux trouvés, ressources, indexation tabulaire. */
+export async function diagnoseBureauxGeo(http: TrackedHttp, codeInsee: string): Promise<string[]> {
+  const lines: string[] = [];
+  for (const q of ["contours des bureaux de vote", "bureaux de vote et adresses de leurs électeurs", "bureaux de vote"]) {
+    const ds = await searchDatasets(http, q);
+    lines.push(`recherche « ${q} » : ${ds.length} jeu(x)`);
+    for (const d of ds.slice(0, 6)) {
+      lines.push(`  • ${d.title} [${d.slug}]`);
+      for (const r of (d.resources ?? []).slice(0, 8)) {
+        let tab = "";
+        if (/csv/i.test(r.format ?? "")) {
+          try {
+            const p = await http.json<{ data?: Record<string, unknown>[] }>(`${TABULAR}/${r.id}/data/?page_size=1`, { retries: 0, noCache: true });
+            tab = ` — API tabulaire : OK, colonnes ${Object.keys(p.data?.data?.[0] ?? {}).slice(0, 12).join(", ")}`;
+          } catch (e) {
+            tab = ` — API tabulaire : ${e instanceof Error ? e.message : e}`;
+          }
+        }
+        lines.push(`      - ${r.title} (${r.format}, ${r.filesize ? Math.round(r.filesize / 1e6) + " Mo" : "taille ?"})${tab}`);
+      }
+    }
+  }
+  void codeInsee;
+  return lines;
+}

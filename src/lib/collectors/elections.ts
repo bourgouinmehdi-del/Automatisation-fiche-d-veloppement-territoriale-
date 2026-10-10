@@ -347,6 +347,10 @@ async function departmentRows(http: TrackedHttp, e: ElectionConfig, dep: string,
     // Certains fichiers écrivent « 1 » au lieu de « 01 ».
     if (!t.rows.length && dep.startsWith("0")) t = await tabularRows(http, res.id, { [c.cDep]: dep.slice(1) }, 150);
     if (!t.rows.length) throw new Error("aucune ligne");
+    // L'API tabulaire perd les colonnes sans en-tête (blocs candidats 2 à N du
+    // format 2022) : si un seul candidat est lisible, on bascule sur le fichier.
+    const probeAgg = aggregateRows(t.rows.slice(0, 200));
+    if (!probeAgg || probeAgg.candidates.length < 2) throw new Error("colonnes candidats incomplètes dans l'API tabulaire");
     out = { rows: t.rows, c, url: t.url, retrievedAt: t.retrievedAt };
   } catch {
     if (!res.url) throw new Error(`Ressource sans URL de téléchargement (${e.label})`);
