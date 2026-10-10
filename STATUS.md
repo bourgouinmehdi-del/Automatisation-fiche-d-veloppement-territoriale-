@@ -24,7 +24,13 @@ Corrections apportées à partir des modalités réellement servies :
 - nouveaux indicateurs : personnes vivant seules, ménages sans voiture / avec 2 voitures ou plus, actifs travaillant dans leur commune, part de la voiture et des transports en commun dans les trajets domicile-travail ;
 - élections : découverte des jeux par recherche data.gouv.fr (ministère de l'Intérieur) et téléchargement direct du CSV si l'API tabulaire n'indexe pas la ressource.
 
-**Restent à confirmer par une nouvelle exécution de `check:sources`** : codes géographiques EPCI / département / région / France, présence de `MED_SL` (revenu médian), indicateurs effectivement calculés, ressources électorales trouvées.
+Deuxième exécution : codes `EPCI-…`, `DEP-…`, `REG-…` validés ; 26 indicateurs et 6 distributions calculés pour Compiègne (revenu médian 23 310 €, pauvreté 24,4 %, chômage RP 15,7 %, concentration d'emploi 172) ; ressources électorales trouvées pour les trois scrutins. Corrections consécutives :
+- le code « France » `FRANCE-F` est refusé (HTTP 400) : plusieurs syntaxes sont désormais essayées ; si aucune n'est acceptée, la colonne France est simplement absente des comparaisons ;
+- dépassement mémoire à la lecture du fichier national des législatives : lecture en flux, seules les lignes du département sont conservées ;
+- séparateur des fichiers électoraux détecté sur l'en-tête (les virgules décimales trompaient la détection automatique) ;
+- partition des âges la plus fine retenue (65-79 ans et 80 ans et plus distincts).
+
+**Reste à confirmer** : code « France » accepté par Melodi, lecture effective des trois fichiers électoraux.
 
 ## Critères d'acceptation
 
@@ -50,7 +56,8 @@ Corrections apportées à partir des modalités réellement servies :
 ✓ tests/connectors.test.ts   (15 tests)
 ✓ tests/integration.test.ts  (14 tests)
 ✓ tests/degraded.test.ts     (2 tests)
-Test Files  4 passed (4) — Tests  42 passed (42)
+✓ tests/elections-file.test.ts (2 tests)
+Test Files  5 passed (5) — Tests  44 passed (44)
 ```
 
 Test e2e navigateur (`tests/e2e/smoke.mjs`, serveur de production) : parcours 60350 → Pierrefonds → génération → rapport → exports PDF/DOCX/CSV/JSON (HTTP 200).

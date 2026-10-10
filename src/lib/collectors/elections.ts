@@ -261,6 +261,40 @@ export function expandExtraColumns(rows: Record<string, unknown>[], header: stri
   });
 }
 
+/**
+ * Séparateur déterminé sur la ligne d'en-tête : les fichiers du ministère
+ * utilisent « ; » mais leurs valeurs contiennent des virgules décimales
+ * (« 40,00 »), ce qui trompe la détection automatique de Papa Parse.
+ */
+export function detectDelimiter(text: string): string {
+  const nl = text.search(/\r?\n/);
+  const head = text.slice(0, nl < 0 ? 2000 : nl);
+  const count = (d: string) => head.split(d).length - 1;
+  return [";", "\t", ",", "|"].reduce((best, d) => (count(d) > count(best) ? d : best), ";");
+}
+
+/** Lit un CSV de résultats et ne garde que les lignes d'un département. */
+export function filterCsv(text: string, dep: string, label: string) {
+  const rows: Record<string, unknown>[] = [];
+  let fields: string[] = [];
+  let c: Columns | null = null;
+  Papa.parse<Record<string, unknown>>(text, {
+    header: true,
+    skipEmptyLines: true,
+    delimiter: detectDelimiter(text),
+    step: (res) => {
+      const r = res.data;
+      if (!c) {
+        fields = res.meta.fields ?? Object.keys(r);
+        c = detectColumns(fields, r, label);
+      }
+      const keep = c.cDep ? normDep(r[c.cDep]) === dep : rowCode(r, c, dep).startsWith(dep);
+      if (keep) rows.push(r);
+    },
+  });
+  return { rows, fields };
+}
+
 const normDep = (v: unknown) => String(v ?? "").trim().padStart(2, "0");
 
 /** Code INSEE complet d'une ligne de résultats. */
@@ -332,13 +366,14 @@ export async function collectElection(
     http.notes.push(`API tabulaire indisponible pour ${e.id} : téléchargement du fichier`);
   }
 
-  // 2. Fichier complet
+  // 2. Fichier complet (France entière, plusieurs dizaines de Mo) : lecture
+  // ligne à ligne en ne conservant que les lignes du département, pour éviter
+  // de matérialiser des centaines de milliers d'objets en mémoire.
   const f = await http.text(res.url, { timeoutMs: 180000, retries: 1, decodeLatin1: true });
-  const parsed = Papa.parse<Record<string, unknown>>(f.data, { header: true, skipEmptyLines: true, delimiter: "" });
-  const rows = expandExtraColumns(parsed.data, parsed.meta.fields ?? []);
-  if (!rows.length) throw new Error(`Fichier vide ou illisible (${e.label})`);
-  const c = detectColumns(Object.keys(rows[0]), rows[0], e.label);
-  const depRows = c.cDep ? rows.filter((r) => normDep(r[c.cDep!]) === dep) : rows.filter((r) => rowCode(r, c, dep).startsWith(dep));
+  const { rows: depRowsRaw, fields } = filterCsv(f.data, dep, e.label);
+  const depRows = expandExtraColumns(depRowsRaw, fields);
+  if (!depRows.length) throw new Error(`Aucune ligne pour le département ${dep} (${e.label})`);
+  const c = detectColumns(Object.keys(depRows[0]), depRows[0], e.label);
   const comRows = depRows.filter((r) => rowCode(r, c, dep) === codeInsee);
   return buildResults(e, comRows, depRows, c, codeInsee, dep, { com: res.url, dep: res.url, retrievedAt: f.retrievedAt });
 }

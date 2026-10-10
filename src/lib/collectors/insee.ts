@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { HttpError } from "../http";
 import type { TrackedHttp } from "./context";
 
 /**
@@ -46,7 +47,9 @@ type GeoKind = "COM" | "EPCI" | "DEP" | "REG" | "FRANCE";
 const preferredFormat = new Map<GeoKind, number>();
 
 export function geoCandidates(kind: GeoKind, code: string): string[] {
-  if (kind === "FRANCE") return ["FRANCE-F", "FRANCE-FE", "FE-1"];
+  // Le code « France » de Melodi n'est pas documenté de façon stable : plusieurs
+  // syntaxes sont essayées (« FRANCE-F » est refusé avec un HTTP 400 en 2026).
+  if (kind === "FRANCE") return ["FRANCE-1", "FRANCE-FE", "FRANCE-FM", "FRANCE-F", "FE-1", "PAYS-FRA", "FRA-1", "FR-1"];
   const years = ["2025", "2024", "2026", "2023"];
   return [`${kind}-${code}`, ...years.map((y) => `${y}-${kind}-${code}`)];
 }
@@ -80,7 +83,10 @@ export async function loadDataset(
   const all = geoCandidates(kind, code);
   const pref = preferredFormat.get(kind);
   // Lorsqu'une syntaxe a déjà fonctionné pour ce type de territoire, seule celle-ci est essayée.
+  // -1 : aucune syntaxe ne fonctionne pour ce type de territoire (inutile de réessayer).
+  if (pref === -1) return null;
   const candidates = pref != null ? [all[pref]] : all;
+  let refused = 0;
   for (const geo of candidates) {
     const firstUrl = `${MELODI}/data/${datasetId}?GEO=${encodeURIComponent(geo)}&maxResult=10000`;
     let url: string | null = firstUrl;
@@ -88,11 +94,17 @@ export async function loadDataset(
     let retrievedAt = "";
     let pages = 0;
     while (url && pages < 20) {
-      const r: { data: RawPage | null; retrievedAt: string } = await http.json<RawPage>(url, {
-        minIntervalMs: MIN_INTERVAL(),
-        allow404: true,
-        timeoutMs: 45000,
-      });
+      let r: { data: RawPage | null; retrievedAt: string };
+      try {
+        r = await http.json<RawPage>(url, { minIntervalMs: MIN_INTERVAL(), allow404: true, timeoutMs: 45000, retries: 1 });
+      } catch (e) {
+        // HTTP 400 : syntaxe de code géographique refusée → candidat suivant.
+        if (e instanceof HttpError && e.status === 400) {
+          refused++;
+          break;
+        }
+        throw e;
+      }
       retrievedAt = r.retrievedAt;
       pages++;
       obs.push(...parseObservations(r.data?.observations));
@@ -110,6 +122,9 @@ export async function loadDataset(
     const labels = await loadLabels(http, datasetId);
     return { id: datasetId, geo, url: firstUrl, retrievedAt, observations: obs, dimValues, labels };
   }
+  // Aucune syntaxe n'a fonctionné. Pour la France, on mémorise l'échec : le code
+  // est en cause, pas le jeu de données (évite de multiplier les requêtes).
+  if (kind === "FRANCE" && pref == null && refused === candidates.length) preferredFormat.set(kind, -1);
   return null;
 }
 
@@ -275,7 +290,8 @@ export function choosePartition(bands: AgeBand[]): AgeBand[] | null {
     }
     for (const b of sorted) if (b.min === from && b.max > from) dfs(b.max, [...acc, b]);
   };
-  const score = (p: AgeBand[]) => -Math.abs(p.length - 6);
+  // On privilégie la partition la plus fine (au plus 10 tranches).
+  const score = (p: AgeBand[]) => p.length;
   dfs(0, []);
   return best;
 }
