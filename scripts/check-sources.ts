@@ -147,7 +147,8 @@ async function main() {
       throw new Error("aucune source (déposer data/interne/bv-" + c.code + ".geojson)");
     }
     for (const [bv, l] of [...g.labels].slice(0, 5)) console.log(`      BV ${bv} : ${l}${g.points.find((p) => String(p.properties?.bv) === bv) ? ` — ${g.points.find((p) => String(p.properties?.bv) === bv)!.properties?.adresse}` : ""}`);
-    if (!g.features.length) for (const l of await diagnoseBureauxGeo(h(), c.code)) console.log("      " + l);
+    // Diagnostic toujours affiché tant que les contours ne sont pas validés.
+    for (const l of (await diagnoseBureauxGeo(h(), c.code)).filter((l) => /^contours «|^ {2}[^ •]/.test(l))) console.log("      " + l);
     return `${g.method} — ${g.features.length} contours, ${g.points.length} lieux de vote géocodés, ${g.labels.size} libellés (${g.sourceName})`;
   });
   await check("Données internes (data/interne)", async () => {

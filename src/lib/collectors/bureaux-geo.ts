@@ -4,6 +4,7 @@ import * as turf from "@turf/turf";
 import { config } from "../config";
 import type { TrackedHttp } from "./context";
 import { findCol, normBv } from "./elections";
+import { extractTopoJson } from "./topojson-extract";
 
 /**
  * Noms et géométries des bureaux de vote d'une commune.
@@ -162,7 +163,9 @@ async function fromContours(http: TrackedHttp, codeInsee: string): Promise<Burea
       .sort((x, y) => (x.filesize ?? 0) - (y.filesize ?? 0))[0];
     if (!res?.url) continue;
     const r = await http.text(res.url, { timeoutMs: 900000, retries: 1 });
-    const n = normalizeBvFeatures(extractFeaturesByText(r.data, codeInsee), codeInsee);
+    // Le fichier INSEE est un TopoJSON (frontières partagées) ; d'autres sont du GeoJSON.
+    const isTopo = /^\s*\{\s*"type"\s*:\s*"Topology"/.test(r.data.slice(0, 200));
+    const n = normalizeBvFeatures(isTopo ? extractTopoJson(r.data, codeInsee) : extractFeaturesByText(r.data, codeInsee), codeInsee);
     if (n.features.length)
       return { ...n, points: [], method: "contours", sourceName: `${d.title} (data.gouv.fr)`, url: res.url, retrievedAt: r.retrievedAt };
   }
@@ -340,8 +343,13 @@ export async function diagnoseBureauxGeo(http: TrackedHttp, codeInsee: string): 
     if (!res?.url) continue;
     try {
       const r = await http.text(res.url, { timeoutMs: 900000, retries: 1 });
-      const fc = extractFeaturesByText(r.data, codeInsee);
-      lines.push(`contours « ${res.title} » : début du fichier = ${r.data.slice(0, 160).replace(/\s+/g, " ")}`);
+      const diag: string[] = [];
+      const isTopo = /"type"\s*:\s*"Topology"/.test(r.data.slice(0, 200));
+      const fc = isTopo ? extractTopoJson(r.data, codeInsee, diag) : extractFeaturesByText(r.data, codeInsee);
+      lines.push(`contours « ${res.title} » (${isTopo ? "TopoJSON" : "GeoJSON"}) : début du fichier = ${r.data.slice(0, 120).replace(/\s+/g, " ")}`);
+      for (const d2 of diag) lines.push(`  ${d2}`);
+      const n = normalizeBvFeatures(fc, codeInsee);
+      lines.push(`  après filtrage sur la commune : ${n.features.length} bureau(x) — ${[...n.labels.keys()].slice(0, 10).join(", ")}`);
       lines.push(`  entités mentionnant ${codeInsee} : ${fc.features.length} ; propriétés de la 1re : ${JSON.stringify(fc.features[0]?.properties ?? {}).slice(0, 300)}`);
       const idx = r.data.indexOf(codeInsee);
       if (idx >= 0) lines.push(`  contexte de la 1re occurrence : …${r.data.slice(Math.max(0, idx - 150), idx + 100).replace(/\s+/g, " ")}…`);

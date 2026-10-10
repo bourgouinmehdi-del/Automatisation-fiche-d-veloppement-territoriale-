@@ -35,3 +35,56 @@ describe("géographie des bureaux de vote", () => {
     expect(n.features.map((f) => f.properties?.bv)).toEqual(["3", "7"]);
   });
 });
+
+import { extractTopoJson, toWgs84 } from "@/lib/collectors/topojson-extract";
+
+describe("TopoJSON national (structure du fichier INSEE)", () => {
+  // Deux bureaux de 60159 partageant une frontière, un bureau d'une autre commune.
+  // Coordonnées Lambert-93 quantifiées (scale 1, translate autour de Compiègne), arcs delta-encodés.
+  const T = { scale: [1, 1], translate: [680000, 6920000] };
+  const topo = {
+    type: "Topology",
+    arcs: [
+      [[0, 0], [0, 1000]], // 0 : frontière commune (vertical x=0)
+      [[0, 1000], [-1000, 0], [0, -1000], [1000, 0]], // 1 : contour ouest
+      [[0, 0], [1000, 0], [0, 1000], [-1000, 0]], // 2 : contour est
+      [[5000, 5000], [100, 0], [0, 100], [-100, -100]], // 3 : autre commune
+    ],
+    transform: T,
+    objects: {
+      bv: {
+        type: "GeometryCollection",
+        geometries: [
+          { type: "Polygon", arcs: [[0, 1]], properties: { codeCommune: "60159", numeroBureauVote: "1" } },
+          { type: "Polygon", arcs: [[2, -1]], properties: { codeCommune: "60159", numeroBureauVote: "2" } },
+          { type: "Polygon", arcs: [[3]], properties: { codeCommune: "60382", numeroBureauVote: "1" } },
+        ],
+      },
+    },
+  };
+  it("décode les seules géométries de la commune, en WGS84", () => {
+    const diag: string[] = [];
+    const fc = extractTopoJson(JSON.stringify(topo), "60159", diag);
+    expect(fc.features).toHaveLength(2);
+    const ring = (fc.features[0].geometry as GeoJSON.Polygon).coordinates[0];
+    expect(ring.length).toBe(5);
+    // Autour de Compiègne : ~2,8° E, ~49,4° N.
+    for (const [lon, lat] of ring) {
+      expect(lon).toBeGreaterThan(2.5);
+      expect(lon).toBeLessThan(3.1);
+      expect(lat).toBeGreaterThan(49.2);
+      expect(lat).toBeLessThan(49.6);
+    }
+    // L'arc partagé est parcouru en sens inverse pour le second bureau.
+    const r2 = (fc.features[1].geometry as GeoJSON.Polygon).coordinates[0];
+    expect(r2[r2.length - 1][0]).toBeCloseTo(r2[0][0], 9);
+    const n = normalizeBvFeatures(fc, "60159");
+    expect(n.features.map((f) => f.properties?.bv)).toEqual(["1", "2"]);
+  });
+  it("reconnaît les systèmes de coordonnées", () => {
+    expect(toWgs84([2.8, 49.4])!([2.8, 49.4])).toEqual([2.8, 49.4]);
+    const [lon, lat] = toWgs84([680000, 6920000])!([680000, 6920000]);
+    expect(lon).toBeCloseTo(2.72, 1);
+    expect(lat).toBeCloseTo(49.38, 1);
+  });
+});
