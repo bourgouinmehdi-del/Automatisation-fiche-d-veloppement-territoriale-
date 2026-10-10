@@ -47,20 +47,44 @@ describe("chaîne de génération (API simulées)", () => {
     }
   });
 
-  it("calcule les parts d'âge à partir des tranches", () => {
-    // Tranches fictives : 7000, 9500, 7500, 7000, 6000, 3700 → total 40 700.
-    expect(ind("part_60_plus")!.value).toBeCloseTo(((6000 + 3700) / 40700) * 100, 6);
-    expect(ind("part_moins_30")!.value).toBeCloseTo(((7000 + 9500) / 40700) * 100, 6);
+  it("calcule les parts d'âge à partir des tranches réellement diffusées", () => {
+    // Partition fictive 2023 : 7000, 6500, 8000, 7500, 4500, 5200, 2000 → total 40 700.
+    expect(ind("part_65_plus")!.value).toBeCloseTo(((5200 + 2000) / 40700) * 100, 6);
+    expect(ind("part_moins_25")!.value).toBeCloseTo(((7000 + 6500) / 40700) * 100, 6);
+    expect(ind("part_80_plus")!.value).toBeCloseTo((2000 / 40700) * 100, 6);
+    expect(ind("part_moins_30")).toBeUndefined(); // pas de borne à 30 ans : pas d'estimation
   });
 
-  it("calcule les ratios logement / emploi / diplôme", () => {
+  it("construit l'historique de population à partir des millésimes du recensement", () => {
+    const s = report.series.find((x) => x.id === "pop_historique" && x.geo.level === "commune")!;
+    expect(s.points.map((p) => p.x)).toEqual(["2012", "2017", "2023"]);
+    expect(ind("evol_pop_annuelle")).toBeDefined();
+  });
+
+  it("calcule les ratios logement / emploi / diplôme / mobilité", () => {
     expect(ind("part_logements_vacants")!.value).toBeCloseTo((2000 / 22000) * 100, 6);
     expect(ind("part_locataires_hlm")!.value).toBeCloseTo((5000 / 19500) * 100, 6);
+    expect(ind("part_proprietaires")!.value).toBeCloseTo((7500 / 19500) * 100, 6);
+    expect(ind("part_maisons")!.value).toBeCloseTo((6000 / 22000) * 100, 6);
+    // Tranche 15-64 ans explicitement retenue (pas de total d'âge dans ce jeu).
     expect(ind("taux_chomage_rp")!.value).toBeCloseTo((2600 / (16000 + 2600)) * 100, 6);
-    expect(ind("concentration_emploi")!.value).toBeCloseTo((24000 / 16000) * 100, 6);
-    // « Supérieur » reconnu par libellé (endpoint /range simulé).
-    expect(ind("part_diplome_superieur")!.value).toBeCloseTo((6000 / 28000) * 100, 6);
-    expect(ind("part_sans_diplome")!.value).toBeCloseTo(((7000 + 6000) / 28000) * 100, 6);
+    expect(ind("taux_emploi")!.value).toBeCloseTo((16000 / 26000) * 100, 6);
+    // Définition INSEE : actifs occupés résidents de 15 ans ou plus (21 600 dans la simulation).
+    expect(ind("concentration_emploi")!.value).toBeCloseTo((24000 / 21600) * 100, 6);
+    expect(ind("part_diplome_superieur")!.value).toBeCloseTo((10000 / 28000) * 100, 6);
+    expect(ind("part_sans_diplome")!.value).toBeCloseTo((7000 / 28000) * 100, 6);
+    expect(ind("part_personnes_seules")!.value).toBeCloseTo((6800 / 34000) * 100, 6);
+    expect(ind("part_menages_sans_voiture")!.value).toBeCloseTo((5000 / 19500) * 100, 6);
+    expect(ind("part_trajets_voiture")!.value).toBeCloseTo((9000 / 16000) * 100, 6);
+    expect(ind("part_actifs_travaillant_commune")!.value).toBeCloseTo((7000 / 16000) * 100, 6);
+  });
+
+  it("distributions : partitions explicites sans double compte", () => {
+    const d = (id: string) => report.charts.find((c) => c.id === "chart_" + id)!;
+    expect(d("dist_mode_transport").data.map((r) => r.modalite)).toEqual(["Pas de déplacement", "Marche à pied", "Vélo", "Deux-roues motorisé", "Voiture, camion, fourgonnette", "Transports en commun"]);
+    expect(d("dist_periode_construction").data).toHaveLength(6);
+    expect(d("dist_csp").data).toHaveLength(8);
+    expect(d("dist_diplomes").data).toHaveLength(7);
   });
 
   it("collecte les mêmes indicateurs pour les territoires de référence", () => {
@@ -77,7 +101,7 @@ describe("chaîne de génération (API simulées)", () => {
     const maps = report.maps.map((m) => m.id);
     for (const id of ["map_localisation", "map_densite", "map_revenus", "map_equipements", "map_transports", "map_participation"]) expect(maps).toContain(id);
     const charts = report.charts.map((c) => c.id);
-    for (const id of ["chart_pop_historique", "chart_ages", "chart_pyramide", "chart_dvf", "chart_sections", "chart_participation"]) expect(charts).toContain(id);
+    for (const id of ["chart_pop_historique", "chart_ages", "chart_pyramide", "chart_dvf", "chart_sections", "chart_participation", "chart_dist_voitures", "chart_dist_lieu_travail"]) expect(charts).toContain(id);
     expect(report.tables.find((t) => t.id === "table_voisins")!.rows.length).toBe(8);
     // Sélecteur de période : une carte de participation par scrutin.
     expect(report.maps.filter((m) => m.group === "participation").length).toBe(3);

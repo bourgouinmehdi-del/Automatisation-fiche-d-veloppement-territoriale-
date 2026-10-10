@@ -38,6 +38,8 @@ export interface FetchOptions {
   noCache?: boolean;
   /** Traiter un 404 comme une réponse vide plutôt qu'une erreur. */
   allow404?: boolean;
+  /** Décoder en ISO-8859-1 si le contenu n'est pas de l'UTF-8 valide (fichiers CSV anciens). */
+  decodeLatin1?: boolean;
 }
 
 const lastCallByHost = new Map<string, number>();
@@ -115,7 +117,7 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<F
         continue;
       }
       if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status, url);
-      const body = await res.text();
+      const body = opts.decodeLatin1 ? decodeBody(new Uint8Array(await res.arrayBuffer())) : await res.text();
       const retrievedAt = new Date().toISOString();
       if (!opts.noCache) await writeCache({ key, url, fetchedAt: retrievedAt, status: res.status, body });
       return { data: body, url, retrievedAt, fromCache: false, stale: false };
@@ -135,6 +137,14 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<F
   }
   const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
   throw new HttpError(`Échec de la requête (${msg})`, lastErr instanceof HttpError ? lastErr.status : undefined, url);
+}
+
+function decodeBody(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("latin1").decode(bytes);
+  }
 }
 
 export async function fetchJson<T = unknown>(url: string, opts: FetchOptions = {}): Promise<FetchResult<T>> {

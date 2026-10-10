@@ -105,14 +105,16 @@ function sectionB(x: Ctx): Section {
     if (evoFr) t += ` et ${fmtSigned(evoFr.value!, "%", 2)} pour la France`;
     blocks.push(para(t + ".", [evo, evoDep, evoFr]));
   }
-  const y30 = get(x, "part_moins_30", geos.commune);
-  const s60 = get(x, "part_60_plus", geos.commune);
-  const s60Dep = get(x, "part_60_plus", geos.departement);
+  // Les bornes d'âge dépendent du millésime diffusé : on prend la première disponible.
+  const firstOf = (ids: string[], g: GeoRef | null | undefined) => ids.map((id) => get(x, id, g)).find(Boolean);
+  const y30 = firstOf(["part_moins_30", "part_moins_25", "part_moins_20"], geos.commune);
+  const s60 = firstOf(["part_60_plus", "part_65_plus"], geos.commune);
+  const s60Dep = s60 ? get(x, s60.id, geos.departement) : undefined;
   if (y30 || s60) {
     let t = "Structure par âge : ";
     const parts = [];
-    if (y30) parts.push(`${fmtValue(y30.value, "%")} de moins de 30 ans`);
-    if (s60) parts.push(`${fmtValue(s60.value, "%")} de 60 ans et plus${s60Dep ? ` (département : ${fmtValue(s60Dep.value, "%")})` : ""}`);
+    if (y30) parts.push(`${fmtValue(y30.value, "%")} ${y30.label.replace(/^Part des /, "")}`);
+    if (s60) parts.push(`${fmtValue(s60.value, "%")} ${s60.label.replace(/^Part des /, "")}${s60Dep ? ` (département : ${fmtValue(s60Dep.value, "%")})` : ""}`);
     t += parts.join(", ") + ` (recensement ${(y30 ?? s60)!.year}).`;
     blocks.push(para(t, [y30, s60, s60Dep]));
   }
@@ -130,7 +132,7 @@ function sectionB(x: Ctx): Section {
   blocks.push({
     type: "comparison",
     title: "Comparaison aux territoires de référence",
-    indicatorIds: ["pop_municipale", "densite", "evol_pop_annuelle", "part_moins_15", "part_moins_30", "part_60_plus", "part_75_plus", "part_menages_une_personne", "part_familles_monoparentales", "revenu_median", "taux_pauvrete", "rapport_interdecile", "part_sans_diplome", "part_diplome_superieur"],
+    indicatorIds: ["pop_municipale", "densite", "evol_pop_annuelle", "part_moins_15", "part_moins_25", "part_moins_30", "part_60_plus", "part_65_plus", "part_75_plus", "part_80_plus", "part_personnes_seules", "revenu_median", "taux_pauvrete", "rapport_interdecile", "part_sans_diplome", "part_diplome_superieur"],
   });
   for (const id of ["chart_pop_historique", "chart_pop_indice", "chart_ages", "chart_pyramide", "chart_dist_taille_menages", "chart_dist_csp", "chart_dist_diplomes", "chart_perimetre_revenu"]) blocks.push(...optional(x, "chart", id));
   blocks.push(...optional(x, "map", "map_densite"), ...optional(x, "map", "map_revenus"));
@@ -206,7 +208,12 @@ function sectionE(x: Ctx): Section {
   if (cy) s.push(`OpenStreetMap recense ${fmtValue(cy.value, "km")} de voies équipées d'aménagements cyclables`);
   if (s.length) blocks.push(para(s.join(". ") + ".", [g, v, cy]));
   blocks.push(...optional(x, "map", "map_transports"), ...optional(x, "table", "table_gares"), ...optional(x, "table", "table_acces"), ...optional(x, "map", "map_acces"));
-  blocks.push(...optional(x, "chart", "chart_dist_mode_transport"), ...optional(x, "chart", "chart_dist_lieu_travail"), ...optional(x, "table", "table_poles"));
+  blocks.push({
+    type: "comparison",
+    title: "Mobilité domicile-travail et équipement automobile",
+    indicatorIds: ["part_menages_sans_voiture", "part_menages_2_voitures", "part_trajets_voiture", "part_trajets_tc", "part_actifs_travaillant_commune"],
+  });
+  blocks.push(...optional(x, "chart", "chart_dist_mode_transport"), ...optional(x, "chart", "chart_dist_lieu_travail"), ...optional(x, "chart", "chart_dist_voitures"), ...optional(x, "table", "table_poles"));
   blocks.push({ type: "findings", themes: ["mobilite"] });
   blocks.push({
     type: "note",
@@ -336,7 +343,7 @@ function sectionI(x: Ctx): Section {
       ...(key.length ? [{ type: "list" as const, title: "Enseignements principaux", items: key.map((f) => ({ text: f.text })) }] : []),
       {
         type: "kpis",
-        indicatorIds: ["pop_municipale", "densite", "evol_pop_annuelle", "part_60_plus", "revenu_median", "taux_pauvrete", "taux_chomage_rp", "part_logements_vacants", "part_locataires_hlm", "prix_m2_appartement", "unites_legales_actives", "nb_etablissements_scolaires"],
+        indicatorIds: ["pop_municipale", "densite", "evol_pop_annuelle", "part_65_plus", "part_60_plus", "revenu_median", "taux_pauvrete", "taux_chomage_rp", "part_logements_vacants", "part_locataires_hlm", "prix_m2_appartement", "unites_legales_actives", "nb_etablissements_scolaires"],
       },
       { type: "missing", themes: [] },
       { type: "findings", kinds: ["a_verifier"], title: "Vérifications à mener auprès des acteurs locaux" },

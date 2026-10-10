@@ -1,21 +1,30 @@
 # État des lieux — version 0.1
 
-## ⚠️ Point important : validation des connecteurs
+## Validation des connecteurs sur les API réelles
 
-L'application a été développée dans un environnement dont la politique réseau **bloquait tous les hôtes de données publiques** (geo.api.gouv.fr, api.insee.fr, data.gouv.fr, Overpass, Géorisques, SNCF, éducation, SIRENE : refus 403 du proxy). Conséquences :
+Première exécution de `npm run check:sources -- --insee 60159` sur une machine connectée (10 octobre 2026) :
 
-- les connecteurs sont implémentés d'après la documentation publique des API, **mais n'ont pas pu être exécutés contre les vraies API** ;
-- ils ont été validés contre des **réponses simulées** reproduisant la forme attendue (`tests/fixtures/mock-apis.ts`, valeurs fictives) ;
-- la **démo Compiègne** (`demo/`) a été générée réellement par l'application, mais ne contient que les données du référentiel embarqué ; toutes les autres sources y apparaissent « en échec » dans le journal de collecte — ce qui illustre au passage la gestion des sources indisponibles.
+| Source | Résultat |
+|---|---|
+| geo.api.gouv.fr | ✅ surface 53,1 km², contour |
+| INSEE Melodi (10 jeux sur 11) | ✅ `GEO=COM-60159` ; `DS_RP_FAMILLE_PRINC` n'existe pas (retiré) |
+| DVF | ✅ 2 803 ventes retenues sur 5 ans |
+| OpenStreetMap | ✅ 492 équipements |
+| Géorisques | ✅ 2 risques, 12 arrêtés CatNat, 44 ICPE |
+| Annuaire de l'éducation | ✅ 54 établissements |
+| SNCF | ✅ gare de Compiègne, 2,8 millions de voyageurs |
+| SIRENE | ✅ 11 015 unités légales |
+| Élections | ❌ slugs data.gouv.fr erronés / ressource non indexée par l'API tabulaire |
 
-**Première action recommandée** sur une machine avec accès Internet :
+Corrections apportées à partir des modalités réellement servies :
+- dimensions sans total (`AGE`, `RP_MEASURE`, `UNIT_MEASURE`) : sélection par modalité par défaut au lieu d'un rejet systématique ;
+- tranches d'âge réelles (15/25/40/55/65/80 ans) : parts des moins de 25 ans, 65 ans et plus, 80 ans et plus ;
+- historique de population construit à partir des millésimes du recensement (2012, 2017, 2023), les populations de référence ne couvrant qu'un millésime ;
+- statut d'occupation (codes `100`, `211`, `221`…), diplômes (nomenclature CITE : `500T702_RP` = supérieur), CSP, modes de transport, lieu de travail, période de construction et équipement automobile des ménages, avec libellés et partitions explicites ;
+- nouveaux indicateurs : personnes vivant seules, ménages sans voiture / avec 2 voitures ou plus, actifs travaillant dans leur commune, part de la voiture et des transports en commun dans les trajets domicile-travail ;
+- élections : découverte des jeux par recherche data.gouv.fr (ministère de l'Intérieur) et téléchargement direct du CSV si l'API tabulaire n'indexe pas la ressource.
 
-```bash
-npm run check:sources -- --insee 60159   # vérifie chaque source et liste les modalités INSEE
-npm run generate -- 60200 --out demo     # régénère la démo Compiègne avec les données réelles
-```
-
-Les points les plus susceptibles de nécessiter un ajustement sont : les codes de modalités de l'API Melodi (déclarés de façon tolérante dans `insee-indicators.ts`, avec reconnaissance par libellé), la syntaxe des codes géographiques Melodi (plusieurs variantes essayées automatiquement), et les slugs des jeux électoraux sur data.gouv.fr (`elections.ts`). Un écart se traduit par une donnée signalée manquante, jamais par une valeur erronée silencieuse — sauf erreur de correspondance de modalité, d'où l'importance de la vérification ci-dessus.
+**Restent à confirmer par une nouvelle exécution de `check:sources`** : codes géographiques EPCI / département / région / France, présence de `MED_SL` (revenu médian), indicateurs effectivement calculés, ressources électorales trouvées.
 
 ## Critères d'acceptation
 
@@ -23,7 +32,7 @@ Les points les plus susceptibles de nécessiter un ajustement sont : les codes d
 |---|---|---|
 | 1 | Saisie d'un code postal et choix de la commune | ✅ référentiel embarqué ; codes ambigus (ex. 60350 → 18 communes) ; recherche par nom ; communes nouvelles (déléguées → commune nouvelle). Testé (unitaires + e2e navigateur). |
 | 2 | Génération sans saisie manuelle | ✅ une seule saisie ; périmètre facultatif. |
-| 3 | Collecte réelle depuis plusieurs sources | ⚠️ 10 connecteurs implémentés ; exécutés contre API simulées uniquement (voir ci-dessus). |
+| 3 | Collecte réelle depuis plusieurs sources | ✅ 8 sources validées sur les API réelles ; élections en cours de validation (voir ci-dessus). |
 | 4 | Valeurs accompagnées de leurs références | ✅ chaque indicateur porte source, URL, date, millésime, échelle, unité, méthode, limites ; notes numérotées et bibliographie. |
 | 5 | Graphiques et cartes fondés sur les données récupérées | ✅ générés exclusivement depuis les indicateurs/séries collectés. |
 | 6 | Calculs testés et reproductibles | ✅ fonctions pures testées ; valeurs vérifiées dans le test d'intégration. |
@@ -39,9 +48,9 @@ Les points les plus susceptibles de nécessiter un ajustement sont : les codes d
 ```
 ✓ tests/stats.test.ts        (11 tests)
 ✓ tests/connectors.test.ts   (15 tests)
-✓ tests/integration.test.ts  (12 tests)
+✓ tests/integration.test.ts  (14 tests)
 ✓ tests/degraded.test.ts     (2 tests)
-Test Files  4 passed (4) — Tests  40 passed (40)
+Test Files  4 passed (4) — Tests  42 passed (42)
 ```
 
 Test e2e navigateur (`tests/e2e/smoke.mjs`, serveur de production) : parcours 60350 → Pierrefonds → génération → rapport → exports PDF/DOCX/CSV/JSON (HTTP 200).
@@ -52,7 +61,7 @@ Le test d'intégration a permis de corriger un défaut réel (la règle « sans 
 
 - **Recherche** : code postal, code INSEE, nom (insensible aux accents, « St » → « Saint »), communes déléguées.
 - **Périmètres** : commune (défaut), intercommunalité, département, territoire personnalisé (≤ 40 communes).
-- **Collecte** : geo.api.gouv.fr, INSEE Melodi (11 jeux, 5 échelles : commune, EPCI, département, région, France), DVF, OSM (22 catégories, cyclable, équipements structurants à 30 km), Géorisques, Annuaire de l'éducation, SNCF, SIRENE, élections (3 scrutins). Cache, nouvelles tentatives, coupe-circuit, repli sur cache périmé, mode hors ligne, limitation de débit.
+- **Collecte** : geo.api.gouv.fr, INSEE Melodi (10 jeux, 5 échelles : commune, EPCI, département, région, France), DVF, OSM (22 catégories, cyclable, équipements structurants à 30 km), Géorisques, Annuaire de l'éducation, SNCF, SIRENE, élections (3 scrutins). Cache, nouvelles tentatives, coupe-circuit, repli sur cache périmé, mode hors ligne, limitation de débit.
 - **Analyse** : écarts aux références avec règle de significativité, évolutions (TCAM), communes comparables et score z robuste, petits effectifs, constats typés reliés à leurs preuves, hypothèses formulées au conditionnel, pistes d'action sur enjeux objectifs, vérifications de terrain.
 - **Cartes** (8 types) : localisation nationale (hors ligne) et départementale avec EPCI, densité, revenus du périmètre, équipements, transports, accès aux équipements structurants, participation électorale (sélecteur de scrutin), installations classées.
 - **Interface** : accueil, progression, rapport avec navigation par chapitres, graphiques interactifs, cartes à couches activables et infobulles sourcées, panneau sources/méthodologie, régénération, liste des fiches générées, page méthodologie.
@@ -61,7 +70,7 @@ Le test d'intégration a permis de corriger un défaut réel (la règle « sans 
 
 ## Limites connues et développements restants
 
-1. **Validation sur API réelles** (cf. ci-dessus) — priorité n°1.
+1. **Validation complète** : codes géographiques de référence INSEE et élections à confirmer (cf. ci-dessus).
 2. **Partie C** : évolution annuelle de l'emploi salarié (URSSAF), zones d'activité, offre de formation/insertion, évolution du tissu commercial — non automatisés.
 3. **Partie D** : la BPE de l'INSEE devrait compléter OSM pour les décomptes d'équipements ; FINESS / APL pour la santé.
 4. **Partie E** : temps de trajet (calculateur d'itinéraires) et horaires/fréquences (GTFS) non intégrés ; distances à vol d'oiseau uniquement.

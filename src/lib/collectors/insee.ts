@@ -174,19 +174,27 @@ export function resolveDim(ds: MelodiDataset, candidates: string[]): string | nu
 const FIXED = new Set(["GEO", "TIME_PERIOD"]);
 
 /**
- * Renvoie les observations correspondant aux critères, toutes les autres
- * dimensions étant fixées à leur total (`_T`) lorsqu'il existe. Une dimension
- * sans total et à plusieurs modalités rend la sélection ambiguë : elle est
- * alors exclue (null) plutôt que de risquer un double comptage.
+ * Modalités retenues par défaut pour les dimensions sans total (`_T`),
+ * constatées sur l'API Melodi (voir `npm run check:sources -- --insee`).
+ * Ex. : les jeux emploi n'ont pas d'âge « total » mais « Y_GE15 » / « Y15T64 » ;
+ * le jeu logement mesure des logements (`DWELLINGS`) ou des personnes.
+ */
+export const DEFAULT_MODALITIES: Record<string, string[]> = {
+  AGE: ["_T", "Y_GE15", "Y15T64"],
+  RP_MEASURE: ["POP", "DWELLINGS", "NBEMP"],
+  FREQ: ["A"],
+};
+
+/**
+ * Renvoie les observations correspondant aux critères. Les autres dimensions
+ * sont fixées à leur total (`_T`) lorsqu'il existe, sinon à une modalité par
+ * défaut (`DEFAULT_MODALITIES`). Si, après ce filtrage, une dimension varie
+ * encore, la sélection est ambiguë : elle est rejetée (null) plutôt que de
+ * risquer un double comptage. Une dimension qui ne prend qu'une valeur parmi
+ * les observations retenues (ex. l'unité d'une mesure Filosofi) n'est pas ambiguë.
  */
 export function selectObs(ds: MelodiDataset, criteria: Record<string, string>): MelodiObservation[] | null {
-  const free: string[] = [];
-  for (const [dim, vals] of ds.dimValues) {
-    if (FIXED.has(dim) || dim in criteria) continue;
-    if (!vals.has("_T") && vals.size > 1) free.push(dim);
-  }
-  if (free.length) return null;
-  return ds.observations.filter((o) => {
+  let obs = ds.observations.filter((o) => {
     for (const [dim, vals] of ds.dimValues) {
       if (FIXED.has(dim)) continue;
       const want = criteria[dim] ?? (vals.has("_T") ? "_T" : undefined);
@@ -194,6 +202,18 @@ export function selectObs(ds: MelodiDataset, criteria: Record<string, string>): 
     }
     return true;
   });
+  for (const dim of ds.dimValues.keys()) {
+    if (FIXED.has(dim) || dim in criteria) continue;
+    const present = new Set(obs.map((o) => o.dims[dim]));
+    if (present.size <= 1) continue;
+    const pref = (DEFAULT_MODALITIES[dim] ?? []).find((v) => present.has(v));
+    if (!pref) return null;
+    obs = obs.filter((o) => o.dims[dim] === pref);
+  }
+  // Plusieurs observations pour un même millésime = sélection non univoque.
+  const years = obs.map((o) => o.dims.TIME_PERIOD ?? "");
+  if (new Set(years).size !== years.length) return null;
+  return obs;
 }
 
 /** Valeur du dernier millésime (ou d'un millésime donné). */

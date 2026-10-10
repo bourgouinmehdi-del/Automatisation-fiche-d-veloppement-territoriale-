@@ -116,15 +116,15 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
     unit: "%",
     datasets: ["DS_RP_LOGEMENT_PRINC"],
     kind: "ratio",
-    num: [{ dims: ["TDW", "TYPL", "DWELLING_TYPE"], spec: { codes: ["HOUSE", "1"], labelRe: /maison/i } }],
+    num: [{ dims: ["TDW", "TYPL", "DWELLING_TYPE"], spec: { codes: ["1", "HOUSE"], labelRe: /maison/i } }],
     method: "Maisons / ensemble des logements × 100.",
     limits: RP_LIMITS,
   },
   ...(
     [
-      ["part_proprietaires", "Part des ménages propriétaires de leur résidence principale", ["OWN", "100", "1"], /propri[ée]taire/i],
-      ["part_locataires_hlm", "Part des ménages locataires d'un logement HLM", ["RENT_SOC", "212", "RENT_HLM"], /HLM|social/i],
-      ["part_locataires_prives", "Part des ménages locataires du parc privé", ["RENT_PRIV", "211", "RENT_FREE_MARKET"], /locataire.*(priv|vide non HLM)|non HLM/i],
+      ["part_proprietaires", "Part des ménages propriétaires de leur résidence principale", ["100", "OWN"], /propri[ée]taire/i],
+      ["part_locataires_hlm", "Part des ménages locataires d'un logement HLM loué vide", ["221", "RENT_SOC"], /HLM|social/i],
+      ["part_locataires_prives", "Part des ménages locataires d'un logement vide non HLM", ["211", "RENT_PRIV"], /locataire.*(priv|vide non HLM)|non HLM/i],
     ] as const
   ).map(
     ([id, label, codes, re]): IndicatorDef => ({
@@ -155,10 +155,10 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
     unit: "%",
     datasets: ["DS_RP_EMPLOI_LR_PRINC"],
     kind: "ratio",
-    num: [{ dims: ["EMPSTA_ENQ", "EMPSTA", "ACTIVITY_STATUS"], spec: { codes: ["2", "UNE"], labelRe: /ch[ôo]m/i } }],
+    num: [{ dims: ["EMPSTA_ENQ", "EMPSTA", "ACTIVITY_STATUS"], spec: { codes: ["2", "UNE"], labelRe: /ch[ôo]m/i } }, { dims: ["AGE"], spec: { codes: ["Y15T64"] }, optional: true }],
     den: [
-      [{ dims: ["EMPSTA_ENQ", "EMPSTA", "ACTIVITY_STATUS"], spec: { codes: ["1", "EMP"], labelRe: /(ayant un emploi|occup)/i } }],
-      [{ dims: ["EMPSTA_ENQ", "EMPSTA", "ACTIVITY_STATUS"], spec: { codes: ["2", "UNE"], labelRe: /ch[ôo]m/i } }],
+      [{ dims: ["EMPSTA_ENQ", "EMPSTA", "ACTIVITY_STATUS"], spec: { codes: ["1", "EMP"], labelRe: /(ayant un emploi|occup)/i } }, { dims: ["AGE"], spec: { codes: ["Y15T64"] }, optional: true }],
+      [{ dims: ["EMPSTA_ENQ", "EMPSTA", "ACTIVITY_STATUS"], spec: { codes: ["2", "UNE"], labelRe: /ch[ôo]m/i } }, { dims: ["AGE"], spec: { codes: ["Y15T64"] }, optional: true }],
     ],
     higherIsBetter: false,
     method: "Chômeurs déclarés / (actifs occupés + chômeurs) × 100, population de 15 à 64 ans.",
@@ -172,7 +172,8 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
     unit: "%",
     datasets: ["DS_RP_EMPLOI_LR_PRINC"],
     kind: "ratio",
-    num: [{ dims: ["EMPSTA_ENQ", "EMPSTA", "ACTIVITY_STATUS"], spec: { codes: ["1", "EMP"], labelRe: /(ayant un emploi|occup)/i } }],
+    num: [{ dims: ["EMPSTA_ENQ", "EMPSTA", "ACTIVITY_STATUS"], spec: { codes: ["1", "EMP"], labelRe: /(ayant un emploi|occup)/i } }, { dims: ["AGE"], spec: { codes: ["Y15T64"] }, optional: true }],
+    den: [[{ dims: ["AGE"], spec: { codes: ["Y15T64"] }, optional: true }]],
     higherIsBetter: true,
     method: "Actifs occupés / population des 15-64 ans × 100.",
     limits: RP_LIMITS,
@@ -195,7 +196,7 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
     unit: "%",
     datasets: ["DS_RP_DIPLOMES_PRINC"],
     kind: "ratio",
-    num: [{ dims: ["EDUC", "DIPLOMA", "DIPL"], spec: { codes: ["001T100_RP", "NONE_BEPC"], labelRe: /^(?!.*bac)(?!.*brevet prof).*((aucun|sans) dipl|BEPC|brevet des coll|DNB|certificat d'[ée]tudes)/i }, all: true }],
+    num: [{ dims: ["EDUC", "DIPLOMA", "DIPL"], spec: { codes: ["001T100_RP", "200_RP", "NONE_BEPC"], labelRe: /^(?!.*bac)(?!.*brevet prof).*((aucun|sans) dipl|BEPC|brevet des coll|DNB|certificat d'[ée]tudes)/i }, all: true }],
     higherIsBetter: false,
     method: "Somme des modalités « aucun diplôme », « CEP », « BEPC/brevet » / population non scolarisée de 15 ans et plus × 100.",
     limits: RP_LIMITS,
@@ -207,32 +208,86 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
     unit: "%",
     datasets: ["DS_RP_DIPLOMES_PRINC"],
     kind: "ratio",
-    num: [{ dims: ["EDUC", "DIPLOMA", "DIPL"], spec: { labelRe: /sup[ée]rieur|bac ?\+ ?\d/i }, all: true }],
+    num: [{ dims: ["EDUC", "DIPLOMA", "DIPL"], spec: { codes: ["500T702_RP"] } }],
     higherIsBetter: true,
     method: "Somme des modalités de l'enseignement supérieur / population non scolarisée de 15 ans et plus × 100.",
     limits: RP_LIMITS,
   },
   /* ----------------------------------------------------------- ménages */
   {
-    id: "part_familles_monoparentales",
-    label: "Part des familles monoparentales parmi les familles",
-    theme: "menages",
-    unit: "%",
-    datasets: ["DS_RP_FAMILLE_PRINC", "DS_RP_MENAGES_PRINC"],
-    kind: "ratio",
-    num: [{ dims: ["FAMILY_TYPE", "TYPFC", "TF", "FAM_TYPE"], spec: { codes: ["MONO", "SINGLE_PARENT"], labelRe: /monoparent/i } }],
-    method: "Familles monoparentales / ensemble des familles × 100.",
-    limits: RP_LIMITS,
-  },
-  {
-    id: "part_menages_une_personne",
-    label: "Part des ménages d'une personne",
+    id: "part_personnes_seules",
+    label: "Part des personnes de 15 ans ou plus vivant seules",
     theme: "menages",
     unit: "%",
     datasets: ["DS_RP_MENAGES_PRINC"],
     kind: "ratio",
-    num: [{ dims: ["NPERC", "HH_SIZE", "NBPERS", "HOUSEHOLD_SIZE", "TYPMR"], spec: { codes: ["1"], labelRe: /^(1 personne|une personne|personne seule|m[ée]nages? d'une personne)/i } }],
-    method: "Ménages d'une personne / ensemble des ménages × 100.",
+    num: [{ dims: ["RP_MEASURE"], spec: { codes: ["ONEPERS"] } }],
+    den: [[{ dims: ["RP_MEASURE"], spec: { codes: ["POP"] } }]],
+    method: "Personnes vivant seules / population de 15 ans ou plus × 100.",
+    limits: RP_LIMITS,
+  },
+  /* ----------------------------------------------------------- mobilité */
+  {
+    id: "part_menages_sans_voiture",
+    label: "Part des ménages sans voiture",
+    theme: "mobilite",
+    unit: "%",
+    datasets: ["DS_RP_LOGEMENT_PRINC"],
+    kind: "ratio",
+    num: [
+      { dims: ["CARS"], spec: { codes: ["C0"] } },
+      { dims: ["OCS"], spec: { codes: ["DW_MAIN"] }, optional: true },
+    ],
+    den: [[{ dims: ["OCS"], spec: { codes: ["DW_MAIN"] }, optional: true }]],
+    method: "Résidences principales dont le ménage ne dispose d'aucune voiture / ensemble des résidences principales × 100.",
+    limits: RP_LIMITS,
+  },
+  {
+    id: "part_menages_2_voitures",
+    label: "Part des ménages disposant de deux voitures ou plus",
+    theme: "mobilite",
+    unit: "%",
+    datasets: ["DS_RP_LOGEMENT_PRINC"],
+    kind: "ratio",
+    num: [
+      { dims: ["CARS"], spec: { codes: ["C_GE2"] } },
+      { dims: ["OCS"], spec: { codes: ["DW_MAIN"] }, optional: true },
+    ],
+    den: [[{ dims: ["OCS"], spec: { codes: ["DW_MAIN"] }, optional: true }]],
+    method: "Résidences principales dont le ménage dispose d'au moins deux voitures / ensemble des résidences principales × 100.",
+    limits: RP_LIMITS,
+  },
+  {
+    id: "part_actifs_travaillant_commune",
+    label: "Part des actifs occupés travaillant dans leur commune de résidence",
+    theme: "mobilite",
+    unit: "%",
+    datasets: ["DS_RP_NAVETTES_PRINC"],
+    kind: "ratio",
+    num: [{ dims: ["WORK_AREA"], spec: { codes: ["10"] } }],
+    method: "Actifs occupés travaillant dans leur commune de résidence / ensemble des actifs occupés × 100.",
+    limits: RP_LIMITS,
+  },
+  {
+    id: "part_trajets_voiture",
+    label: "Part des actifs occupés se rendant au travail en voiture",
+    theme: "mobilite",
+    unit: "%",
+    datasets: ["DS_RP_NAVETTES_PRINC"],
+    kind: "ratio",
+    num: [{ dims: ["TRANS"], spec: { codes: ["5"] } }],
+    method: "Actifs occupés utilisant principalement une voiture, un camion ou une fourgonnette / ensemble des actifs occupés × 100.",
+    limits: RP_LIMITS,
+  },
+  {
+    id: "part_trajets_tc",
+    label: "Part des actifs occupés se rendant au travail en transports en commun",
+    theme: "mobilite",
+    unit: "%",
+    datasets: ["DS_RP_NAVETTES_PRINC"],
+    kind: "ratio",
+    num: [{ dims: ["TRANS"], spec: { codes: ["6"] } }],
+    method: "Actifs occupés utilisant principalement les transports en commun / ensemble des actifs occupés × 100.",
     limits: RP_LIMITS,
   },
 ];
@@ -247,19 +302,108 @@ export const DATASETS = [
   "DS_RP_EMPLOI_LT_PRINC",
   "DS_RP_DIPLOMES_PRINC",
   "DS_RP_MENAGES_PRINC",
-  "DS_RP_FAMILLE_PRINC",
   "DS_RP_POPULATION_COMP",
   "DS_RP_NAVETTES_PRINC",
 ] as const;
 
-/** Distributions présentées en graphiques (toutes modalités d'une dimension). */
-const DISTRIBUTIONS: { id: string; label: string; theme: ThemeId; datasets: string[]; dims: string[] }[] = [
-  { id: "dist_csp", label: "Population de 15 ans et plus selon la catégorie socioprofessionnelle", theme: "emploi", datasets: ["DS_RP_POPULATION_COMP"], dims: ["PCS", "CS1", "SOCIO_PROF", "PCS_ESE"] },
-  { id: "dist_diplomes", label: "Population non scolarisée de 15 ans et plus selon le diplôme", theme: "formation", datasets: ["DS_RP_DIPLOMES_PRINC"], dims: ["EDUC", "DIPLOMA", "DIPL"] },
-  { id: "dist_periode_construction", label: "Résidences principales selon la période d'achèvement", theme: "logement", datasets: ["DS_RP_LOGEMENT_PRINC"], dims: ["ACHL", "CONSTRUCTION_PERIOD", "BUILD_END"] },
-  { id: "dist_taille_menages", label: "Ménages selon le nombre de personnes", theme: "menages", datasets: ["DS_RP_MENAGES_PRINC"], dims: ["NPERC", "HH_SIZE", "NBPERS", "HOUSEHOLD_SIZE"] },
-  { id: "dist_mode_transport", label: "Actifs occupés selon le mode de transport domicile-travail", theme: "mobilite", datasets: ["DS_RP_NAVETTES_PRINC"], dims: ["TRANS", "TRANSPORT_MODE", "TRANSPORT"] },
-  { id: "dist_lieu_travail", label: "Actifs occupés selon le lieu de travail", theme: "mobilite", datasets: ["DS_RP_NAVETTES_PRINC"], dims: ["ILT", "WORKPLACE", "PLACE_OF_WORK"] },
+/**
+ * Distributions présentées en graphiques. Les modalités Melodi se recouvrent
+ * souvent (ex. « 3 », « 4 » et « 3T4 ») : on déclare donc une partition
+ * explicite, avec des libellés, constatée sur l'API (check:sources).
+ * Si la partition ne somme pas au total (±2 %), la distribution est écartée.
+ */
+const DISTRIBUTIONS: {
+  id: string;
+  label: string;
+  theme: ThemeId;
+  datasets: string[];
+  dims: string[];
+  codes?: Record<string, string>;
+  /** Critères essayés en priorité (ex. résidences principales), puis sans critère. */
+  prefer?: Record<string, string>;
+}[] = [
+  {
+    id: "dist_csp",
+    label: "Population de 15 ans et plus selon la catégorie socioprofessionnelle",
+    theme: "emploi",
+    datasets: ["DS_RP_POPULATION_COMP"],
+    dims: ["PCS"],
+    codes: {
+      "1": "Agriculteurs exploitants",
+      "2": "Artisans, commerçants, chefs d'entreprise",
+      "3": "Cadres, professions intellectuelles supérieures",
+      "4": "Professions intermédiaires",
+      "5": "Employés",
+      "6": "Ouvriers",
+      "7": "Retraités",
+      "8": "Autres sans activité professionnelle",
+      "9": "Autres sans activité professionnelle",
+    },
+  },
+  {
+    id: "dist_diplomes",
+    label: "Population non scolarisée de 15 ans et plus selon le diplôme le plus élevé",
+    theme: "formation",
+    datasets: ["DS_RP_DIPLOMES_PRINC"],
+    dims: ["EDUC"],
+    codes: {
+      "001T100_RP": "Aucun diplôme ou certificat d'études primaires",
+      "200_RP": "BEPC, brevet des collèges, DNB",
+      "300_RP": "CAP, BEP ou équivalent",
+      "350T351_RP": "Baccalauréat ou équivalent",
+      "500_RP": "Bac + 2",
+      "600_RP": "Bac + 3 ou + 4",
+      "700_RP": "Bac + 5 ou plus",
+    },
+  },
+  {
+    id: "dist_periode_construction",
+    label: "Logements selon la période d'achèvement",
+    theme: "logement",
+    datasets: ["DS_RP_LOGEMENT_PRINC"],
+    dims: ["BUILD_END"],
+    codes: {
+      Y_LT1919: "Avant 1919",
+      Y1919T1945: "1919-1945",
+      Y1946T1970: "1946-1970",
+      Y1971T1990: "1971-1990",
+      Y1991T2005: "1991-2005",
+      Y2006TAAAA: "2006 et après",
+    },
+    prefer: { OCS: "DW_MAIN" },
+  },
+  {
+    id: "dist_voitures",
+    label: "Ménages selon le nombre de voitures",
+    theme: "mobilite",
+    datasets: ["DS_RP_LOGEMENT_PRINC"],
+    dims: ["CARS"],
+    codes: { C0: "Aucune voiture", C1: "Une voiture", C_GE2: "Deux voitures ou plus" },
+    prefer: { OCS: "DW_MAIN" },
+  },
+  {
+    id: "dist_mode_transport",
+    label: "Actifs occupés selon le mode de transport domicile-travail",
+    theme: "mobilite",
+    datasets: ["DS_RP_NAVETTES_PRINC"],
+    dims: ["TRANS"],
+    codes: {
+      "1": "Pas de déplacement",
+      "2": "Marche à pied",
+      "3": "Vélo",
+      "4": "Deux-roues motorisé",
+      "5": "Voiture, camion, fourgonnette",
+      "6": "Transports en commun",
+    },
+  },
+  {
+    id: "dist_lieu_travail",
+    label: "Actifs occupés selon le lieu de travail",
+    theme: "mobilite",
+    datasets: ["DS_RP_NAVETTES_PRINC"],
+    dims: ["WORK_AREA"],
+    codes: { "10": "Dans la commune de résidence", "20_30": "Dans une autre commune" },
+  },
 ];
 
 export interface Distribution {
@@ -382,7 +526,7 @@ export async function collectInsee(
     const pmun = dim ? resolveCode(popref, dim, { codes: ["PMUN"], labelRe: /municipale/i }) : null;
     const crit = dim && pmun ? { [dim]: pmun } : {};
     const pts = timeSeries(popref, crit);
-    if (pts.length) {
+    if (pts.length >= 2) {
       out.series.push({
         id: "pop_historique",
         label: "Population municipale",
@@ -398,6 +542,22 @@ export async function collectInsee(
 
   /* Structure par âge */
   const pop = loaded.get("DS_RP_POPULATION_PRINC");
+  if (pop && !out.series.some((x) => x.id === "pop_historique")) {
+    // Les populations de référence ne couvrant parfois qu'un millésime, la
+    // série historique est alors construite à partir des millésimes du recensement.
+    const pts = timeSeries(pop, {});
+    if (pts.length >= 2)
+      out.series.push({
+        id: "pop_historique",
+        label: "Population (recensement)",
+        theme: "demographie",
+        unit: "habitants",
+        geo,
+        source: srcRef(ctx, pop, `${pts[0].x}-${pts[pts.length - 1].x}`),
+        points: pts,
+        note: "Populations des recensements diffusés par l'INSEE (millésimes disponibles dans l'API).",
+      });
+  }
   if (pop) {
     const tot = latestValue(pop, {});
     if (tot) out.indicators.push(mkInd({ id: "pop_rp", label: "Population (recensement)", theme: "demographie", unit: "habitants", limits: RP_LIMITS }, pop, tot.value, tot.year));
@@ -422,14 +582,33 @@ export async function collectInsee(
             return out.ages!.filter((a) => a.max <= max).reduce((s, a) => s + a.share, 0);
           };
           const method = "Somme des tranches d'âge correspondantes / population totale × 100.";
-          for (const [id, label, val] of [
-            ["part_moins_30", "Part des moins de 30 ans", shareUnder(30)],
+          // Les bornes disponibles dépendent du jeu (ex. 15/25/40/55/65/80 ans en 2023) :
+          // on calcule les parts pour toutes les bornes usuelles présentes.
+          const shares: [string, string, number | null][] = [
             ["part_moins_15", "Part des moins de 15 ans", shareUnder(15)],
+            ["part_moins_20", "Part des moins de 20 ans", shareUnder(20)],
+            ["part_moins_25", "Part des moins de 25 ans", shareUnder(25)],
+            ["part_moins_30", "Part des moins de 30 ans", shareUnder(30)],
             ["part_60_plus", "Part des 60 ans et plus", shareFrom(60)],
+            ["part_65_plus", "Part des 65 ans et plus", shareFrom(65)],
             ["part_75_plus", "Part des 75 ans et plus", shareFrom(75)],
-          ] as const) {
+            ["part_80_plus", "Part des 80 ans et plus", shareFrom(80)],
+          ];
+          for (const [id, label, val] of shares) {
             if (val != null)
               out.indicators.push(mkInd({ id, label, theme: "demographie", unit: "%", method, limits: RP_LIMITS }, pop, val, tot.year, { denominator: sum }));
+          }
+          for (const [id, label, code] of [
+            ["part_65_plus", "Part des 65 ans et plus", "Y_GE65"],
+            ["part_80_plus", "Part des 80 ans et plus", "Y_GE80"],
+            ["part_moins_20", "Part des moins de 20 ans", "Y_LT20"],
+          ] as const) {
+            if (out.indicators.some((i) => i.id === id)) continue;
+            const v = pop.dimValues.get(ageDim)?.has(code) ? latestValue(pop, { [ageDim]: code }, tot.year) : null;
+            if (v && tot.value > 0)
+              out.indicators.push(
+                mkInd({ id, label, theme: "demographie", unit: "%", method: "Population de la tranche / population totale × 100.", limits: RP_LIMITS }, pop, (100 * v.value) / tot.value, tot.year, { numerator: v.value, denominator: tot.value }),
+              );
           }
           if (sexDim) {
             const f = resolveCode(pop, sexDim, { codes: ["F", "2"], labelRe: /femme/i });
@@ -487,20 +666,32 @@ export async function collectInsee(
     if (!ds) continue;
     const dim = resolveDim(ds, d.dims);
     if (!dim) continue;
-    const tot = latestValue(ds, {});
-    if (!tot) continue;
     const lab = ds.labels.get(dim);
-    const items: Distribution["items"] = [];
-    for (const v of ds.dimValues.get(dim) ?? []) {
-      if (v === "_T") continue;
-      const val = latestValue(ds, { [dim]: v }, tot.year);
-      if (val) items.push({ code: v, label: lab?.get(v) ?? v, value: val.value, share: 0 });
+    const values = ds.dimValues.get(dim) ?? new Set<string>();
+    const wanted = d.codes ? Object.keys(d.codes).filter((k) => values.has(k)) : [...values].filter((v) => v !== "_T");
+    const attempts = [d.prefer ? Object.fromEntries(Object.entries(d.prefer).filter(([k, v]) => ds.dimValues.get(k)?.has(v))) : null, {}].filter(
+      (x): x is Record<string, string> => !!x,
+    );
+    let found: { items: Distribution["items"]; year: string } | null = null;
+    for (const base of attempts) {
+      // Total : modalité `_T` de la dimension si elle existe.
+      const tot = latestValue(ds, { ...base, ...(values.has("_T") ? { [dim]: "_T" } : {}) });
+      if (!tot) continue;
+      const items: Distribution["items"] = [];
+      for (const v of wanted) {
+        const val = latestValue(ds, { ...base, [dim]: v }, tot.year);
+        if (val) items.push({ code: v, label: lab?.get(v) ?? d.codes?.[v] ?? v, value: val.value, share: 0 });
+      }
+      const sum = items.reduce((s2, i) => s2 + i.value, 0);
+      // Si les modalités se recouvrent ou sont incomplètes (somme ≠ total), on n'utilise pas cette lecture.
+      if (!items.length || sum <= 0 || Math.abs(sum - tot.value) / tot.value > 0.02) continue;
+      items.forEach((i) => (i.share = (100 * i.value) / sum));
+      found = { items, year: tot.year };
+      break;
     }
-    const sum = items.reduce((s, i) => s + i.value, 0);
-    if (!items.length || sum <= 0) continue;
-    // Si les modalités se recouvrent (somme ≠ total), on ne présente pas la distribution.
-    if (Math.abs(sum - tot.value) / tot.value > 0.02) continue;
-    items.forEach((i) => (i.share = (100 * i.value) / sum));
+    if (!found) continue;
+    const { items } = found;
+    const tot = { year: found.year };
     out.distributions.push({ id: d.id, label: d.label, theme: d.theme, geo, year: tot.year, items, source: srcRef(ctx, ds, tot.year) });
   }
 
@@ -518,7 +709,7 @@ export async function collectInsee(
         unit: "nombre",
         value: (100 * emplLt.value) / occ.value,
         method:
-          "Emplois au lieu de travail / actifs occupés résidents (15-64 ans) × 100. Au-delà de 100, le territoire offre plus d'emplois qu'il n'a d'actifs occupés résidents (pôle d'emploi).",
+          "Emplois au lieu de travail / actifs occupés résidents de 15 ans ou plus × 100 (définition INSEE). Au-delà de 100, le territoire offre plus d'emplois qu'il n'a d'actifs occupés résidents (pôle d'emploi).",
         numerator: emplLt.value,
         denominator: occ.value,
       });

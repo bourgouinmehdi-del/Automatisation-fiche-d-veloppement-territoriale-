@@ -45,89 +45,126 @@ function obs(dims: Record<string, string>, value: number) {
   return { dimensions: dims, measures: { OBS_VALUE_NIVEAU: { value } } };
 }
 
+/**
+ * Structure calquée sur l'API Melodi réelle (dimensions et modalités relevées
+ * par `npm run check:sources -- --insee 60159` en octobre 2026) ; valeurs fictives.
+ */
 function melodi(ds: string, geo: string) {
   const f = geoFactor(geo);
   const scale = geo.includes("COM-60159") ? 1 : geo.includes("COM") ? 0.3 : 20;
-  const G = { GEO: geo };
+  const n = (v: number) => Math.round(v * scale);
+  const G = { GEO: geo, FREQ: "A" };
+  const years = ["2012", "2017", "2023"];
   switch (ds) {
     case "DS_POPULATIONS_REFERENCE":
-      return [2006, 2011, 2016, 2021, 2022].map((y, i) => obs({ ...G, TIME_PERIOD: String(y), POPREF_MEASURE: "PMUN" }, Math.round(40000 * scale * (1 + (i * (f - 0.9)) / 10))));
+      // Un seul millésime, comme l'API réelle : la série historique vient du recensement.
+      return ["PTOT", "PMUN", "PCAP"].map((m, i) => obs({ ...G, TIME_PERIOD: "2023", POPREF_MEASURE: m }, n(41000 - i * 300)));
     case "DS_RP_POPULATION_PRINC": {
-      const ages = { Y_LT15: 7000, Y15T29: 9500, Y30T44: 7500, Y45T59: 7000, Y60T74: 6000, Y_GE75: 3700 * f };
-      const out = [];
-      let tot = 0;
-      for (const [a, v] of Object.entries(ages)) {
-        const val = Math.round(v * scale);
-        tot += val;
-        out.push(obs({ ...G, TIME_PERIOD: "2021", SEX: "_T", AGE: a, RP_MEASURE: "POP" }, val));
-        out.push(obs({ ...G, TIME_PERIOD: "2021", SEX: "F", AGE: a, RP_MEASURE: "POP" }, Math.round(val * 0.52)));
-        out.push(obs({ ...G, TIME_PERIOD: "2021", SEX: "M", AGE: a, RP_MEASURE: "POP" }, val - Math.round(val * 0.52)));
-      }
-      out.push(obs({ ...G, TIME_PERIOD: "2021", SEX: "_T", AGE: "_T", RP_MEASURE: "POP" }, tot));
+      // Partition fine : <15, 15-24, 25-39, 40-54, 55-64, 65-79, 80+ ; agrégats Y_LT20, Y20T64, Y_GE65.
+      const fine: Record<string, number> = { Y_LT15: 7000, Y15T24: 6500, Y25T39: 8000, Y40T54: 7500, Y55T64: 4500, Y65T79: 5200, Y_GE80: 2000 * f };
+      const out: ReturnType<typeof obs>[] = [];
+      years.forEach((y, yi) => {
+        const k = 1 + (yi - 2) * 0.02 * (f - 0.9) * 10;
+        const v = Object.fromEntries(Object.entries(fine).map(([a, x]) => [a, n(x * k)]));
+        const tot = Object.values(v).reduce((s2, x) => s2 + x, 0);
+        const agg = { ...v, Y_LT20: Math.round(v.Y_LT15 + v.Y15T24 / 2), Y20T64: tot - v.Y_LT15 - v.Y65T79 - v.Y_GE80 - Math.round(v.Y15T24 / 2), Y_GE65: v.Y65T79 + v.Y_GE80, _T: tot };
+        for (const [age, val] of Object.entries(agg)) {
+          out.push(obs({ ...G, TIME_PERIOD: y, SEX: "_T", AGE: age, RP_MEASURE: "POP" }, val));
+          out.push(obs({ ...G, TIME_PERIOD: y, SEX: "F", AGE: age, RP_MEASURE: "POP" }, Math.round(val * 0.52)));
+          out.push(obs({ ...G, TIME_PERIOD: y, SEX: "M", AGE: age, RP_MEASURE: "POP" }, val - Math.round(val * 0.52)));
+        }
+      });
       return out;
     }
     case "DS_FILOSOFI_CC":
       return [
-        obs({ ...G, TIME_PERIOD: "2021", FILOSOFI_MEASURE: "MED_SL" }, Math.round(22000 * f)),
-        obs({ ...G, TIME_PERIOD: "2021", FILOSOFI_MEASURE: "PR_MD60" }, 14 / f / f),
-        obs({ ...G, TIME_PERIOD: "2021", FILOSOFI_MEASURE: "IR_D9_D1_SL" }, 3.4),
+        obs({ ...G, TIME_PERIOD: "2021", UNIT_MEASURE: "EUR_YR", FILOSOFI_MEASURE: "MED_SL" }, Math.round(22000 * f)),
+        obs({ ...G, TIME_PERIOD: "2021", UNIT_MEASURE: "EUR_YR", FILOSOFI_MEASURE: "D1_SL" }, Math.round(11000 * f)),
+        obs({ ...G, TIME_PERIOD: "2021", UNIT_MEASURE: "PT", FILOSOFI_MEASURE: "PR_MD60" }, 14 / f / f),
+        obs({ ...G, TIME_PERIOD: "2021", UNIT_MEASURE: "NR", FILOSOFI_MEASURE: "IR_D9_D1_SL" }, 3.4),
       ];
     case "DS_RP_LOGEMENT_PRINC": {
-      const T = { ...G, TIME_PERIOD: "2021" };
-      const n = (v: number) => Math.round(v * scale);
+      const out: ReturnType<typeof obs>[] = [];
+      for (const y of years) {
+        const base = { CARS: "_T", BUILD_END: "_T", NRG_SRC: "_T", TDW: "_T", TSH: "_T", CARPARK: "_T", NOR: "_T", L_STAY: "_T", OCS: "_T" };
+        const T = { ...G, TIME_PERIOD: y };
+        const o = (dims: Record<string, string>, v: number, m = "DWELLINGS") => obs({ ...T, ...base, RP_MEASURE: m, ...dims }, n(v));
+        out.push(
+          o({}, 22000),
+          o({}, 45000, "DWELLINGS_POPSIZE"), // autre mesure : ne doit jamais être mélangée aux logements
+          o({ OCS: "DW_MAIN" }, 19500),
+          o({ OCS: "DW_SEC_DW_OCC" }, 500),
+          o({ OCS: "DW_VAC" }, 2000 * f),
+          o({ OCS: "DW_MAIN", TSH: "100" }, 7500),
+          o({ OCS: "DW_MAIN", TSH: "200" }, 11500),
+          o({ OCS: "DW_MAIN", TSH: "211" }, 5800),
+          o({ OCS: "DW_MAIN", TSH: "212_222" }, 700),
+          o({ OCS: "DW_MAIN", TSH: "221" }, 5000),
+          o({ OCS: "DW_MAIN", TSH: "300" }, 500),
+          o({ TDW: "1" }, 6000),
+          o({ TDW: "2" }, 15800),
+          o({ TDW: "3T6" }, 200),
+          o({ OCS: "DW_MAIN", CARS: "C0" }, 5000),
+          o({ OCS: "DW_MAIN", CARS: "C1" }, 9500),
+          o({ OCS: "DW_MAIN", CARS: "C_GE1" }, 14500),
+          o({ OCS: "DW_MAIN", CARS: "C_GE2" }, 5000),
+          o({ BUILD_END: "Y_LT1919" }, 2000),
+          o({ BUILD_END: "Y1919T1945" }, 2000),
+          o({ BUILD_END: "Y1946T1970" }, 6000),
+          o({ BUILD_END: "Y1971T1990" }, 6000),
+          o({ BUILD_END: "Y1991T2005" }, 3500),
+          o({ BUILD_END: "Y2006TAAAA" }, 2500),
+          o({ BUILD_END: "Y_LT1946" }, 4000), // modalité agrégée qui recouvre les deux premières
+        );
+      }
+      return out;
+    }
+    case "DS_RP_EMPLOI_LR_PRINC": {
+      const out: ReturnType<typeof obs>[] = [];
+      for (const y of years)
+        for (const [age, k] of [["Y15T64", 1], ["Y_GE15", 1.35], ["Y15T24", 0.2]] as const) {
+          const o = (e: string, v: number) => obs({ ...G, TIME_PERIOD: y, SEX: "_T", EDUC: "_T", RP_MEASURE: "POP", AGE: age, EMPSTA_ENQ: e }, Math.round(n(v) * k));
+          out.push(o("_T", 26000), o("1", 16000), o("2", 2600 * f), o("1T2", 16000 + 2600 * f), o("3", 7400 - 2600 * (f - 1)));
+        }
+      return out;
+    }
+    case "DS_RP_EMPLOI_LT_PRINC":
+      return years.flatMap((y) => [
+        obs({ ...G, TIME_PERIOD: y, SEX: "_T", EMPFORM: "_T", WKTIME: "_T", EMPSTA_ENQ: "1", RP_MEASURE: "NBEMP", AGE: "_T" }, n(24000)),
+        obs({ ...G, TIME_PERIOD: y, SEX: "_T", EMPFORM: "_T", WKTIME: "_T", EMPSTA_ENQ: "1", RP_MEASURE: "NBEMP", AGE: "Y_GE15" }, n(23900)),
+      ]);
+    case "DS_RP_DIPLOMES_PRINC": {
+      const v: Record<string, number> = { "001T100_RP": 5000, "200_RP": 2000, "300_RP": 5000, "350T351_RP": 6000, "500_RP": 3000, "600_RP": 3500, "700_RP": 3500 };
+      const agg = { ...v, "500T702_RP": 10000, "600T702_RP": 7000, _T: 28000 };
+      return Object.entries(agg).map(([e, x]) => obs({ ...G, TIME_PERIOD: "2023", SEX: "_T", RP_MEASURE: "POP", AGE: "Y_GE15", EDUC: e }, n(x)));
+    }
+    case "DS_RP_MENAGES_PRINC":
       return [
-        obs({ ...T, OCS: "_T", TSH: "_T", TDW: "_T" }, n(22000)),
-        obs({ ...T, OCS: "DW_MAIN", TSH: "_T", TDW: "_T" }, n(19500)),
-        obs({ ...T, OCS: "DW_SEC_DW_OCC", TSH: "_T", TDW: "_T" }, n(500)),
-        obs({ ...T, OCS: "DW_VAC", TSH: "_T", TDW: "_T" }, n(2000 * f)),
-        obs({ ...T, OCS: "DW_MAIN", TSH: "OWN", TDW: "_T" }, n(7500)),
-        obs({ ...T, OCS: "DW_MAIN", TSH: "RENT_PRIV", TDW: "_T" }, n(6500)),
-        obs({ ...T, OCS: "DW_MAIN", TSH: "RENT_SOC", TDW: "_T" }, n(5000)),
-        obs({ ...T, OCS: "DW_MAIN", TSH: "FREE", TDW: "_T" }, n(500)),
-        obs({ ...T, OCS: "_T", TSH: "_T", TDW: "HOUSE" }, n(6000)),
-        obs({ ...T, OCS: "_T", TSH: "_T", TDW: "FLAT" }, n(16000)),
+        obs({ ...G, TIME_PERIOD: "2023", CIVIL_STATUS: "_T", NOC: "_T", COUPLE: "_T", OCS: "_T", RP_MEASURE: "POP", AGE: "Y_GE15" }, n(34000)),
+        obs({ ...G, TIME_PERIOD: "2023", CIVIL_STATUS: "_T", NOC: "_T", COUPLE: "_T", OCS: "_T", RP_MEASURE: "ONEPERS", AGE: "Y_GE15" }, n(6800)),
+        obs({ ...G, TIME_PERIOD: "2023", CIVIL_STATUS: "_T", NOC: "_T", COUPLE: "_T", OCS: "_T", RP_MEASURE: "ONEPERS", AGE: "Y65T79" }, n(1500)),
+      ];
+    case "DS_RP_POPULATION_COMP": {
+      const v: Record<string, number> = { "1": 50, "2": 1000, "3": 4500, "4": 5000, "5": 5500, "6": 3500, "7": 8000, "9": 6450 };
+      const out = Object.entries(v).map(([p2, x]) => obs({ ...G, TIME_PERIOD: "2023", SEX: "_T", RP_MEASURE: "POP", AGE: "Y_GE15", PCS: p2 }, n(x)));
+      out.push(obs({ ...G, TIME_PERIOD: "2023", SEX: "_T", RP_MEASURE: "POP", AGE: "Y_GE15", PCS: "_T" }, n(34000)));
+      out.push(obs({ ...G, TIME_PERIOD: "2023", SEX: "_T", RP_MEASURE: "POP", AGE: "Y15T24", PCS: "_T" }, n(5000)));
+      return out;
+    }
+    case "DS_RP_NAVETTES_PRINC": {
+      const tr: Record<string, number> = { "1": 600, "2": 2400, "3": 500, "4": 300, "3T4": 800, "5": 9000, "6": 3200, _T: 16000 };
+      const wa: Record<string, number> = { "10": 7000, "20_30": 9000, "21": 6000 };
+      return [
+        ...Object.entries(tr).map(([t, x]) => obs({ ...G, TIME_PERIOD: "2023", EMPSTA_ENQ: "1", RP_MEASURE: "POP", AGE: "Y_GE15", WORK_AREA: "_T", TRANS: t }, n(x))),
+        ...Object.entries(wa).map(([w, x]) => obs({ ...G, TIME_PERIOD: "2023", EMPSTA_ENQ: "1", RP_MEASURE: "POP", AGE: "Y_GE15", WORK_AREA: w, TRANS: "_T" }, n(x))),
       ];
     }
-    case "DS_RP_EMPLOI_LR_PRINC":
-      return [
-        obs({ ...G, TIME_PERIOD: "2021", EMPSTA_ENQ: "_T" }, Math.round(26000 * scale)),
-        obs({ ...G, TIME_PERIOD: "2021", EMPSTA_ENQ: "1" }, Math.round(16000 * scale)),
-        obs({ ...G, TIME_PERIOD: "2021", EMPSTA_ENQ: "2" }, Math.round(2600 * scale * f)),
-        obs({ ...G, TIME_PERIOD: "2021", EMPSTA_ENQ: "3" }, Math.round(7400 * scale)),
-      ];
-    case "DS_RP_EMPLOI_LT_PRINC":
-      return [obs({ ...G, TIME_PERIOD: "2021" }, Math.round(24000 * scale))];
-    case "DS_RP_DIPLOMES_PRINC":
-      return [
-        obs({ ...G, TIME_PERIOD: "2021", EDUC: "_T" }, Math.round(28000 * scale)),
-        obs({ ...G, TIME_PERIOD: "2021", EDUC: "001T100_RP" }, Math.round(7000 * scale)),
-        obs({ ...G, TIME_PERIOD: "2021", EDUC: "200_RP" }, Math.round(6000 * scale)),
-        obs({ ...G, TIME_PERIOD: "2021", EDUC: "300_RP" }, Math.round(5000 * scale)),
-        obs({ ...G, TIME_PERIOD: "2021", EDUC: "500_RP" }, Math.round(4000 * scale)),
-        obs({ ...G, TIME_PERIOD: "2021", EDUC: "600_RP" }, Math.round(6000 * scale)),
-      ];
     default:
       return null;
   }
 }
 
-const RANGE: Record<string, unknown> = {
-  DS_RP_DIPLOMES_PRINC: {
-    range: [
-      {
-        dimension: { id: "EDUC" },
-        values: [
-          { code: "_T", label: { fr: "Total" } },
-          { code: "001T100_RP", label: { fr: "Aucun diplôme ou certificat d'études primaires" } },
-          { code: "200_RP", label: { fr: "BEPC, brevet des collèges, DNB" } },
-          { code: "300_RP", label: { fr: "CAP, BEP ou équivalent" } },
-          { code: "500_RP", label: { fr: "Baccalauréat, brevet professionnel ou équivalent" } },
-          { code: "600_RP", label: { fr: "Diplôme de l'enseignement supérieur" } },
-        ],
-      },
-    ],
-  },
-};
+const RANGE: Record<string, unknown> = {};
 
 const DVF_HEAD = "id_mutation,date_mutation,numero_disposition,nature_mutation,valeur_fonciere,code_commune,type_local,surface_reelle_bati";
 function dvf(year: number) {

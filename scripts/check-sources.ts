@@ -17,7 +17,9 @@ import { loadDataset } from "../src/lib/collectors/insee";
 import { collectDvf } from "../src/lib/collectors/dvf";
 import { collectEquipments } from "../src/lib/collectors/osm";
 import { collectEntreprises, collectRisques, collectSchools, collectStations } from "../src/lib/collectors/public-apis";
-import { collectElection, ELECTIONS } from "../src/lib/collectors/elections";
+import { collectElection, ELECTIONS, resolveResource } from "../src/lib/collectors/elections";
+import { collectInsee } from "../src/lib/collectors/insee-indicators";
+import { CollectContext } from "../src/lib/collectors/context";
 
 const args = process.argv.slice(2);
 const code = args[args.indexOf("--insee") + 1] && args.includes("--insee") ? args[args.indexOf("--insee") + 1] : "60159";
@@ -50,10 +52,34 @@ async function main() {
       if (listDims)
         for (const [k, v] of dims) {
           const lab = d.labels.get(k);
-          console.log(`      ${k}: ${[...v].slice(0, 25).map((x) => (lab?.get(x) ? `${x} (${lab.get(x)})` : x)).join(" | ")}`);
+          console.log(`      ${k}: ${[...v].map((x) => (lab?.get(x) ? `${x} (${lab.get(x)})` : x)).join(" | ")}`);
         }
       return `${d.observations.length} observations, GEO=${d.geo}, dimensions ${dims.map(([k]) => k).join(", ")}`;
     });
+  // Codes géographiques des territoires de référence (syntaxe Melodi).
+  const refs: [string, "EPCI" | "DEP" | "REG" | "FRANCE", string | undefined][] = [
+    ["EPCI", "EPCI", c.epci?.code],
+    ["Département", "DEP", c.departement.code],
+    ["Région", "REG", c.region.code],
+    ["France", "FRANCE", "FR"],
+  ];
+  for (const [label, kind, code] of refs) {
+    if (!code) continue;
+    await check(`INSEE référence ${label}`, async () => {
+      const d = await loadDataset(h(), "DS_FILOSOFI_CC", kind, code);
+      if (!d) throw new Error("aucune observation (syntaxe du code géographique à revoir)");
+      return `GEO=${d.geo}, ${d.observations.length} observations`;
+    });
+  }
+  // Indicateurs effectivement calculés pour la commune.
+  await check("Indicateurs INSEE calculés", async () => {
+    const r = await collectInsee(new CollectContext(), h(), "COM", c.code, { level: "commune", code: c.code, name: c.nom });
+    for (const i of r.indicators) console.log(`      ${i.id.padEnd(34)} ${i.value?.toFixed(1)} (${i.year})`);
+    for (const d of r.distributions) console.log(`      [distribution] ${d.id} : ${d.items.length} modalités`);
+    console.log(`      [séries] ${r.series.map((x) => `${x.id} ${x.points.map((p) => p.x).join("/")}`).join(", ") || "aucune"}`);
+    console.log(`      [âges] ${r.ages?.map((a) => a.label).join(" | ") ?? "non disponible"}`);
+    return `${r.indicators.length} indicateurs, ${r.distributions.length} distributions`;
+  });
   await check("DVF", async () => {
     const d = await collectDvf(h(), c.code, c.departement.code);
     return `${d.nSales} ventes retenues, ${d.urls.length} fichiers annuels`;
@@ -72,6 +98,12 @@ async function main() {
     const e = await collectEntreprises(h(), c.code);
     return `${e.bySection.reduce((s, x) => s + x.count, 0)} unités légales, ${e.employers.length} établissements ≥ 100 salariés`;
   });
+  for (const e of ELECTIONS)
+    await check(`Élections ${e.id} (ressource)`, async () => {
+      const r = await resolveResource(h(), e);
+      if (!r) throw new Error("aucune ressource « par commune » trouvée");
+      return `${r.dataset} → « ${r.title} » (${r.format}) ${r.url}`;
+    });
   for (const e of ELECTIONS)
     await check(`Élections ${e.id}`, async () => {
       const r = await collectElection(h(), e, c.code, c.departement.code);
