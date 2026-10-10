@@ -88,12 +88,24 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="mb-2 text-3xl font-bold text-[var(--accent-strong)]">Diagnostic territorial automatisé</h1>
-      <p className="mb-8 text-[var(--ink-2)]">
-        Saisissez un code postal ou le nom d&apos;une commune : l&apos;application collecte les données publiques (INSEE, DVF, OpenStreetMap,
-        Géorisques, SNCF, éducation, élections…), calcule les indicateurs, les compare aux territoires de référence et produit une fiche sourcée,
-        exportable en PDF, DOCX et CSV.
+      <div className="mb-1 text-xs font-semibold uppercase tracking-[.12em] text-[var(--fiche)]">Développement territorial</div>
+      <h1 className="mb-2 text-3xl font-bold text-[var(--accent-strong)]">Fiche d&apos;action et diagnostic territorial</h1>
+      <p className="mb-5 text-[var(--ink-2)]">
+        Saisissez un code postal ou le nom d&apos;une commune : l&apos;application collecte les données publiques (INSEE, élections par bureau de vote,
+        OpenStreetMap, SNCF, éducation…), les compare au département et produit une fiche d&apos;action sourcée, suivie du diagnostic complet.
       </p>
+      <ul className="mb-8 grid gap-2 text-sm sm:grid-cols-2">
+        {[
+          ["Profil sociodémographique", "écarts significatifs au département, âges, logement, emploi"],
+          ["Profil politique", "vote LFI, parrainages, abstention, forces de gauche et RN"],
+          ["Où agir", "cartes et classement des bureaux de vote prioritaires"],
+          ["Actions recommandées", "porte-à-porte, marchés, gares, commerces, accessibilité"],
+        ].map(([t, d]) => (
+          <li key={t} className="rounded-lg border border-[var(--line)] bg-white px-3 py-2">
+            <span className="font-semibold">{t}</span> <span className="text-[var(--ink-2)]">— {d}</span>
+          </li>
+        ))}
+      </ul>
 
       <div className="card p-5">
         <label htmlFor="q" className="mb-1 block text-sm font-semibold">
@@ -159,7 +171,7 @@ export default function Home() {
         </details>
 
         <button className="btn btn-primary mt-5 w-full justify-center py-3 text-base" disabled={!selected || busy} onClick={generate}>
-          {busy ? "Lancement…" : "Générer la fiche territoriale"}
+          {busy ? "Lancement…" : "Générer la fiche"}
         </button>
         {error && <p className="mt-2 text-sm text-[#a12a29]">{error}</p>}
       </div>
@@ -173,7 +185,10 @@ export default function Home() {
                 <a href={`/rapport/${r.id}`} className="font-semibold">
                   {r.nom} <span className="font-normal text-[var(--ink-2)]">({r.departement}) — {r.scope}</span>
                 </a>
-                <span className="text-[var(--muted)]">
+                <span className="flex items-center gap-3 text-[var(--muted)]">
+                  <a href={`/api/reports/${r.id}/export/pdf?fiche=1`} className="text-xs font-normal">
+                    PDF fiche
+                  </a>
                   v{r.version} · {new Date(r.updatedAt).toLocaleDateString("fr-FR")}
                 </span>
               </li>

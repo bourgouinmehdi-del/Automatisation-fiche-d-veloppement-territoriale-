@@ -41,7 +41,9 @@ export function niceTicks(min: number, max: number, count = 5): number[] {
   const norm = step0 / mag;
   const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
   const out: number[] = [];
-  for (let v = Math.floor(min / step) * step; v <= max + step * 1e-9; v += step) out.push(Math.round(v * 1e9) / 1e9);
+  // La dernière graduation couvre le maximum (sinon les barres débordent du cadre).
+  const top = Math.ceil(max / step - 1e-9) * step;
+  for (let v = Math.floor(min / step) * step; v <= top + step * 1e-9; v += step) out.push(Math.round(v * 1e9) / 1e9);
   return out;
 }
 
@@ -281,8 +283,10 @@ export function mapSvg(map: MapSpec, width = 720, height = 540): string {
             : (p.color as string) ?? l.color ?? "#cbd5e1";
         const d = path(f);
         if (!d) continue;
-        const stroke = l.outlineOnly ? l.color ?? "#111827" : l.id === "commune" || l.id === "contour" ? l.color ?? "#111" : "#ffffff";
-        const sw = l.outlineOnly || l.id === "commune" || l.id === "contour" ? 1.8 : 0.4;
+        // Bureaux de vote : contours sombres et fins (lisibilité des aplats contigus).
+        const isBv = p.bv != null && !!l.valueProperty;
+        const stroke = l.outlineOnly ? l.color ?? "#111827" : l.id === "commune" || l.id === "contour" ? l.color ?? "#111" : isBv ? "#4b5563" : "#ffffff";
+        const sw = l.outlineOnly || l.id === "commune" || l.id === "contour" ? 1.8 : isBv ? 0.8 : 0.4;
         const fo = l.id === "commune" && !l.valueProperty && map.layers.length > 1 && map.layers[0].valueProperty ? "none" : fill;
         const tip = l.valueProperty ? `${p.nom ?? ""} : ${p[l.valueProperty] == null ? "n.d." : fmtValue(p[l.valueProperty] as number, map.legend?.unit ?? "nombre")}` : String(p.nom ?? p.name ?? "");
         s += `<path d="${d}" fill="${l.id === "contour" ? "none" : fo}" fill-opacity="${l.id === "commune" && fo !== "none" ? 0.85 : 1}" stroke="${stroke}" stroke-width="${sw}"><title>${esc(tip)}</title></path>`;
@@ -319,9 +323,12 @@ function legendSvg(map: MapSpec, x: number, y: number, width: number) {
   let s = `<text x="${x}" y="${y + 12}" font-size="11" font-weight="600" fill="${PALETTE.text}" ${FONT}>${esc(lg.title)}</text>`;
   if (lg.classes?.length) {
     const w = Math.min(110, (width - 140) / lg.classes.length);
+    // Une décimale lorsque les classes sont étroites (sinon « 11–11 »).
+    const fine = lg.classes.some((c) => c.max - c.min < 2 && Math.abs(c.max) < 1000);
+    const lab = (v: number) => (fine ? fmtNumber(v, 1) : shortNum(v));
     lg.classes.forEach((c, i) => {
       s += `<rect x="${x + i * w}" y="${y + 18}" width="${w - 2}" height="12" fill="${c.color}"/>`;
-      s += `<text x="${x + i * w}" y="${y + 44}" font-size="9.5" fill="${PALETTE.text2}" ${FONT}>${esc(shortNum(c.min))}–${esc(shortNum(c.max))}</text>`;
+      s += `<text x="${x + i * w}" y="${y + 44}" font-size="${w < 70 ? 8.5 : 9.5}" fill="${PALETTE.text2}" ${FONT}>${esc(lab(c.min))}–${esc(lab(c.max))}</text>`;
     });
     s += `<rect x="${x + lg.classes.length * w + 10}" y="${y + 18}" width="14" height="12" fill="${MISSING_COLOR}"/><text x="${x + lg.classes.length * w + 28}" y="${y + 28}" font-size="9.5" fill="${PALETTE.text2}" ${FONT}>${esc(lg.missingLabel ?? "n.d.")}</text>`;
   } else if (lg.categories?.length) {

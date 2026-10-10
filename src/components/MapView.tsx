@@ -18,7 +18,7 @@ function colorFor(v: unknown, map: MapSpec) {
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 /** Carte interactive : zoom, déplacement, couches activables, infobulles avec valeur et source. */
-export default function MapView({ map }: { map: MapSpec }) {
+export default function MapView({ map, height = 460 }: { map: MapSpec; height?: number }) {
   const bounds = useMemo(() => (map.bbox ? L.latLngBounds([map.bbox[1], map.bbox[0]], [map.bbox[3], map.bbox[2]]) : undefined), [map.bbox]);
 
   const polygonLayer = (l: MapLayer) => (
@@ -29,8 +29,8 @@ export default function MapView({ map }: { map: MapSpec }) {
         const p = (f?.properties ?? {}) as Record<string, unknown>;
         if (l.outlineOnly) return { color: l.color ?? "#111827", weight: 2.5, fill: false };
         return {
-          color: "#ffffff",
-          weight: 0.6,
+          color: p.bv != null ? "#4b5563" : "#ffffff",
+          weight: p.bv != null ? 1 : 0.6,
           fillColor: l.valueProperty ? colorFor(p[l.valueProperty], map) : ((p.color as string) ?? l.color ?? "#cbd5e1"),
           fillOpacity: 0.8,
         };
@@ -66,7 +66,7 @@ export default function MapView({ map }: { map: MapSpec }) {
 
   return (
     <div>
-      <MapContainer bounds={bounds} style={{ height: 460, borderRadius: 8 }} scrollWheelZoom={false}>
+      <MapContainer bounds={bounds} style={{ height, borderRadius: 8 }} scrollWheelZoom={false}>
         <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">contributeurs OpenStreetMap</a>' url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <ScaleControl imperial={false} />
         <LayersControl position="topright" collapsed={false}>

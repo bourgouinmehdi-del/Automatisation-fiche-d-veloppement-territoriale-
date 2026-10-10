@@ -23,7 +23,8 @@ import {
 import { SOURCES } from "../collectors/catalog";
 import { KIND_LABELS } from "../analysis/findings";
 import { fmtDate, fmtValue } from "../format";
-import { cellText, Citations, freshness, sourceLabel } from "../render/html";
+import { cellText, Citations, freshness, selectFindings, sourceLabel } from "../render/html";
+import { inlineParts } from "../render/cite";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "../render/svg";
 import type { Block, DataTable, Indicator, Report, SourceRef } from "../types";
 
@@ -48,6 +49,12 @@ function image(svg: string, maxWidthPx = 600) {
   return new Paragraph({ children: [new ImageRun({ type: "png", data: png.data, transformation: { width: w, height: Math.round((png.h / png.w) * w) } })] });
 }
 
+/** Segments `**gras**` → TextRun. */
+const runs = (text: string, o: { size?: number; color?: string; italics?: boolean; bold?: boolean } = {}) =>
+  text.split("\n").flatMap((line, li) =>
+    inlineParts(line).map((s, i) => new TextRun({ text: s.text, font: FONT, size: o.size ?? 21, color: o.color, italics: o.italics, bold: o.bold || s.bold, break: li > 0 && i === 0 ? 1 : undefined })),
+  );
+
 const p = (text: string, opts: { bold?: boolean; size?: number; color?: string; italics?: boolean } = {}) =>
   new Paragraph({ spacing: { after: 120 }, children: [new TextRun({ text, font: FONT, bold: opts.bold, size: opts.size ?? 21, color: opts.color, italics: opts.italics })] });
 
@@ -55,15 +62,15 @@ const small = (text: string) => new Paragraph({ spacing: { after: 160 }, childre
 
 const caption = (text: string) => new Paragraph({ spacing: { before: 200, after: 80 }, keepNext: true, children: [new TextRun({ text, font: FONT, bold: true, size: 20 })] });
 
-function cellP(text: string, bold = false, right = false) {
+function cellP(text: string, bold = false, right = false, hl = false) {
   return new TableCell({
-    children: [new Paragraph({ alignment: right ? AlignmentType.RIGHT : AlignmentType.LEFT, children: [new TextRun({ text, font: FONT, size: 17, bold })] })],
-    shading: bold ? { type: ShadingType.CLEAR, color: "auto", fill: "F3F6FB" } : undefined,
+    children: [new Paragraph({ alignment: right ? AlignmentType.RIGHT : AlignmentType.LEFT, children: runs(text, { size: 17, bold: bold || hl }) })],
+    shading: bold ? { type: ShadingType.CLEAR, color: "auto", fill: "F3F6FB" } : hl ? { type: ShadingType.CLEAR, color: "auto", fill: "F7F9FC" } : undefined,
     margins: { top: 40, bottom: 40, left: 80, right: 80 },
   });
 }
 
-function table(headers: string[], rows: string[][], rightCols: number[] = []) {
+function table(headers: string[], rows: string[][], rightCols: number[] = [], highlight: number[] = []) {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
@@ -76,7 +83,7 @@ function table(headers: string[], rows: string[][], rightCols: number[] = []) {
     },
     rows: [
       new TableRow({ tableHeader: true, children: headers.map((h, i) => cellP(h, true, rightCols.includes(i))) }),
-      ...rows.map((r) => new TableRow({ cantSplit: true, children: r.map((c, i) => cellP(c, false, rightCols.includes(i))) })),
+      ...rows.map((r, k) => new TableRow({ cantSplit: true, children: r.map((c, i) => cellP(c, false, rightCols.includes(i), highlight.includes(k))) })),
     ],
   });
 }
@@ -84,7 +91,7 @@ function table(headers: string[], rows: string[][], rightCols: number[] = []) {
 function dataTable(t: DataTable, cit: Citations) {
   const right = t.columns.map((c, i) => (c.align === "right" ? i : -1)).filter((i) => i >= 0);
   const rows = t.rows.map((r) => t.columns.map((c) => cellText(r[c.key], c.unit ?? (c.key !== "indicateur" && c.key !== "annee" ? (r.unite as string | undefined) : undefined))));
-  return [caption(t.title), table(t.columns.map((c) => c.label), rows, right), small(`Sources : ${t.sources.map((s) => `[${cit.cite(s)}]`).join(" ")}${t.note ? ` — ${t.note}` : ""}`)];
+  return [caption(t.title), table(t.columns.map((c) => c.label), rows, right, t.highlight ?? []), small(`Sources : ${t.sources.map((s) => `[${cit.cite(s)}]`).join(" ")}${t.note ? ` — ${t.note}` : ""}`)];
 }
 
 function indicatorFor(r: Report, id: string) {
@@ -97,7 +104,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
   switch (b.type) {
     case "paragraph": {
       const refs = refsOf(b.evidence);
-      return [new Paragraph({ spacing: { after: 140 }, alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: b.text, font: FONT, size: 21 }), ...(refs.length ? [new TextRun({ text: " " + refs.map((n) => `[${n}]`).join(""), font: FONT, size: 16, color: "8A8984" })] : [])] })];
+      return [new Paragraph({ spacing: { after: 140 }, alignment: AlignmentType.JUSTIFIED, children: [...runs(b.text), ...(refs.length ? [new TextRun({ text: " " + refs.map((n) => `[${n}]`).join(""), font: FONT, size: 16, color: "8A8984" })] : [])] })];
     }
     case "kpis": {
       const items = b.indicatorIds.map((id) => indicatorFor(r, id)).filter((i): i is Indicator => !!i && i.value != null);
@@ -138,26 +145,82 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       return [caption(`Localisation du département ${r.commune.departement.nom}`), image(locatorSvg(r.commune.departement.code, r.commune.departement.nom, 500), 280), small(`Fond : [${cit.cite(s)}] (CC BY 4.0)`)];
     }
     case "note":
-      return [new Paragraph({ spacing: { after: 140 }, shading: { type: ShadingType.CLEAR, color: "auto", fill: "F6F6F4" }, children: [new TextRun({ text: b.text, font: FONT, size: 18, color: "52514E" })] })];
+      return [new Paragraph({ spacing: { after: 140 }, shading: { type: ShadingType.CLEAR, color: "auto", fill: "F6F6F4" }, children: runs(b.text, { size: 18, color: "52514E" }) })];
+    case "callout": {
+      const color = b.tone === "accent" ? "C0503A" : b.tone === "info" ? "B7D3F6" : "0B0B0B";
+      const side = { style: BorderStyle.SINGLE, size: b.tone === "warning" ? 12 : 8, color, space: 6 };
+      return [
+        new Paragraph({
+          spacing: { before: 120, after: 200 },
+          border: { top: side, bottom: side, left: side, right: side },
+          shading: b.tone === "accent" ? { type: ShadingType.CLEAR, color: "auto", fill: "FDF6F3" } : b.tone === "info" ? { type: ShadingType.CLEAR, color: "auto", fill: "F3F7FD" } : undefined,
+          children: [...(b.title ? [new TextRun({ text: b.title + " — ", font: FONT, size: 20, bold: true })] : []), ...runs(b.text, { size: 20 })],
+        }),
+      ];
+    }
+    case "heading":
+      return [new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun({ text: b.text, font: FONT })] })];
+    case "glance":
+      return [
+        table(
+          b.items.map((i) => i.label),
+          [b.items.map((i) => `**${i.value}**`), b.items.map((i) => i.detail ?? "")],
+          b.items.map((_, i) => i),
+        ),
+        new Paragraph({ spacing: { after: 120 }, children: [] }),
+      ];
+    case "actions":
+      return [
+        ...(b.title ? [new Paragraph({ heading: HeadingLevel.HEADING_3, children: [new TextRun({ text: b.title, font: FONT })] })] : []),
+        ...b.groups.flatMap((g) => [
+          new Paragraph({ spacing: { before: 120, after: 40 }, keepNext: true, children: [new TextRun({ text: g.title, font: FONT, size: 20, bold: true }), ...(g.hint ? [new TextRun({ text: ` (${g.hint})`, font: FONT, size: 20, color: "52514E" })] : []), new TextRun({ text: " :", font: FONT, size: 20, bold: true })] }),
+          ...g.items.map((i) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 40 }, children: runs(i, { size: 19 }) })),
+        ]),
+      ];
+    case "mapPair": {
+      const ms = b.mapIds.map((id) => r.maps.find((x) => x.id === id)).filter((m): m is NonNullable<typeof m> => !!m);
+      if (!ms.length) return [];
+      const srcs = [...new Map(ms.flatMap((m) => m.layers.map((l) => [l.source.id + l.source.url, l.source] as const))).values()];
+      const pngs = ms.map((m) => svgToPng(mapSvg(m, 420, 470), 900));
+      const w = 300;
+      return [
+        caption(b.title ?? ms.map((m) => m.title).join(" / ")),
+        new Paragraph({ children: pngs.flatMap((png, i) => [...(i ? [new TextRun({ text: "  " })] : []), new ImageRun({ type: "png", data: png.data, transformation: { width: w, height: Math.round((png.h / png.w) * w) } })]) }),
+        small(`${ms.map((m) => m.period ?? m.title).join(" (à gauche) / ")} (à droite). Sources : ${srcs.map((s) => `[${cit.cite(s)}]`).join(" ")}${ms[0].note ? ` — ${ms[0].note}` : ""}`),
+      ];
+    }
     case "missing": {
       const items = r.missing.filter((m) => !b.themes.length || b.themes.includes(m.theme));
       if (!items.length) return [];
       return [p("Données manquantes ou non intégrées", { bold: true, size: 19 }), ...items.map((m) => new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: `${m.label} — ${m.reason}`, font: FONT, size: 18 })] }))];
     }
     case "findings": {
-      const fs = r.findings.filter((f) => (!b.kinds || b.kinds.includes(f.kind)) && (!b.themes || b.themes.includes(f.theme)));
+      const fs = selectFindings(r, b);
       const out: Paragraph[] = [];
       if (b.title) out.push(new Paragraph({ heading: HeadingLevel.HEADING_3, children: [new TextRun({ text: b.title, font: FONT })] }));
       if (!fs.length) return b.title ? [...out, p("Aucun élément relevé automatiquement.", { italics: true, color: "8A8984" })] : [];
       for (const f of fs) {
         const refs = refsOf(f.evidence);
+        if (b.style === "prose") {
+          out.push(
+            new Paragraph({
+              spacing: { after: 140 },
+              children: [
+                ...(f.kind === "hypothese" ? [new TextRun({ text: "Hypothèse — ", font: FONT, size: 19, bold: true, color: "4A3AA7" })] : []),
+                ...runs(f.text),
+                ...(refs.length ? [new TextRun({ text: " " + refs.map((n) => `[${n}]`).join(""), font: FONT, size: 15, color: "8A8984" })] : []),
+              ],
+            }),
+          );
+          continue;
+        }
         out.push(
           new Paragraph({
             bullet: { level: 0 },
             spacing: { after: 60 },
             children: [
               new TextRun({ text: `${KIND_LABELS[f.kind]} — `, font: FONT, size: 19, bold: true, color: f.kind === "vigilance" ? "A12A29" : f.kind === "atout" ? "0B6B47" : "1C5CAB" }),
-              new TextRun({ text: f.text, font: FONT, size: 19 }),
+              ...runs(f.text, { size: 19 }),
               ...(refs.length ? [new TextRun({ text: " " + refs.map((n) => `[${n}]`).join(""), font: FONT, size: 15, color: "8A8984" })] : []),
             ],
           }),
@@ -172,7 +235,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
           (i) =>
             new Paragraph({
               bullet: { level: 0 },
-              children: [new TextRun({ text: i.text, font: FONT, size: 19 }), ...(i.url ? [new TextRun({ text: " — ", font: FONT, size: 19 }), new ExternalHyperlink({ link: i.url, children: [new TextRun({ text: i.url, style: "Hyperlink", font: FONT, size: 17 })] })] : [])],
+              children: [...runs(i.text, { size: 19 }), ...(refsOf(i.evidence).length ? [new TextRun({ text: " " + refsOf(i.evidence).map((n) => `[${n}]`).join(""), font: FONT, size: 15, color: "8A8984" })] : []), ...(i.url ? [new TextRun({ text: " — ", font: FONT, size: 19 }), new ExternalHyperlink({ link: i.url, children: [new TextRun({ text: i.url, style: "Hyperlink", font: FONT, size: 17 })] })] : [])],
             }),
         ),
       ];

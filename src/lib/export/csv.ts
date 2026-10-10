@@ -3,7 +3,7 @@ import type { DataTable, Report } from "../types";
 /** Échappement CSV (séparateur « ; », usage courant dans les tableurs français). */
 const cell = (v: unknown) => {
   if (v == null) return "";
-  const s = typeof v === "number" ? String(v).replace(".", ",") : String(v);
+  const s = typeof v === "number" ? String(v).replace(".", ",") : String(v).replace(/\*\*([^*]+)\*\*/g, "$1");
   return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 const line = (arr: unknown[]) => arr.map(cell).join(";");
