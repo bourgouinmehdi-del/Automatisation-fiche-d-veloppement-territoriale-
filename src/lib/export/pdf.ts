@@ -39,12 +39,12 @@ export function findChromium(): string | undefined {
   });
 }
 
-export async function reportToPdf(r: Report): Promise<Buffer> {
+export async function reportToPdf(r: Report, opts: { sectionIds?: string[] } = {}): Promise<Buffer> {
   const executablePath = findChromium();
   const browser = await chromium.launch({ executablePath, args: ["--no-sandbox", "--font-render-hinting=none"] });
   try {
     const page = await browser.newPage();
-    await page.setContent(renderReportHtml(r), { waitUntil: "load" });
+    await page.setContent(renderReportHtml(r, { sectionIds: opts.sectionIds }), { waitUntil: "load" });
     const small = `font-family: Arial, sans-serif; font-size: 7.5pt; color: #52514e; width: 100%; padding: 0 16mm;`;
     const pdf = await page.pdf({
       format: "A4",

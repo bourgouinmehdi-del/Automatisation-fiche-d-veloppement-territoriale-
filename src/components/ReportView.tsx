@@ -254,8 +254,13 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
           </div>
         </div>
         <div className="no-print flex flex-wrap gap-2">
+          {r.sections.some((s) => s.id === "LFI") && (
+            <a className="btn btn-primary" href={exp("pdf", "?fiche=1")}>
+              PDF fiche d&apos;action
+            </a>
+          )}
           <a className="btn btn-primary" href={exp("pdf")}>
-            PDF
+            PDF complet
           </a>
           <a className="btn" href={exp("docx")}>
             DOCX

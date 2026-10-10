@@ -1066,7 +1066,7 @@ export function assemble(c: Collected): Assembled {
   }
   if (!c.dvf) missing.push({ theme: "immobilier", label: "Prix immobiliers (DVF)", reason: "Source indisponible ou commune non couverte (Alsace-Moselle, Mayotte)", sourceId: "dvf" });
   if (!c.elections.length) missing.push({ theme: "elections", label: "Résultats électoraux", reason: "Source indisponible lors de la génération", sourceId: "elections" });
-  missing.push({ theme: "elections", label: "Résultats par bureau de vote", reason: "Non intégré : nécessite les contours des bureaux de vote (REU) — voir STATUS.md" });
+  if (!c.bureaux.length) missing.push({ theme: "elections", label: "Résultats par bureau de vote", reason: "Source indisponible lors de la génération" });
   missing.push({ theme: "mobilite", label: "Temps d'accès routiers et horaires de transport (GTFS)", reason: "Non intégré : nécessite un calculateur d'itinéraires et l'exploitation des flux GTFS de transport.data.gouv.fr" });
   missing.push({ theme: "demographie", label: "Données infracommunales (IRIS, quartiers prioritaires)", reason: "Non intégré dans cette version" });
 

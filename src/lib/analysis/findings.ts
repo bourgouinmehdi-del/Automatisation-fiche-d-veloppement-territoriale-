@@ -190,6 +190,8 @@ export function computeFindings(inp: FindingInput): Finding[] {
 
   /* Distances */
   for (const d of indicators.filter((i) => i.id.startsWith("distance_") && i.geo.level === "commune")) {
+    // Pas de vigilance d'éloignement pour une commune qui est elle-même un pôle urbain.
+    if (d.id === "distance_pole_50k" && pop >= 20000) continue;
     if (d.value! > 15)
       add({
         kind: "vigilance",

@@ -213,7 +213,7 @@ function sectionE(x: Ctx): Section {
     title: "Mobilité domicile-travail et équipement automobile",
     indicatorIds: ["part_menages_sans_voiture", "part_menages_2_voitures", "part_trajets_voiture", "part_trajets_tc", "part_actifs_travaillant_commune"],
   });
-  blocks.push(...optional(x, "chart", "chart_dist_mode_transport"), ...optional(x, "chart", "chart_dist_lieu_travail"), ...optional(x, "chart", "chart_dist_voitures"), ...optional(x, "table", "table_poles"));
+  blocks.push(...optional(x, "chart", "chart_dist_mode_transport"), ...optional(x, "chart", "chart_dist_lieu_travail"), ...optional(x, "chart", "chart_dist_voitures"));
   blocks.push({ type: "findings", themes: ["mobilite"] });
   blocks.push({
     type: "note",

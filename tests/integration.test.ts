@@ -131,7 +131,7 @@ describe("chaîne de génération (API simulées)", () => {
     const bv = report.tables.find((t) => t.id === "lfi_bureaux")!;
     expect(bv.rows).toHaveLength(6);
     expect(bv.rows[0].bv).toBe("2"); // vote LFI 35 % des exprimés, forte abstention
-    expect(bv.rows[0].libelle).toBe("École fictive B");
+    expect(bv.rows[0].libelle).toBe("École Fictive B"); // libellé REU mis en forme
     expect(report.maps.find((m) => m.id === "lfi_map_bv")!.layers[0].data.features).toHaveLength(6);
     const pol = report.tables.find((t) => t.id === "lfi_politique")!;
     expect(pol.columns.map((c) => c.key)).toContain("parrains");
@@ -164,6 +164,9 @@ describe("chaîne de génération (API simulées)", () => {
     const pdf = await reportToPdf(report);
     expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
     await fs.writeFile(path.join(os.tmpdir(), "fiche-test-mock.pdf"), pdf);
+    const court = await reportToPdf(report, { sectionIds: ["LFI"] });
+    expect(court.length).toBeLessThan(pdf.length);
+    await fs.writeFile(path.join(os.tmpdir(), "fiche-test-mock-court.pdf"), court);
   }, 60000);
 
   it("une seconde génération est servie par le cache", async () => {

@@ -51,6 +51,8 @@ export interface Collected {
   depContour?: GeoJSON.Feature | null;
   neighbours: { code: string; nom: string; population: number | null; surfaceKm2: number | null }[];
   poles: { code: string; nom: string; population: number; distanceKm: number }[];
+  /** Distance à vol d'oiseau à Paris (km). */
+  parisKm?: number | null;
   polesSource?: SourceRef;
   insee: { geo: GeoRef; result: InseeResult }[];
   perimeterInsee: { code: string; nom: string; result: InseeResult }[];
@@ -209,6 +211,8 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
           .sort((a, b) => a.distanceKm - b.distanceKm)
           .slice(0, 10);
       }
+      const paris = fc.communes.find((x) => x.code === "75056");
+      if (paris?.centre && commune.centre && commune.code !== "75056") c.parisKm = haversineKm(commune.centre, paris.centre.coordinates);
       // Densités des communes de France (sélection de communes comparables).
       densityByCode = new Map(
         fc.communes.map((x) => [x.code, density(x.population ?? null, x.surface != null ? x.surface / 100 : null)] as const),

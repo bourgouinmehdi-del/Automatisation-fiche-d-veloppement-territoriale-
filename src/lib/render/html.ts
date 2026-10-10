@@ -186,10 +186,11 @@ ul.list li { margin: 1mm 0; }
 .ok { color: #0b6b47; } .ko { color: #a12a29; } .wa { color: #8a5300; }
 `;
 
-export function renderReportHtml(r: Report, opts: { standalone?: boolean } = {}): string {
+export function renderReportHtml(r: Report, opts: { standalone?: boolean; sectionIds?: string[] } = {}): string {
   const cit = new Citations();
+  const sections = opts.sectionIds ? r.sections.filter((s) => opts.sectionIds!.includes(s.id)) : r.sections;
   // Le corps est rendu en premier pour numéroter les sources dans l'ordre d'apparition.
-  const body = r.sections
+  const body = sections
     .map((s) => `<section class="part" id="part-${s.id}"><h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>${s.blocks.map((b) => blockHtml(r, b, cit)).join("\n")}</section>`)
     .join("\n");
   const statusClass = (s: string) => (s === "ok" || s === "cache" ? "ok" : s === "failed" ? "ko" : "wa");
@@ -223,6 +224,17 @@ ${r.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
 <div class="toc"><h3>Sommaire</h3><ul style="list-style:none;padding-left:0">${r.sections.map((s) => `<li>${s.letter ? `<strong>${s.letter}.</strong> ` : "★ "}${esc(s.title)}</li>`).join("")}</ul><p>Annexe : méthodologie, journal de collecte et bibliographie.</p></div>
 <div class="meta">Code INSEE ${esc(r.commune.code)} · Généré le ${esc(fmtDate(r.updatedAt))} (version ${r.version}) · Identifiant ${esc(r.id)}<br>Fraîcheur des données : ${esc(freshness(r))}</div></section>`;
 
+  // Version courte (fiche d'action) : en-tête compact, corps, bibliographie seule.
+  if (opts.sectionIds) {
+    const head = `<div class="kicker" style="font-size:9pt;letter-spacing:.08em;text-transform:uppercase;color:#52514e">Fiche d'action</div><h1 style="font-size:20pt;margin:0 0 2mm">${esc(r.commune.nom)}</h1><div style="color:#52514e;margin-bottom:4mm">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}) · ${esc(r.commune.region.nom)}${r.commune.epci ? ` · ${esc(r.commune.epci.nom)}` : ""} · généré le ${esc(fmtDate(r.updatedAt))}</div>`;
+    const biblio = `<section class="part"><h2>Sources</h2><ol class="biblio">${cit
+      .all()
+      .map((s) => `<li>${esc(sourceLabel(s))}. Consulté le ${esc(fmtDate(s.retrievedAt))}. <a href="${esc(s.url)}">${esc(s.url.length > 140 ? s.url.slice(0, 137) + "…" : s.url)}</a></li>`)
+      .join("")}</ol></section>`;
+    const short = `${head}${body.replace('<section class="part"', '<section')}${biblio}`;
+    if (opts.standalone === false) return short;
+    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Fiche d'action — ${esc(r.commune.nom)}</title><style>${REPORT_CSS}</style></head><body>${short}</body></html>`;
+  }
   const html = `${cover}\n${body}\n${method}`;
   if (opts.standalone === false) return html;
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Diagnostic territorial — ${esc(r.commune.nom)}</title><style>${REPORT_CSS}</style></head><body>${html}</body></html>`;

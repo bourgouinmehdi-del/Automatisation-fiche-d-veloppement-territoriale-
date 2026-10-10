@@ -264,10 +264,16 @@ export function mapSvg(map: MapSpec, width = 720, height = 540): string {
   );
   const path = geoPath(proj);
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${esc(map.title)}"><rect width="100%" height="100%" fill="#f8fafc"/><defs><clipPath id="clip-${map.id}"><rect width="${width}" height="${mapH}"/></clipPath></defs><g clip-path="url(#clip-${map.id})">`;
+  let labelsSvg = "";
   for (const l of visible) {
     if (l.kind === "polygons") {
       for (const f of l.data.features) {
         const p = f.properties as Record<string, unknown>;
+        // Numéro de bureau de vote au centre de chaque contour.
+        if (p.bv != null && l.valueProperty) {
+          const c = path.centroid(f);
+          if (Number.isFinite(c[0])) labelsSvg += `<text x="${c[0].toFixed(1)}" y="${(c[1] + 3.5).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#111" stroke="#fff" stroke-width="2.5" paint-order="stroke" ${FONT}>${esc(p.bv)}</text>`;
+        }
         const fill = l.outlineOnly
           ? "none"
           : l.valueProperty
@@ -296,7 +302,7 @@ export function mapSvg(map: MapSpec, width = 720, height = 540): string {
       }
     }
   }
-  s += `</g>`;
+  s += labelsSvg + `</g>`;
   s += legendSvg(map, 10, mapH + 6, width);
   return s + "</svg>";
 }

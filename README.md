@@ -93,7 +93,9 @@ Chaque rapport commence par une **fiche d'action** inspirée du document de réf
 4. **Pourquoi** : hypothèses explicites, reliées aux indicateurs (pauvreté, jeunesse, logement social, écarts entre quartiers) — toujours à confirmer sur le terrain.
 5. **Comment** : actions recommandées — porte-à-porte dans les bureaux prioritaires (avec les écoles proches comme repères), mobilisation des abstentionnistes, marchés (horaires OpenStreetMap), gares (fréquentation SNCF), supermarchés, sorties de collèges et lycées ; tableau des lieux d'action avec le bureau le plus proche ; encadré d'accessibilité.
 
-**Méthode de priorisation des bureaux** : potentiel = moyenne de deux scores z calculés entre les bureaux de la commune — part LFI des exprimés (réservoir) et taux d'abstention (marge de mobilisation) ; priorité 1 = tiers supérieur.
+**Export court** : bouton « PDF fiche d'action » (ou `…/export/pdf?fiche=1`, et `<id>-fiche-action.pdf` en ligne de commande) — la fiche d'action seule, quelques pages, comme le document de référence.
+
+**Méthode de priorisation des bureaux** : potentiel = moyenne de deux scores z calculés entre les bureaux de la commune — part LFI des exprimés (réservoir) et taux d'abstention (marge de mobilisation) ; priorité 1 = un quart des bureaux, 4 au maximum ; priorité 2 = jusqu'à la moitié.
 
 **Géographie des bureaux de vote** (dans l'ordre) : fichier fourni `data/interne/bv-<code INSEE>.geojson` (contours officiels de la mairie, propriété `bv` ou `numero`), contours publiés sur data.gouv.fr, ou enveloppes approximatives calculées à partir des adresses du Répertoire électoral unique (INSEE).
 

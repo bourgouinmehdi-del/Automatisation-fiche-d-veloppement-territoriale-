@@ -53,6 +53,7 @@ async function main() {
   await fs.writeFile(base + ".docx", await reportToDocx(r));
   try {
     await fs.writeFile(base + ".pdf", await reportToPdf(r));
+    if (r.sections.some((s) => s.id === "LFI")) await fs.writeFile(base + "-fiche-action.pdf", await reportToPdf(r, { sectionIds: ["LFI"] }));
   } catch (e) {
     console.warn("PDF non généré :", e instanceof Error ? e.message : e);
   }

@@ -261,6 +261,22 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
     method: "Personnes vivant seules / population de 15 ans ou plus × 100.",
     limits: RP_LIMITS,
   },
+  {
+    // Variante : la mesure « vivant seules » n'est publiée que pour les ménages ordinaires.
+    id: "part_personnes_seules",
+    label: "Part des personnes de 15 ans ou plus vivant seules",
+    theme: "menages",
+    unit: "%",
+    datasets: ["DS_RP_MENAGES_PRINC"],
+    kind: "ratio",
+    num: [
+      { dims: ["RP_MEASURE"], spec: { codes: ["ONEPERS"] } },
+      { dims: ["OCS"], spec: { codes: ["DW_MAIN"] } },
+    ],
+    den: [[{ dims: ["RP_MEASURE"], spec: { codes: ["DWELLINGS_POPSIZE", "POP"] } }, { dims: ["OCS"], spec: { codes: ["DW_MAIN"] } }]],
+    method: "Personnes vivant seules / population des ménages (15 ans ou plus) × 100.",
+    limits: RP_LIMITS,
+  },
   /* ----------------------------------------------------------- mobilité */
   {
     id: "part_menages_sans_voiture",
@@ -664,6 +680,8 @@ export async function collectInsee(
 
   /* Indicateurs déclarés */
   for (const def of INDICATOR_DEFS) {
+    // Une définition de repli (même identifiant) n'est utilisée que si la première a échoué.
+    if (out.indicators.some((i) => i.id === def.id)) continue;
     const ds = def.datasets.map((d) => loaded.get(d)).find(Boolean);
     if (!ds) continue;
     const numCombos = def.num.length ? resolveCriteria(ds, def.num) : [{}];

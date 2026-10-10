@@ -98,7 +98,7 @@ export function lfiOverperformance(
   dep: ElectionResult,
   codeInsee: string,
   populations: Map<string, number | null>,
-): { commune: number; median: number; n: number; ratio: number } | null {
+): { commune: number; median: number; n: number; ratio: number; minPop: number; maxPop: number } | null {
   if (!dep.byCommune?.length) return null;
   const target = dep.byCommune.find((c) => c.code === codeInsee);
   const pop = populations.get(codeInsee);
@@ -115,17 +115,53 @@ export function lfiOverperformance(
   const vals = peers.map(sc).filter((v): v is number => v != null);
   const m = median(vals);
   if (m == null || !vals.length) return null;
-  return { commune: own, median: m, n: vals.length, ratio: m ? own / m : NaN };
+  const pp = peers.map((c) => populations.get(c.code) ?? 0);
+  return { commune: own, median: m, n: vals.length, ratio: m ? own / m : NaN, minPop: Math.min(...pp), maxPop: Math.max(...pp) };
 }
 
 export type BvType = "bastion_a_mobiliser" | "bastion" | "reservoir_abstention" | "terrain_difficile";
 
 export const BV_TYPE_LABELS: Record<BvType, string> = {
-  bastion_a_mobiliser: "Vote LFI élevé et forte abstention",
-  bastion: "Vote LFI élevé, participation élevée",
-  reservoir_abstention: "Vote LFI modeste, forte abstention",
-  terrain_difficile: "Vote LFI modeste, participation élevée",
+  bastion_a_mobiliser: "LFI fort, abstention forte",
+  bastion: "LFI fort, participation forte",
+  reservoir_abstention: "LFI faible, abstention forte",
+  terrain_difficile: "LFI faible, participation forte",
 };
+
+/**
+ * Libellé lisible d'un lieu de vote (le REU est en minuscules abrégées) :
+ * « ecole mat ph lebesgue » → « École maternelle Ph Lebesgue ».
+ */
+export function prettyBvLabel(raw: string): string {
+  const abbr: [RegExp, string][] = [
+    [/\becole\b/gi, "école"],
+    [/\bmat\b\.?/gi, "maternelle"],
+    [/\bprim\b\.?/gi, "primaire"],
+    [/\belem\b\.?/gi, "élémentaire"],
+    [/\bgr(p)?\b\.?\s+scol(aire)?\b\.?/gi, "groupe scolaire"],
+    [/\bscol\b\.?/gi, "scolaire"],
+    [/\bbibiliotheque|bibliotheque\b/gi, "bibliothèque"],
+    [/\bcollege\b/gi, "collège"],
+    [/\blycee\b/gi, "lycée"],
+    [/\bmairie\b/gi, "mairie"],
+    [/\bgymnase\b/gi, "gymnase"],
+  ];
+  let s = raw.trim().replace(/\s+/g, " ");
+  for (const [re, rep] of abbr) s = s.replace(re, rep);
+  const small = new Set(["de", "du", "des", "la", "le", "les", "l", "d", "et", "à", "au", "aux", "sur", "en"]);
+  const lowerWords = new Set(["école", "maternelle", "primaire", "élémentaire", "groupe", "scolaire", "bibliothèque", "collège", "lycée", "salle", "salles", "mairie", "gymnase", "centre", "espace", "maison", "rencontres"]);
+  s = s
+    .split(" ")
+    .map((w, i) => {
+      const lw = w.toLowerCase();
+      if (i > 0 && (small.has(lw) || lowerWords.has(lw))) return lw;
+      if (/^[a-z]$/i.test(w)) return w.toUpperCase();
+      return lw.charAt(0).toUpperCase() + lw.slice(1);
+    })
+    .join(" ")
+    .replace(/\b([ld]) ([A-ZÉÈ])/g, "$1'$2");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 export interface BvRow {
   bv: string;
@@ -188,7 +224,11 @@ export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, 
   });
   const sorted = [...withPot].sort((a, b) => b.potentiel - a.potentiel);
   const n = sorted.length;
-  return sorted.map((b, i) => ({ ...b, priorite: (i < Math.ceil(n / 3) ? 1 : i < Math.ceil((2 * n) / 3) ? 2 : 3) as 1 | 2 | 3 }));
+  // Priorité 1 resserrée (au plus 4 bureaux, un quart des bureaux) pour rester actionnable ;
+  // priorité 2 jusqu'à la moitié des bureaux.
+  const p1 = Math.max(1, Math.min(4, Math.ceil(n / 4)));
+  const p2 = Math.max(p1, Math.ceil(n / 2));
+  return sorted.map((b, i) => ({ ...b, priorite: (i < p1 ? 1 : i < p2 ? 2 : 3) as 1 | 2 | 3 }));
 }
 
 /** Performance d'une famille dans la commune rapportée au département (% des exprimés). */

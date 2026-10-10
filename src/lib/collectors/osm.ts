@@ -140,6 +140,7 @@ export function toFeatures(elements: OverpassElement[]): GeoJSON.Feature<GeoJSON
         group: cat.group,
         name: e.tags.name ?? cat.label,
         opening_hours: e.tags.opening_hours ?? null,
+        shop: e.tags.shop ?? null,
         color: GROUP_COLORS[cat.group],
       },
     });
