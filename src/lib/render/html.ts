@@ -4,7 +4,7 @@ import { isSmallSample } from "../analysis/stats";
 import { fmtDate, fmtValue } from "../format";
 import type { Block, DataTable, Finding, Indicator, Report, SourceRef } from "../types";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "./svg";
-import { cellText, Citations, sourceLabel } from "./cite";
+import { cellText, Citations, inlineParts, sourceLabel } from "./cite";
 
 export { cellText, Citations, sourceLabel };
 
@@ -21,18 +21,25 @@ export const esc = (s: unknown) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
+/** Texte échappé, avec `**gras**` et retours à la ligne. */
+export const inline = (s: unknown) =>
+  inlineParts(String(s ?? ""))
+    .map((p) => (p.bold ? `<strong>${esc(p.text)}</strong>` : esc(p.text)))
+    .join("")
+    .replace(/\n/g, "<br>");
+
 const LEVEL_LABEL: Record<string, string> = { commune: "Commune", epci: "Intercommunalité", departement: "Département", region: "Région", france: "France", bureau_vote: "Bureau de vote" };
 
 function tableHtml(t: DataTable, cit: Citations) {
   const refs = t.sources.map((s) => cit.cite(s));
   const rowUnit = (r: Record<string, string | number | null>) => (r.unite as string | undefined) ?? undefined;
-  return `<figure class="tbl"><figcaption>${esc(t.title)}</figcaption><table><thead><tr>${t.columns.map((c) => `<th class="${c.align === "right" ? "r" : ""}">${esc(c.label)}</th>`).join("")}</tr></thead><tbody>${t.rows
+  return `<figure class="tbl"><figcaption>${esc(t.title)}</figcaption><table><thead><tr>${t.columns.map((c) => `<th class="${c.align === "right" ? "r" : ""}${c.wide ? " w" : ""}">${esc(c.label)}</th>`).join("")}</tr></thead><tbody>${t.rows
     .map(
-      (r) =>
-        `<tr>${t.columns
+      (r, i) =>
+        `<tr${t.highlight?.includes(i) ? ' class="hl"' : ""}>${t.columns
           .map((c) => {
             const unit = c.unit ?? (c.key !== "indicateur" && c.key !== "annee" ? rowUnit(r) : undefined);
-            return `<td class="${c.align === "right" ? "r" : ""}">${esc(cellText(r[c.key], unit))}</td>`;
+            return `<td class="${c.align === "right" ? "r" : ""}">${inline(cellText(r[c.key], unit))}</td>`;
           })
           .join("")}</tr>`,
     )
@@ -75,15 +82,29 @@ function comparisonHtml(r: Report, ids: string[], title: string | undefined, cit
     .join("")}</tbody></table><div class="src">n.d. : non disponible. Les numéros renvoient à la bibliographie des sources.</div></figure>`;
 }
 
+export function selectFindings(r: Report, b: Extract<Block, { type: "findings" }>) {
+  if (b.ids) return b.ids.map((id) => r.findings.find((f) => f.id === id)).filter((f): f is Finding => !!f);
+  return r.findings.filter((f) => (!b.kinds || b.kinds.includes(f.kind)) && (!b.themes || b.themes.includes(f.theme)));
+}
+
+const refsHtml = (refs: number[]) => (refs.length ? ` <span class="refs">${refs.map((n) => `[${n}]`).join("")}</span>` : "");
+
+function findingRefs(r: Report, f: { evidence?: string[] }, cit: Citations) {
+  return [...new Set((f.evidence ?? []).map((e) => r.indicators.find((i) => `${i.id}@${i.geo.level}:${i.geo.code}` === e)).filter(Boolean).map((i) => cit.cite(i!.source)))];
+}
+
 function findingsHtml(r: Report, b: Extract<Block, { type: "findings" }>, cit: Citations) {
-  const fs = r.findings.filter((f) => (!b.kinds || b.kinds.includes(f.kind)) && (!b.themes || b.themes.includes(f.theme)));
+  const fs = selectFindings(r, b);
   if (!fs.length) return b.title ? `<h4>${esc(b.title)}</h4><p class="muted">Aucun élément relevé automatiquement.</p>` : "";
+  if (b.style === "prose")
+    return `${b.title ? `<h4>${esc(b.title)}</h4>` : ""}${fs
+      .map((f) => `<p class="prose${f.kind === "hypothese" ? " hyp" : ""}">${f.kind === "hypothese" ? '<span class="hyp-l">Hypothèse</span> ' : ""}${inline(f.text)}${refsHtml(findingRefs(r, f, cit))}</p>`)
+      .join("")}`;
   return `${b.title ? `<h4>${esc(b.title)}</h4>` : ""}<ul class="findings">${fs.map((f) => findingLi(r, f, cit)).join("")}</ul>`;
 }
 
 function findingLi(r: Report, f: Finding, cit: Citations) {
-  const refs = [...new Set(f.evidence.map((e) => r.indicators.find((i) => `${i.id}@${i.geo.level}:${i.geo.code}` === e)).filter(Boolean).map((i) => cit.cite(i!.source)))];
-  return `<li class="f-${f.kind}"><span class="tag">${esc(KIND_LABELS[f.kind])}</span> ${esc(f.text)}${refs.length ? ` <span class="refs">${refs.map((n) => `[${n}]`).join("")}</span>` : ""}</li>`;
+  return `<li class="f-${f.kind}"><span class="tag">${esc(KIND_LABELS[f.kind])}</span> ${inline(f.text)}${refsHtml(findingRefs(r, f, cit))}</li>`;
 }
 
 function missingHtml(r: Report, themes: string[]) {
@@ -96,7 +117,7 @@ export function blockHtml(r: Report, b: Block, cit: Citations): string {
   switch (b.type) {
     case "paragraph": {
       const refs = [...new Set((b.evidence ?? []).map((e) => r.indicators.find((i) => `${i.id}@${i.geo.level}:${i.geo.code}` === e)).filter(Boolean).map((i) => cit.cite(i!.source)))];
-      return `<p>${esc(b.text)}${refs.length ? ` <span class="refs">${refs.map((n) => `[${n}]`).join("")}</span>` : ""}</p>`;
+      return `<p>${inline(b.text)}${refsHtml(refs)}</p>`;
     }
     case "kpis":
       return kpisHtml(r, b.indicatorIds, cit);
@@ -122,14 +143,34 @@ export function blockHtml(r: Report, b: Block, cit: Citations): string {
       const s: SourceRef = { id: "svgmaps", name: SOURCES.svgmaps.name, url: SOURCES.svgmaps.homepage, retrievedAt: r.createdAt };
       return `<figure class="map locator"><figcaption>Localisation du département ${esc(r.commune.departement.nom)} en France métropolitaine</figcaption>${locatorSvg(r.commune.departement.code, r.commune.departement.nom)}<div class="src">Fond : [${cit.cite(s)}] (CC BY 4.0)</div></figure>`;
     }
+    case "mapPair": {
+      const ms = b.mapIds.map((id) => r.maps.find((x) => x.id === id)).filter((m): m is NonNullable<typeof m> => !!m);
+      if (!ms.length) return "";
+      const srcs = [...new Map(ms.flatMap((m) => m.layers.map((l) => [l.source.id + l.source.url, l.source] as const))).values()];
+      return `<figure class="map pair"><figcaption>${esc(b.title ?? ms.map((m) => m.title).join(" / "))}</figcaption><div class="pair-grid">${ms
+        .map((m) => `<div><div class="pair-t">${esc(m.period ?? m.title)}</div>${mapSvg(m, 420, 470)}</div>`)
+        .join("")}</div><div class="src">Sources : ${srcs.map((s) => `[${cit.cite(s)}]`).join(" ")}${ms[0].note ? ` — ${esc(ms[0].note)}` : ""}</div></figure>`;
+    }
     case "note":
-      return `<div class="note">${esc(b.text)}</div>`;
+      return `<div class="note">${inline(b.text)}</div>`;
+    case "callout":
+      return `<div class="callout ${b.tone ?? "info"}">${b.title ? `<div class="callout-t">${esc(b.title)}</div>` : ""}${inline(b.text)}</div>`;
+    case "heading":
+      return `<h3 class="fh">${esc(b.text)}</h3>`;
+    case "glance":
+      return `<div class="glance">${b.items
+        .map((i) => `<div class="gl ${i.tone ?? "neutral"}"><div class="gl-v">${esc(i.value)}</div><div class="gl-l">${esc(i.label)}</div>${i.detail ? `<div class="gl-d">${esc(i.detail)}</div>` : ""}</div>`)
+        .join("")}</div>`;
+    case "actions":
+      return `${b.title ? `<h4>${esc(b.title)}</h4>` : ""}<div class="actions">${b.groups
+        .map((g) => `<div class="ag"><div class="ag-t">${esc(g.title)}${g.hint ? ` <span class="ag-h">(${esc(g.hint)})</span>` : ""} :</div><ul>${g.items.map((i) => `<li>${inline(i)}</li>`).join("")}</ul></div>`)
+        .join("")}</div>`;
     case "missing":
       return missingHtml(r, b.themes);
     case "findings":
       return findingsHtml(r, b, cit);
     case "list":
-      return `${b.title ? `<h4>${esc(b.title)}</h4>` : ""}<ul class="list">${b.items.map((i) => `<li>${esc(i.text)}${i.url ? ` — <a href="${esc(i.url)}">${esc(i.url)}</a>` : ""}</li>`).join("")}</ul>`;
+      return `${b.title ? `<h4>${esc(b.title)}</h4>` : ""}<ul class="list">${b.items.map((i) => `<li>${inline(i.text)}${refsHtml(findingRefs(r, i, cit))}${i.url ? ` — <a href="${esc(i.url)}">${esc(i.url)}</a>` : ""}</li>`).join("")}</ul>`;
   }
 }
 
@@ -164,6 +205,10 @@ th { text-align: left; background: #f3f6fb; color: #0b0b0b; font-weight: 600; pa
 td { padding: 1.3mm 2mm; border-bottom: 1px solid #eeeeec; vertical-align: top; }
 tr { break-inside: avoid; }
 .r { text-align: right; font-variant-numeric: tabular-nums; }
+td.r { white-space: nowrap; }
+th.w { min-width: 30mm; }
+figure.tbl { break-inside: auto; }
+figure.tbl figcaption { break-after: avoid; }
 .lvl { font-weight: 400; color: #8a8984; font-size: 7.5pt; }
 sup { color: #8a8984; font-size: 6.5pt; margin-left: .5mm; }
 .src { font-size: 7.8pt; color: #52514e; margin-top: 1.5mm; }
@@ -184,14 +229,51 @@ ul.list li { margin: 1mm 0; }
 .biblio li { margin: 1.2mm 0; font-size: 8.8pt; }
 .runs td { font-size: 8pt; }
 .ok { color: #0b6b47; } .ko { color: #a12a29; } .wa { color: #8a5300; }
+strong { font-weight: 700; }
+tr.hl td { font-weight: 600; background: #f7f9fc; }
+tr.hl td strong { font-weight: 800; }
+/* ---- Fiche d'action (modèle « Développement territorial ») ---- */
+.fiche-head { border-bottom: 2px solid #0b0b0b; padding-bottom: 3mm; margin-bottom: 5mm; }
+.fiche-k { font-size: 8.5pt; letter-spacing: .1em; text-transform: uppercase; color: #52514e; font-weight: 600; }
+.fiche-pc { font-size: 11pt; font-weight: 700; text-decoration: underline; text-underline-offset: 1.2mm; margin-top: 4mm; }
+.fiche-head h1 { font-size: 24pt; color: #0b0b0b; margin: 1mm 0 1mm; }
+.fiche-sub { font-size: 10.5pt; color: #2c2b29; }
+.fiche-meta { font-size: 8.5pt; color: #8a8984; margin-top: 1mm; }
+h3.fh { font-size: 12.5pt; font-weight: 700; color: #0b0b0b; margin: 7mm 0 3mm; padding-left: 2.5mm; border-left: 1.2mm solid #c0503a; break-after: avoid; }
+.callout { border: 1px solid #0b0b0b; padding: 3mm 4mm; margin: 3mm 0 4mm; font-size: 9.8pt; break-inside: avoid; text-align: left; }
+.callout.warning { border-width: 1.5px; background: #fff; }
+.callout.accent { border-color: #c0503a; background: #fdf6f3; }
+.callout.info { border-color: #b7d3f6; background: #f3f7fd; }
+.callout-t { font-weight: 700; margin-bottom: 1mm; }
+.glance { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin: 4mm 0 3mm; break-inside: avoid; }
+.gl { border: 1px solid #e7e6e2; border-radius: 2mm; padding: 2.5mm 3mm; border-top: 1mm solid #c3c2b7; }
+.gl.up { border-top-color: #c0503a; } .gl.down { border-top-color: #3f6fb0; }
+.gl-v { font-size: 15pt; font-weight: 700; font-variant-numeric: tabular-nums; }
+.gl-l { font-size: 8.8pt; font-weight: 600; }
+.gl-d { font-size: 7.8pt; color: #52514e; }
+p.prose { text-align: left; }
+p.prose.hyp { color: #2c2b29; }
+.hyp-l { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #4a3aa7; background: #f1eefc; padding: .3mm 1.4mm; border-radius: 1.2mm; }
+.actions { margin: 2mm 0 4mm; }
+.ag { margin: 0 0 3mm; break-inside: avoid; }
+.ag-t { font-weight: 700; }
+.ag-h { font-weight: 400; color: #52514e; }
+.ag ul { margin: 1mm 0 0; padding-left: 6mm; }
+.ag li { margin: .8mm 0; }
+.pair-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+.pair-t { font-size: 9pt; font-weight: 600; color: #52514e; margin-bottom: 1mm; }
+.fiche section { break-before: auto; }
+.fiche section.fiche-src { break-before: page; }
+.fiche-src .biblio li { font-size: 7.8pt; }
 `;
 
 export function renderReportHtml(r: Report, opts: { standalone?: boolean; sectionIds?: string[] } = {}): string {
   const cit = new Citations();
   const sections = opts.sectionIds ? r.sections.filter((s) => opts.sectionIds!.includes(s.id)) : r.sections;
   // Le corps est rendu en premier pour numéroter les sources dans l'ordre d'apparition.
-  const body = sections
-    .map((s) => `<section class="part" id="part-${s.id}"><h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>${s.blocks.map((b) => blockHtml(r, b, cit)).join("\n")}</section>`)
+  const body = opts.sectionIds
+    ? ""
+    : sections.map((s) => `<section class="part" id="part-${s.id}"><h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>${s.blocks.map((b) => blockHtml(r, b, cit)).join("\n")}</section>`)
     .join("\n");
   const statusClass = (s: string) => (s === "ok" || s === "cache" ? "ok" : s === "failed" ? "ko" : "wa");
   const STATUS_FR: Record<string, string> = { ok: "Réussi", cache: "Cache", stale: "Cache périmé", partial: "Partiel", failed: "Échec", skipped: "Non exécuté" };
@@ -224,14 +306,16 @@ ${r.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
 <div class="toc"><h3>Sommaire</h3><ul style="list-style:none;padding-left:0">${r.sections.map((s) => `<li>${s.letter ? `<strong>${s.letter}.</strong> ` : "★ "}${esc(s.title)}</li>`).join("")}</ul><p>Annexe : méthodologie, journal de collecte et bibliographie.</p></div>
 <div class="meta">Code INSEE ${esc(r.commune.code)} · Généré le ${esc(fmtDate(r.updatedAt))} (version ${r.version}) · Identifiant ${esc(r.id)}<br>Fraîcheur des données : ${esc(freshness(r))}</div></section>`;
 
-  // Version courte (fiche d'action) : en-tête compact, corps, bibliographie seule.
+  // Version courte (fiche d'action) : en-tête sur le modèle des fiches « Développement
+  // territorial », corps sans titre de partie, sources en petit corps.
   if (opts.sectionIds) {
-    const head = `<div class="kicker" style="font-size:9pt;letter-spacing:.08em;text-transform:uppercase;color:#52514e">Fiche d'action</div><h1 style="font-size:20pt;margin:0 0 2mm">${esc(r.commune.nom)}</h1><div style="color:#52514e;margin-bottom:4mm">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}) · ${esc(r.commune.region.nom)}${r.commune.epci ? ` · ${esc(r.commune.epci.nom)}` : ""} · généré le ${esc(fmtDate(r.updatedAt))}</div>`;
-    const biblio = `<section class="part"><h2>Sources</h2><ol class="biblio">${cit
+    const head = `<header class="fiche-head"><div class="fiche-k">Développement territorial · Fiche d'action</div><div class="fiche-pc">Proposition de ciblage</div><h1>${esc(r.commune.nom)}</h1><div class="fiche-sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}) · ${esc(r.commune.region.nom)}${r.commune.epci ? ` · ${esc(r.commune.epci.nom)}` : ""}</div><div class="fiche-meta">Code INSEE ${esc(r.commune.code)} · généré le ${esc(fmtDate(r.updatedAt))} · version ${r.version}</div></header>`;
+    const shortBody = sections.map((s) => `<section id="part-${s.id}">${s.id === "LFI" ? "" : `<h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>`}${s.blocks.map((b) => blockHtml(r, b, cit)).join("\n")}</section>`).join("\n");
+    const biblio = `<section class="part fiche-src"><h2>Sources</h2><ol class="biblio">${cit
       .all()
       .map((s) => `<li>${esc(sourceLabel(s))}. Consulté le ${esc(fmtDate(s.retrievedAt))}. <a href="${esc(s.url)}">${esc(s.url.length > 140 ? s.url.slice(0, 137) + "…" : s.url)}</a></li>`)
       .join("")}</ol></section>`;
-    const short = `${head}${body.replace('<section class="part"', '<section')}${biblio}`;
+    const short = `<div class="fiche">${head}${shortBody}${biblio}</div>`;
     if (opts.standalone === false) return short;
     return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Fiche d'action — ${esc(r.commune.nom)}</title><style>${REPORT_CSS}</style></head><body>${short}</body></html>`;
   }

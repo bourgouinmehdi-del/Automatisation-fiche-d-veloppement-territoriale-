@@ -75,3 +75,21 @@ describe("séries et classes", () => {
     expect(haversineKm([2.3522, 48.8566], [4.8357, 45.764])).toBeCloseTo(392, -1);
   });
 });
+
+describe("rendu", () => {
+  it("les graduations couvrent la valeur maximale", async () => {
+    const { niceTicks } = await import("@/lib/render/svg");
+    const t = niceTicks(0, 19.7);
+    expect(t[t.length - 1]).toBeGreaterThanOrEqual(19.7);
+    expect(niceTicks(0, 20).at(-1)).toBe(20);
+  });
+  it("balisage **gras**", async () => {
+    const { inlineParts, stripMarks } = await import("@/lib/render/cite");
+    expect(inlineParts("a **b** c")).toEqual([
+      { text: "a ", bold: false },
+      { text: "b", bold: true },
+      { text: " c", bold: false },
+    ]);
+    expect(stripMarks("2 809 **(9,8 %)**")).toBe("2 809 (9,8 %)");
+  });
+});

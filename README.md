@@ -85,13 +85,16 @@ Produit `<id>.pdf`, `.docx`, `.html`, `.json`, `-indicateurs.csv`, `-series.csv`
 
 ## 2 bis. Fiche d'action — approche LFI
 
-Chaque rapport commence par une **fiche d'action** inspirée du document de référence « PEE · Développement territorial » :
+Chaque rapport commence par une **fiche d'action** rédigée sur le modèle des fiches « PEE · Développement territorial » (une « proposition de ciblage » par territoire) :
 
-1. **Profil sociodémographique** : puces comparant la commune au département (revenu médian, pauvreté, HLM, âges, CSP, chômage, pôle d'emploi) et tableau comparatif commune / EPCI / département / région / France.
-2. **Profil politique** : tableau *Inscrits (2024) · LFI (P22) · LFI (E24) · Parrains · Abstention 2022 · Abstention 2024* (voix et % des inscrits), pour la commune, les bureaux prioritaires et la moyenne départementale ; surperformance par rapport aux communes de taille comparable du département ; évolution de l'abstention entre scrutins ; forces de gauche et RN comparées au département.
-3. **Où** : analyse **par bureau de vote** (européennes 2024, appariée à la présidentielle 2022), carte, classement et profil de chaque bureau (vote LFI élevé / forte abstention…).
-4. **Pourquoi** : hypothèses explicites, reliées aux indicateurs (pauvreté, jeunesse, logement social, écarts entre quartiers) — toujours à confirmer sur le terrain.
-5. **Comment** : actions recommandées — porte-à-porte dans les bureaux prioritaires (avec les écoles proches comme repères), mobilisation des abstentionnistes, marchés (horaires OpenStreetMap), gares (fréquentation SNCF), supermarchés, sorties de collèges et lycées ; tableau des lieux d'action avec le bureau le plus proche ; encadré d'accessibilité.
+0. **Avertissement et « en bref »** : encadré rappelant que le ciblage doit être confronté au terrain ; chiffres clés comparés au département (habitants, pauvreté, vote LFI, abstention, parrains pour 100 voix LFI, bureaux prioritaires) ; atout principal, difficulté principale, bureaux où agir en priorité, lieux de passage.
+1. **Profil sociodémographique du territoire** : puces rédigées, chiffres clés en gras, qui ne développent que les **écarts significatifs** au département (pauvreté, HLM, âge, CSP, chômage, diplôme, pôle d'emploi, ménages sans voiture, services) ; les indicateurs proches de la moyenne sont regroupés en une seule puce. Tableau comparatif commune / EPCI / département / région / France et répartition par âge comparée à la France.
+2. **Profil politique du territoire** : encadré « implantation militante » (groupes d'action), surperformance par rapport aux communes comparables, ratio parrains / voix, tableau *Inscrits (2024) · LFI (P22) · LFI (E24) · Parrains · Abstention 2022 · Abstention 2024* (voix et **% des inscrits**), abstention et scrutins intermédiaires, forces de gauche et RN comparées au département.
+3. **Où agir** : cartes **vote LFI / participation par bureau côte à côte** (palette divergente bleu → rouge), part des voix LFI concentrée dans les bureaux prioritaires, classement des bureaux.
+4. **Pourquoi** : hypothèses explicites, reliées aux indicateurs — toujours à confirmer sur le terrain.
+5. **Actions recommandées**, regroupées comme dans les fiches de référence : porte-à-porte (bureaux prioritaires, adresse du lieu de vote), abstentionnistes et inscription, marchés (horaires OpenStreetMap), gares (fréquentation SNCF), supermarchés, sorties de collèges et lycées, implantation ; encadré d'accessibilité et tableau des lieux d'action avec le bureau le plus proche.
+
+Les textes acceptent une mise en évidence minimale (`**gras**`), rendue dans l'interface, le PDF et le DOCX, et retirée des exports CSV.
 
 **Export court** : bouton « PDF fiche d'action » (ou `…/export/pdf?fiche=1`, et `<id>-fiche-action.pdf` en ligne de commande) — la fiche d'action seule, quelques pages, comme le document de référence.
 

@@ -1,28 +1,58 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import type { Block, Indicator, Report } from "@/lib/types";
+import type { Block, Finding, Indicator, Report } from "@/lib/types";
 import type { SourceInfo } from "@/lib/collectors/catalog";
 import { KIND_LABELS } from "@/lib/analysis/findings";
 import { isSmallSample } from "@/lib/analysis/stats";
 import { fmtDate, fmtValue } from "@/lib/format";
-import { cellText, Citations, sourceLabel } from "@/lib/render/cite";
+import { cellText, Citations, inlineParts, sourceLabel } from "@/lib/render/cite";
 import ChartView from "./ChartView";
 
-const MapView = dynamic(() => import("./MapView"), { ssr: false, loading: () => <div className="h-[460px] animate-pulse rounded-lg bg-[#eeeeec]" /> });
+const MapView = dynamic(() => import("./MapView"), { ssr: false, loading: () => <div className="h-[420px] animate-pulse rounded-lg bg-[#eeeeec]" /> });
 
 const LEVEL: Record<string, string> = { commune: "Commune", epci: "Intercommunalité", departement: "Département", region: "Région", france: "France" };
 const STATUS_FR: Record<string, string> = { ok: "Réussi", cache: "Cache", stale: "Cache périmé", partial: "Partiel", failed: "Échec", skipped: "Non exécuté" };
 
+/** Texte avec mise en évidence `**gras**` et retours à la ligne. */
+function Rich({ text }: { text: string }) {
+  return (
+    <>
+      {text.split("\n").map((line, li) => (
+        <Fragment key={li}>
+          {li > 0 && <br />}
+          {inlineParts(line).map((p, i) => (p.bold ? <strong key={i}>{p.text}</strong> : <Fragment key={i}>{p.text}</Fragment>))}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 export default function ReportView({ report: r, locator, freshness, catalog }: { report: Report; locator: string | null; freshness: string; catalog: Record<string, SourceInfo> }) {
   const [showSources, setShowSources] = useState(false);
   const [regen, setRegen] = useState(false);
+  const [active, setActive] = useState<string>(r.sections[0]?.id ?? "");
   // Numérotation des sources dans l'ordre d'apparition (identique à l'export PDF).
   const cit = useMemo(() => new Citations(), []);
   const ev = (e: string) => r.indicators.find((i) => `${i.id}@${i.geo.level}:${i.geo.code}` === e);
   const refs = (evidence: string[] = []) => [...new Set(evidence.map(ev).filter(Boolean).map((i) => cit.cite(i!.source)))];
   const failed = r.runs.filter((x) => x.status === "failed");
+  const hasFiche = r.sections.some((s) => s.id === "LFI");
+
+  // Partie visible (surbrillance dans la navigation).
+  useEffect(() => {
+    const els = r.sections.map((s) => document.getElementById(`part-${s.id}`)).filter((e): e is HTMLElement => !!e);
+    const io = new IntersectionObserver(
+      (entries) => {
+        const vis = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (vis) setActive(vis.target.id.replace(/^part-/, ""));
+      },
+      { rootMargin: "-10% 0px -70% 0px" },
+    );
+    els.forEach((e) => io.observe(e));
+    return () => io.disconnect();
+  }, [r.sections]);
 
   async function regenerate() {
     setRegen(true);
@@ -33,17 +63,65 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
 
   const exp = (f: string, extra = "") => `/api/reports/${r.id}/export/${f}${extra}`;
 
+  const findingsOf = (b: Extract<Block, { type: "findings" }>): Finding[] =>
+    b.ids ? b.ids.map((id) => r.findings.find((f) => f.id === id)).filter((f): f is Finding => !!f) : r.findings.filter((f) => (!b.kinds || b.kinds.includes(f.kind)) && (!b.themes || b.themes.includes(f.theme)));
+
   const renderBlock = (b: Block, key: number) => {
     switch (b.type) {
       case "paragraph": {
         const n = refs(b.evidence);
         return (
           <p key={key} className="mb-3 leading-relaxed">
-            {b.text}
+            <Rich text={b.text} />
             {n.length > 0 && <Refs n={n} onClick={() => setShowSources(true)} />}
           </p>
         );
       }
+      case "heading":
+        return (
+          <h3 key={key} className="fiche-h">
+            {b.text}
+          </h3>
+        );
+      case "callout":
+        return (
+          <div key={key} className={`callout callout-${b.tone ?? "info"}`}>
+            {b.title && <div className="mb-1 font-semibold">{b.title}</div>}
+            <Rich text={b.text} />
+          </div>
+        );
+      case "glance":
+        return (
+          <div key={key} className="my-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {b.items.map((i, k) => (
+              <div key={k} className={`glance glance-${i.tone ?? "neutral"}`}>
+                <div className="text-2xl font-bold tabular-nums">{i.value}</div>
+                <div className="text-sm font-semibold">{i.label}</div>
+                {i.detail && <div className="text-xs text-[var(--ink-2)]">{i.detail}</div>}
+              </div>
+            ))}
+          </div>
+        );
+      case "actions":
+        return (
+          <div key={key} className="my-4 grid gap-3 md:grid-cols-2">
+            {b.groups.map((g, k) => (
+              <div key={k} className={`action-card ${k === 0 && g.hint === "priorité" ? "md:col-span-2 action-card-prio" : ""}`}>
+                <div className="mb-1.5 font-semibold">
+                  {g.title}
+                  {g.hint && <span className="ml-1 font-normal text-[var(--ink-2)]">({g.hint})</span>}
+                </div>
+                <ul className="list-disc space-y-1 pl-5 text-sm">
+                  {g.items.map((i, j) => (
+                    <li key={j}>
+                      <Rich text={i} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        );
       case "kpis": {
         const items = b.indicatorIds
           .map((id) => r.indicators.find((i) => i.id === id && i.geo.level === r.focus.level && (r.focus.level !== "commune" || i.geo.code === r.commune.code)))
@@ -112,12 +190,12 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         if (!t) return null;
         return (
           <Figure key={key} title={t.title} src={t.sources.map((s) => cit.cite(s))} note={t.note} download={exp("table", `?id=${t.id}`)}>
-            <div className="max-h-[520px] overflow-auto">
+            <div className="max-h-[520px] overflow-auto rounded-lg border border-[var(--line)]">
               <table className="data">
                 <thead>
                   <tr>
                     {t.columns.map((c) => (
-                      <th key={c.key} className={c.align === "right" ? "r" : ""}>
+                      <th key={c.key} className={`${c.align === "right" ? "r" : ""} ${c.wide ? "min-w-[9rem]" : ""}`}>
                         {c.label}
                       </th>
                     ))}
@@ -125,10 +203,10 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
                 </thead>
                 <tbody>
                   {t.rows.map((row, i) => (
-                    <tr key={i}>
+                    <tr key={i} className={t.highlight?.includes(i) ? "hl" : ""}>
                       {t.columns.map((c) => (
                         <td key={c.key} className={c.align === "right" ? "r" : ""}>
-                          {cellText(row[c.key], c.unit ?? (c.key !== "indicateur" && c.key !== "annee" ? (row.unite as string | undefined) : undefined))}
+                          <Rich text={cellText(row[c.key], c.unit ?? (c.key !== "indicateur" && c.key !== "annee" ? (row.unite as string | undefined) : undefined))} />
                         </td>
                       ))}
                     </tr>
@@ -154,6 +232,33 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         const alternatives = m.group ? r.maps.filter((x) => x.group === m.group) : [m];
         return <MapBlock key={key} maps={alternatives} cite={(s) => cit.cite(s)} exp={exp} />;
       }
+      case "mapPair": {
+        const ms = b.mapIds.map((id) => r.maps.find((x) => x.id === id)).filter((m): m is NonNullable<typeof m> => !!m);
+        if (!ms.length) return null;
+        const srcs = [...new Map(ms.flatMap((m) => m.layers.map((l) => [l.source.id + l.source.url, l.source] as const))).values()];
+        return (
+          <figure key={key} className="my-5">
+            <figcaption className="mb-2 text-sm font-semibold">{b.title ?? ms.map((m) => m.title).join(" / ")}</figcaption>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {ms.map((m) => (
+                <div key={m.id}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="font-semibold text-[var(--ink-2)]">{m.period ?? m.title}</span>
+                    <span className="no-print flex gap-2">
+                      <a href={exp("map-png", `?id=${m.id}`)}>PNG</a>
+                      <a href={exp("geojson", `?id=${m.id}`)}>GeoJSON</a>
+                    </span>
+                  </div>
+                  <MapView map={m} height={380} />
+                </div>
+              ))}
+            </div>
+            <div className="mt-1 text-[11px] text-[var(--ink-2)]">
+              Sources : {srcs.map((s) => `[${cit.cite(s)}]`).join(" ")} · Fond de carte © contributeurs OpenStreetMap{ms[0].note ? ` — ${ms[0].note}` : ""}
+            </div>
+          </figure>
+        );
+      }
       case "locator":
         return locator ? (
           <Figure key={key} title={`Localisation du département ${r.commune.departement.nom}`} note="Fond : @svg-maps/france.departments (CC BY 4.0).">
@@ -163,7 +268,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
       case "note":
         return (
           <div key={key} className="my-3 rounded-lg bg-[#f6f6f4] p-3 text-sm text-[var(--ink-2)]">
-            {b.text}
+            <Rich text={b.text} />
           </div>
         );
       case "missing": {
@@ -183,19 +288,32 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         );
       }
       case "findings": {
-        const fs = r.findings.filter((f) => (!b.kinds || b.kinds.includes(f.kind)) && (!b.themes || b.themes.includes(f.theme)));
+        const fs = findingsOf(b);
         if (!fs.length && !b.title) return null;
+        if (b.style === "prose")
+          return (
+            <div key={key} className="my-3 space-y-3">
+              {b.title && <h4 className="font-semibold text-[var(--accent)]">{b.title}</h4>}
+              {fs.map((f) => (
+                <p key={f.id} className="leading-relaxed">
+                  {f.kind === "hypothese" && <span className="tag tag-hypothese">Hypothèse</span>}
+                  <Rich text={f.text} />
+                  {refs(f.evidence).length > 0 && <Refs n={refs(f.evidence)} onClick={() => setShowSources(true)} />}
+                </p>
+              ))}
+            </div>
+          );
         return (
           <div key={key} className="my-4">
             {b.title && <h4 className="mb-2 font-semibold text-[var(--accent)]">{b.title}</h4>}
             {fs.length === 0 ? (
               <p className="text-sm text-[var(--muted)]">Aucun élément relevé automatiquement.</p>
             ) : (
-              <ul className="divide-y divide-[#f0efec]">
+              <ul className="space-y-1.5">
                 {fs.map((f) => (
-                  <li key={f.id} className="py-1.5 text-sm">
+                  <li key={f.id} className={`finding finding-${f.kind} text-sm`}>
                     <span className={`tag tag-${f.kind}`}>{KIND_LABELS[f.kind]}</span>
-                    {f.text}
+                    <Rich text={f.text} />
                     {refs(f.evidence).length > 0 && <Refs n={refs(f.evidence)} onClick={() => setShowSources(true)} />}
                   </li>
                 ))}
@@ -208,10 +326,11 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         return (
           <div key={key} className="my-4">
             {b.title && <h4 className="mb-2 font-semibold text-[var(--accent)]">{b.title}</h4>}
-            <ul className="list-disc space-y-1 pl-5 text-sm">
+            <ul className="list-disc space-y-1.5 pl-5 leading-relaxed">
               {b.items.map((i, k) => (
                 <li key={k}>
-                  {i.text}
+                  <Rich text={i.text} />
+                  {refs(i.evidence).length > 0 && <Refs n={refs(i.evidence)} onClick={() => setShowSources(true)} />}
                   {i.url && (
                     <>
                       {" — "}
@@ -229,15 +348,26 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
   };
 
   // Rendu des sections avant la liste des sources pour une numérotation cohérente.
-  const sections = r.sections.map((s) => (
-    <section key={s.id} id={`part-${s.id}`} className="card mb-6 scroll-mt-4 p-5 md:p-7">
-      <h2 className="mb-4 border-b-2 border-[#2a78d6] pb-2 text-xl font-bold text-[var(--accent-strong)]">
-        {s.letter ? `${s.letter}. ` : ""}
-        {s.title}
-      </h2>
-      {s.blocks.map(renderBlock)}
-    </section>
-  ));
+  const sections = r.sections.map((s) =>
+    s.id === "LFI" ? (
+      <section key={s.id} id={`part-${s.id}`} className="card fiche mb-8 scroll-mt-20 overflow-hidden">
+        <div className="fiche-band">
+          <div className="text-[11px] font-semibold uppercase tracking-[.12em] opacity-80">Développement territorial · fiche d&apos;action</div>
+          <div className="mt-3 inline-block border-b-2 border-white/70 pb-0.5 text-sm font-semibold">Proposition de ciblage</div>
+          <div className="mt-1 text-3xl font-bold">{r.commune.nom}</div>
+        </div>
+        <div className="p-5 md:p-8">{s.blocks.map(renderBlock)}</div>
+      </section>
+    ) : (
+      <section key={s.id} id={`part-${s.id}`} className="card mb-6 scroll-mt-20 p-5 md:p-7">
+        <h2 className="mb-4 border-b-2 border-[#2a78d6] pb-2 text-xl font-bold text-[var(--accent-strong)]">
+          {s.letter ? `${s.letter}. ` : ""}
+          {s.title}
+        </h2>
+        {s.blocks.map(renderBlock)}
+      </section>
+    ),
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
@@ -253,32 +383,29 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
             Version {r.version} générée le {fmtDate(r.updatedAt)} · Fraîcheur : {freshness}
           </div>
         </div>
-        <div className="no-print flex flex-wrap gap-2">
-          {r.sections.some((s) => s.id === "LFI") && (
+        <div className="no-print flex flex-wrap items-center gap-2">
+          {hasFiche && (
             <a className="btn btn-primary" href={exp("pdf", "?fiche=1")}>
               PDF fiche d&apos;action
             </a>
           )}
-          <a className="btn btn-primary" href={exp("pdf")}>
+          <a className={`btn ${hasFiche ? "" : "btn-primary"}`} href={exp("pdf")}>
             PDF complet
           </a>
-          <a className="btn" href={exp("docx")}>
-            DOCX
-          </a>
-          <a className="btn" href={exp("csv")}>
-            CSV indicateurs
-          </a>
-          <a className="btn" href={exp("series")}>
-            CSV séries
-          </a>
-          <a className="btn" href={exp("json")}>
-            JSON
-          </a>
+          <details className="menu">
+            <summary className="btn">Autres formats ▾</summary>
+            <div className="menu-list">
+              <a href={exp("docx")}>Word (DOCX)</a>
+              <a href={exp("csv")}>CSV des indicateurs</a>
+              <a href={exp("series")}>CSV des séries</a>
+              <a href={exp("json")}>JSON complet</a>
+            </div>
+          </details>
           <button className="btn" onClick={() => setShowSources((v) => !v)}>
-            Sources et méthodologie
+            Sources
           </button>
           <button className="btn" onClick={regenerate} disabled={regen} title="Relance la collecte ; les données encore valides en cache ne sont pas retéléchargées">
-            {regen ? "…" : "Régénérer"}
+            {regen ? "Relance…" : "Régénérer"}
           </button>
         </div>
       </div>
@@ -299,19 +426,26 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
-        <nav className="no-print lg:sticky lg:top-4 lg:self-start">
-          <ol className="card space-y-1 p-3 text-sm">
+      <div className="grid gap-6 lg:grid-cols-[230px_1fr]">
+        <nav className="no-print lg:sticky lg:top-4 lg:self-start" aria-label="Parties du rapport">
+          <ol className="card space-y-0.5 p-2 text-sm">
             {r.sections.map((s) => (
               <li key={s.id}>
-                <a href={`#part-${s.id}`} className="block rounded px-2 py-1 text-[var(--ink)] no-underline hover:bg-[var(--accent-soft)]">
-                  {s.letter && <span className="font-semibold text-[var(--accent)]">{s.letter}.</span>} {s.title}
+                <a href={`#part-${s.id}`} className={`nav-link ${active === s.id ? "nav-active" : ""} ${s.id === "LFI" ? "nav-fiche" : ""}`}>
+                  {s.id === "LFI" ? (
+                    <>Fiche d&apos;action</>
+                  ) : (
+                    <>
+                      <span className="w-4 shrink-0 font-semibold text-[var(--accent)]">{s.letter}</span>
+                      <span>{s.title}</span>
+                    </>
+                  )}
                 </a>
               </li>
             ))}
           </ol>
         </nav>
-        <div>{sections}</div>
+        <div className="min-w-0">{sections}</div>
       </div>
 
       {showSources && (

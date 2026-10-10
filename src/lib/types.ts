@@ -118,6 +118,8 @@ export interface TableColumn {
   label: string;
   unit?: Unit;
   align?: "left" | "right";
+  /** Colonne de texte à ne pas comprimer (libellés). */
+  wide?: boolean;
 }
 
 export interface DataTable {
@@ -128,6 +130,8 @@ export interface DataTable {
   rows: Record<string, string | number | null>[];
   sources: SourceRef[];
   note?: string;
+  /** Indices des lignes mises en évidence (ex. le territoire étudié). */
+  highlight?: number[];
 }
 
 export interface ChartSpec {
@@ -201,6 +205,10 @@ export interface Finding {
   weight: number;
 }
 
+/**
+ * Les textes des blocs acceptent une mise en évidence minimale : `**texte**`
+ * est rendu en gras (HTML, interface, DOCX) et retiré des exports CSV.
+ */
 export type Block =
   | { type: "paragraph"; text: string; evidence?: string[] }
   | { type: "kpis"; indicatorIds: string[] }
@@ -208,12 +216,26 @@ export type Block =
   | { type: "table"; tableId: string }
   | { type: "chart"; chartId: string }
   | { type: "map"; mapId: string }
-  | { type: "findings"; kinds?: FindingKind[]; themes?: ThemeId[]; title?: string }
+  /** Deux cartes côte à côte (ex. vote LFI / participation par bureau de vote). */
+  | { type: "mapPair"; mapIds: [string, string]; title?: string }
+  /**
+   * Constats. `ids` restreint à des constats précis ; `style: "prose"` les rend
+   * en paragraphes rédigés (sans étiquette), comme dans une fiche rédigée.
+   */
+  | { type: "findings"; kinds?: FindingKind[]; themes?: ThemeId[]; ids?: string[]; title?: string; style?: "tags" | "prose" }
   | { type: "note"; text: string }
+  /** Encadré (avertissement, implantation militante, accessibilité…). */
+  | { type: "callout"; text: string; title?: string; tone?: "warning" | "info" | "accent" }
+  /** Intertitre à l'intérieur d'une partie. */
+  | { type: "heading"; text: string }
+  /** Chiffres clés rédigés (valeur + comparaison). */
+  | { type: "glance"; items: { label: string; value: string; detail?: string; tone?: "up" | "down" | "neutral" }[] }
+  /** Actions regroupées par type de lieu (porte-à-porte, marchés, gares…). */
+  | { type: "actions"; title?: string; groups: { title: string; hint?: string; items: string[] }[] }
   | { type: "missing"; themes: ThemeId[] }
   /** Carte de localisation nationale (fond SVG embarqué, fonctionne hors ligne). */
   | { type: "locator" }
-  | { type: "list"; title?: string; items: { text: string; url?: string }[] };
+  | { type: "list"; title?: string; items: { text: string; url?: string; evidence?: string[] }[] };
 
 export interface Section {
   id: string;

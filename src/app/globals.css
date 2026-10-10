@@ -10,6 +10,8 @@
   --accent: #1c5cab;
   --accent-strong: #0d366b;
   --accent-soft: #eef5fd;
+  --fiche: #b4432f;
+  --fiche-soft: #fdf6f3;
 }
 
 html, body { background: var(--bg); color: var(--ink); }
@@ -32,7 +34,43 @@ table.data { width: 100%; border-collapse: collapse; font-size: .82rem; }
 table.data th { text-align: left; background: #f3f6fb; font-weight: 600; padding: .45rem .6rem; border-bottom: 1px solid #b7d3f6; vertical-align: bottom; }
 table.data td { padding: .4rem .6rem; border-bottom: 1px solid #eeeeec; vertical-align: top; }
 table.data td.r, table.data th.r { text-align: right; font-variant-numeric: tabular-nums; }
+table.data tr.hl td { font-weight: 600; background: #f7f9fc; }
+table.data thead th { position: sticky; top: 0; z-index: 1; }
 .leaflet-container { font-family: inherit; }
+
+/* Navigation */
+.nav-link { display: flex; gap: .4rem; border-radius: 6px; padding: .35rem .5rem; color: var(--ink); text-decoration: none; line-height: 1.3; }
+.nav-link:hover { background: var(--accent-soft); }
+.nav-active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.nav-fiche { font-weight: 700; color: var(--fiche); margin-bottom: .25rem; border: 1px solid #f0d6cc; background: var(--fiche-soft); }
+.nav-fiche.nav-active { background: #f9e3da; color: var(--fiche); }
+
+/* Menu d'exports */
+.menu { position: relative; }
+.menu > summary { list-style: none; cursor: pointer; }
+.menu > summary::-webkit-details-marker { display: none; }
+.menu-list { position: absolute; right: 0; top: calc(100% + 4px); z-index: 50; min-width: 13rem; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.08); padding: .35rem; }
+.menu-list a { display: block; padding: .45rem .6rem; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: .875rem; }
+.menu-list a:hover { background: var(--accent-soft); }
+
+/* Fiche d'action (modèle « Développement territorial ») */
+.fiche { border-color: #ead8d0; }
+.fiche-band { background: linear-gradient(120deg, #2b2a28, #44332d); color: #fff; padding: 1.4rem 2rem 1.3rem; }
+.fiche-h { margin: 2rem 0 .8rem; padding-left: .7rem; border-left: 4px solid var(--fiche); font-size: 1.15rem; font-weight: 700; line-height: 1.3; }
+.callout { margin: 1rem 0; padding: .85rem 1rem; border-radius: 8px; border: 1px solid; font-size: .92rem; line-height: 1.55; }
+.callout-warning { border-color: #2b2a28; border-width: 1.5px; background: #fff; }
+.callout-accent { border-color: #e4b7a6; background: var(--fiche-soft); }
+.callout-info { border-color: #b7d3f6; background: #f3f7fd; }
+.glance { border: 1px solid var(--line); border-top: 4px solid #c3c2b7; border-radius: 10px; padding: .7rem .85rem; background: #fff; }
+.glance-up { border-top-color: var(--fiche); }
+.glance-down { border-top-color: #3f6fb0; }
+.action-card { border: 1px solid var(--line); border-radius: 10px; padding: .85rem 1rem; background: #fcfcfb; }
+.action-card-prio { border-color: #e4b7a6; background: var(--fiche-soft); }
+.finding { border-left: 3px solid #d7dde6; padding: .3rem 0 .3rem .7rem; }
+.finding-atout { border-left-color: #1baf7a; }
+.finding-vigilance { border-left-color: #e34948; }
+.finding-hypothese { border-left-color: #6250d6; }
+.finding-piste { border-left-color: #eda100; }
 @media print {
   .no-print { display: none !important; }
   body { background: #fff; }

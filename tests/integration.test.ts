@@ -143,6 +143,33 @@ describe("chaîne de génération (API simulées)", () => {
     expect(report.tables.find((t) => t.id === "lfi_socio")!.rows.length).toBeGreaterThanOrEqual(4);
   });
 
+  it("fiche d'action rédigée sur le modèle « Développement territorial »", async () => {
+    const fiche = report.sections[0];
+    const types = fiche.blocks.map((b) => b.type);
+    // Avertissement, chiffres clés, intertitres, cartes jumelles, actions groupées.
+    expect(fiche.blocks[0]).toMatchObject({ type: "callout", tone: "warning" });
+    for (const t of ["glance", "heading", "mapPair", "actions"]) expect(types).toContain(t);
+    const headings = fiche.blocks.filter((b) => b.type === "heading").map((b) => (b as { text: string }).text);
+    expect(headings).toEqual(expect.arrayContaining(["Profil sociodémographique du territoire", "Profil politique du territoire", "Actions recommandées"]));
+    const actions = fiche.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
+    expect(actions.groups[0].title).toBe("Porte-à-porte");
+    expect(actions.groups[0].items[0]).toMatch(/^\*\*BV 2/);
+    // Les constats rédigés renvoient à des constats existants.
+    for (const b of fiche.blocks) if (b.type === "findings" && b.ids) for (const id of b.ids) expect(report.findings.some((f) => f.id === id)).toBe(true);
+    // Puces sociodémographiques : écarts significatifs développés, le reste regroupé.
+    const socio = fiche.blocks.find((b) => b.type === "list" && b.items.some((i) => /habitants/.test(i.text))) as Extract<(typeof fiche.blocks)[number], { type: "list" }>;
+    expect(socio.items.some((i) => /^Dans la moyenne départementale/.test(i.text))).toBe(true);
+    expect(socio.items.filter((i) => /proche de la moyenne/.test(i.text))).toHaveLength(0);
+    // Gras rendu en HTML, retiré du CSV.
+    const { renderReportHtml } = await import("@/lib/render/html");
+    const { tableCsv } = await import("@/lib/export/csv");
+    const html = renderReportHtml(report, { sectionIds: ["LFI"] });
+    expect(html).toContain("<strong>");
+    expect(html).not.toMatch(/\*\*/);
+    expect(html).toContain("Proposition de ciblage");
+    expect(tableCsv(report.tables.find((t) => t.id === "lfi_politique")!)).not.toContain("**");
+  });
+
   it("exports HTML, DOCX et CSV", async () => {
     const { renderReportHtml } = await import("@/lib/render/html");
     const { reportToDocx } = await import("@/lib/export/docx");
