@@ -1,0 +1,48 @@
+{
+  "name": "fiche-territoriale",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Générateur automatisé de fiches de diagnostic territorial à partir de données publiques françaises",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "generate": "tsx scripts/generate.ts",
+    "check:sources": "tsx scripts/check-sources.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@etalab/decoupage-administratif": "^6.0.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "@svg-maps/france.departments": "^2.0.0",
+    "@turf/turf": "^7.2.0",
+    "d3-geo": "^3.1.1",
+    "docx": "^9.5.1",
+    "leaflet": "^1.9.4",
+    "next": "^15.5.27",
+    "papaparse": "^5.5.3",
+    "playwright-core": "^1.56.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-leaflet": "^5.0.0",
+    "recharts": "^3.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/d3-geo": "^3.1.0",
+    "@types/leaflet": "^1.9.20",
+    "@types/node": "^22.18.8",
+    "@types/papaparse": "^5.3.16",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

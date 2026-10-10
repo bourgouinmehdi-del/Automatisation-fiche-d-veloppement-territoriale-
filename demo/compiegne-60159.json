@@ -1,0 +1,1675 @@
+{
+ "id": "60159-commune-1d162a",
+ "version": 2,
+ "createdAt": "2026-10-10T13:58:53.583Z",
+ "updatedAt": "2026-10-10T14:12:00.140Z",
+ "query": {
+  "codeInsee": "60159",
+  "codePostal": "60200",
+  "scope": "commune"
+ },
+ "commune": {
+  "code": "60159",
+  "nom": "Compiègne",
+  "codesPostaux": [
+   "60200"
+  ],
+  "population": 40761,
+  "surfaceKm2": null,
+  "departement": {
+   "code": "60",
+   "nom": "Oise"
+  },
+  "region": {
+   "code": "32",
+   "nom": "Hauts-de-France"
+  },
+  "epci": {
+   "code": "200067965",
+   "nom": "CA de la Région de Compiègne et de la Basse Automne",
+   "type": "CA"
+  },
+  "arrondissement": {
+   "code": "603",
+   "nom": "Compiègne"
+  },
+  "centre": null,
+  "contour": null,
+  "siren": "216001586",
+  "communesDeleguees": []
+ },
+ "focus": {
+  "level": "commune",
+  "code": "60159",
+  "name": "Compiègne"
+ },
+ "perimeter": {
+  "label": "Compiègne",
+  "communes": [
+   {
+    "code": "60159",
+    "nom": "Compiègne",
+    "population": 40761
+   }
+  ]
+ },
+ "references": [
+  {
+   "level": "commune",
+   "code": "60159",
+   "name": "Compiègne"
+  },
+  {
+   "level": "epci",
+   "code": "200067965",
+   "name": "CA de la Région de Compiègne et de la Basse Automne"
+  },
+  {
+   "level": "departement",
+   "code": "60",
+   "name": "Oise"
+  },
+  {
+   "level": "region",
+   "code": "32",
+   "name": "Hauts-de-France"
+  },
+  {
+   "level": "france",
+   "code": "FR",
+   "name": "France"
+  }
+ ],
+ "indicators": [
+  {
+   "id": "pop_municipale",
+   "label": "Population municipale (population légale)",
+   "theme": "demographie",
+   "value": 40761,
+   "unit": "habitants",
+   "year": "2023",
+   "geo": {
+    "level": "commune",
+    "code": "60159",
+    "name": "Compiègne"
+   },
+   "source": {
+    "id": "cog",
+    "name": "Découpage administratif (COG 2026) et populations légales",
+    "url": "https://github.com/etalab/decoupage-administratif",
+    "retrievedAt": "2026-10-10T14:11:49.593Z",
+    "vintage": "2023"
+   },
+   "status": "ok",
+   "limits": "Population légale millésimée 2023, en vigueur au 1er janvier 2026."
+  },
+  {
+   "id": "pop_municipale",
+   "label": "Population municipale (population légale)",
+   "theme": "demographie",
+   "value": 83708,
+   "unit": "habitants",
+   "year": "2023",
+   "geo": {
+    "level": "epci",
+    "code": "200067965",
+    "name": "CA de la Région de Compiègne et de la Basse Automne"
+   },
+   "source": {
+    "id": "cog",
+    "name": "Découpage administratif (COG 2026) et populations légales",
+    "url": "https://github.com/etalab/decoupage-administratif",
+    "retrievedAt": "2026-10-10T14:11:49.593Z",
+    "vintage": "2023"
+   },
+   "status": "ok",
+   "method": "Somme des populations municipales de 22 communes.",
+   "limits": "Population légale millésimée 2023, en vigueur au 1er janvier 2026."
+  },
+  {
+   "id": "pop_municipale",
+   "label": "Population municipale (population légale)",
+   "theme": "demographie",
+   "value": 829899,
+   "unit": "habitants",
+   "year": "2023",
+   "geo": {
+    "level": "departement",
+    "code": "60",
+    "name": "Oise"
+   },
+   "source": {
+    "id": "cog",
+    "name": "Découpage administratif (COG 2026) et populations légales",
+    "url": "https://github.com/etalab/decoupage-administratif",
+    "retrievedAt": "2026-10-10T14:11:49.593Z",
+    "vintage": "2023"
+   },
+   "status": "ok",
+   "method": "Somme des populations municipales de 680 communes.",
+   "limits": "Population légale millésimée 2023, en vigueur au 1er janvier 2026."
+  },
+  {
+   "id": "pop_municipale",
+   "label": "Population municipale (population légale)",
+   "theme": "demographie",
+   "value": 5992194,
+   "unit": "habitants",
+   "year": "2023",
+   "geo": {
+    "level": "region",
+    "code": "32",
+    "name": "Hauts-de-France"
+   },
+   "source": {
+    "id": "cog",
+    "name": "Découpage administratif (COG 2026) et populations légales",
+    "url": "https://github.com/etalab/decoupage-administratif",
+    "retrievedAt": "2026-10-10T14:11:49.593Z",
+    "vintage": "2023"
+   },
+   "status": "ok",
+   "method": "Somme des populations municipales de 3 782 communes.",
+   "limits": "Population légale millésimée 2023, en vigueur au 1er janvier 2026."
+  },
+  {
+   "id": "pop_municipale",
+   "label": "Population municipale (population légale)",
+   "theme": "demographie",
+   "value": 68350798,
+   "unit": "habitants",
+   "year": "2023",
+   "geo": {
+    "level": "france",
+    "code": "FR",
+    "name": "France"
+   },
+   "source": {
+    "id": "cog",
+    "name": "Découpage administratif (COG 2026) et populations légales",
+    "url": "https://github.com/etalab/decoupage-administratif",
+    "retrievedAt": "2026-10-10T14:11:49.593Z",
+    "vintage": "2023"
+   },
+   "status": "ok",
+   "method": "Somme des populations municipales de 34 881 communes.",
+   "limits": "Population légale millésimée 2023, en vigueur au 1er janvier 2026."
+  }
+ ],
+ "series": [],
+ "tables": [
+  {
+   "id": "table_comparaison",
+   "title": "Indicateurs clés et territoires de référence",
+   "theme": "identite",
+   "columns": [
+    {
+     "key": "indicateur",
+     "label": "Indicateur"
+    },
+    {
+     "key": "annee",
+     "label": "Millésime"
+    },
+    {
+     "key": "commune",
+     "label": "Compiègne",
+     "align": "right"
+    },
+    {
+     "key": "epci",
+     "label": "CA de la Région de Compiègne et de la Basse Automne",
+     "align": "right"
+    },
+    {
+     "key": "departement",
+     "label": "Oise",
+     "align": "right"
+    },
+    {
+     "key": "region",
+     "label": "Hauts-de-France",
+     "align": "right"
+    },
+    {
+     "key": "france",
+     "label": "France",
+     "align": "right"
+    }
+   ],
+   "rows": [
+    {
+     "indicateur": "Population municipale (population légale)",
+     "unite": "habitants",
+     "annee": "2023",
+     "commune": 40761,
+     "epci": 83708,
+     "departement": 829899,
+     "region": 5992194,
+     "france": 68350798
+    }
+   ],
+   "sources": [
+    {
+     "id": "cog",
+     "name": "Découpage administratif (COG 2026) et populations légales",
+     "url": "https://github.com/etalab/decoupage-administratif",
+     "retrievedAt": "2026-10-10T14:11:49.593Z",
+     "vintage": "2023"
+    }
+   ],
+   "note": "n.d. : donnée non disponible (non diffusée, non collectée ou source indisponible). Les unités figurent dans le libellé de chaque ligne."
+  },
+  {
+   "id": "table_perimetre",
+   "title": "Communes de l'intercommunalité (CA de la Région de Compiègne et de la Basse Automne)",
+   "theme": "identite",
+   "columns": [
+    {
+     "key": "commune",
+     "label": "Commune"
+    },
+    {
+     "key": "code",
+     "label": "Code INSEE"
+    },
+    {
+     "key": "population",
+     "label": "Population",
+     "align": "right",
+     "unit": "habitants"
+    },
+    {
+     "key": "densite",
+     "label": "Densité (hab./km²)",
+     "align": "right"
+    },
+    {
+     "key": "revenu",
+     "label": "Revenu médian (€/UC)",
+     "align": "right",
+     "unit": "€"
+    },
+    {
+     "key": "pauvrete",
+     "label": "Taux de pauvreté (%)",
+     "align": "right",
+     "unit": "%"
+    },
+    {
+     "key": "vacance",
+     "label": "Logements vacants (%)",
+     "align": "right",
+     "unit": "%"
+    }
+   ],
+   "rows": [
+    {
+     "code": "60159",
+     "commune": "Compiègne",
+     "population": 40761,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60382",
+     "commune": "Margny-lès-Compiègne",
+     "population": 8677,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60338",
+     "commune": "Lacroix-Saint-Ouen",
+     "population": 5415,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60667",
+     "commune": "Verberie",
+     "population": 3898,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60151",
+     "commune": "Choisy-au-Bac",
+     "population": 3449,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60068",
+     "commune": "Béthisy-Saint-Pierre",
+     "population": 3111,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60665",
+     "commune": "Venette",
+     "population": 2758,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60402",
+     "commune": "Le Meux",
+     "population": 2327,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60325",
+     "commune": "Jaux",
+     "population": 2243,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60156",
+     "commune": "Clairoix",
+     "population": 2208,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60597",
+     "commune": "Saint-Sauveur",
+     "population": 1751,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60578",
+     "commune": "Saintines",
+     "population": 1060,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60067",
+     "commune": "Béthisy-Saint-Martin",
+     "population": 996,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60337",
+     "commune": "Lachelle",
+     "population": 805,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60447",
+     "commune": "Néry",
+     "population": 670,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60600",
+     "commune": "Saint-Vaast-de-Longmont",
+     "population": 654,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60323",
+     "commune": "Janville",
+     "population": 640,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60674",
+     "commune": "Vieux-Moulin",
+     "population": 593,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60326",
+     "commune": "Jonquières",
+     "population": 588,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60023",
+     "commune": "Armancourt",
+     "population": 548,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60070",
+     "commune": "Bienville",
+     "population": 495,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    },
+    {
+     "code": "60579",
+     "commune": "Saint-Jean-aux-Bois",
+     "population": 345,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "vacance": null
+    }
+   ],
+   "sources": [
+    {
+     "id": "cog",
+     "name": "Découpage administratif (COG 2026) et populations légales",
+     "url": "https://github.com/etalab/decoupage-administratif",
+     "retrievedAt": "2026-10-10T14:11:49.593Z",
+     "vintage": "2023"
+    }
+   ],
+   "note": "Revenus et pauvreté : non diffusés pour les communes soumises au secret statistique."
+  },
+  {
+   "id": "table_comparables",
+   "title": "Communes comparables (taille et densité proches)",
+   "theme": "identite",
+   "columns": [
+    {
+     "key": "commune",
+     "label": "Commune"
+    },
+    {
+     "key": "dep",
+     "label": "Dép."
+    },
+    {
+     "key": "population",
+     "label": "Population",
+     "align": "right",
+     "unit": "habitants"
+    },
+    {
+     "key": "densite",
+     "label": "Densité (hab./km²)",
+     "align": "right"
+    },
+    {
+     "key": "revenu",
+     "label": "Revenu médian (€/UC)",
+     "align": "right",
+     "unit": "€"
+    },
+    {
+     "key": "pauvrete",
+     "label": "Pauvreté (%)",
+     "align": "right",
+     "unit": "%"
+    },
+    {
+     "key": "chomage",
+     "label": "Chômage RP (%)",
+     "align": "right",
+     "unit": "%"
+    },
+    {
+     "key": "vacance",
+     "label": "Vacance (%)",
+     "align": "right",
+     "unit": "%"
+    }
+   ],
+   "rows": [
+    {
+     "commune": "Compiègne (territoire étudié)",
+     "dep": "60",
+     "population": 40761,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "chomage": null,
+     "vacance": null
+    },
+    {
+     "commune": "Wattrelos",
+     "dep": "59",
+     "population": 40847,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "chomage": null,
+     "vacance": null
+    },
+    {
+     "commune": "Boulogne-sur-Mer",
+     "dep": "62",
+     "population": 40539,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "chomage": null,
+     "vacance": null
+    },
+    {
+     "commune": "Douai",
+     "dep": "59",
+     "population": 40250,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "chomage": null,
+     "vacance": null
+    },
+    {
+     "commune": "Marcq-en-Barœul",
+     "dep": "59",
+     "population": 40184,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "chomage": null,
+     "vacance": null
+    },
+    {
+     "commune": "Arras",
+     "dep": "62",
+     "population": 42875,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "chomage": null,
+     "vacance": null
+    },
+    {
+     "commune": "Valenciennes",
+     "dep": "59",
+     "population": 43468,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "chomage": null,
+     "vacance": null
+    },
+    {
+     "commune": "Creil",
+     "dep": "60",
+     "population": 36301,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "chomage": null,
+     "vacance": null
+    },
+    {
+     "commune": "Lens",
+     "dep": "62",
+     "population": 32920,
+     "densite": null,
+     "revenu": null,
+     "pauvrete": null,
+     "chomage": null,
+     "vacance": null
+    }
+   ],
+   "sources": [
+    {
+     "id": "cog",
+     "name": "Découpage administratif (COG 2026) et populations légales",
+     "url": "https://github.com/etalab/decoupage-administratif",
+     "retrievedAt": "2026-10-10T14:11:49.593Z",
+     "vintage": "2023"
+    }
+   ],
+   "note": "Sélection sur le seul critère de population (±30 %, même région) : les densités n'ont pas pu être calculées lors de la génération."
+  }
+ ],
+ "charts": [
+  {
+   "id": "chart_perimetre_pop",
+   "title": "Population des communes du périmètre",
+   "type": "hbar",
+   "xKey": "commune",
+   "data": [
+    {
+     "commune": "Compiègne",
+     "population": 40761
+    },
+    {
+     "commune": "Margny-lès-Compiègne",
+     "population": 8677
+    },
+    {
+     "commune": "Lacroix-Saint-Ouen",
+     "population": 5415
+    },
+    {
+     "commune": "Verberie",
+     "population": 3898
+    },
+    {
+     "commune": "Choisy-au-Bac",
+     "population": 3449
+    },
+    {
+     "commune": "Béthisy-Saint-Pierre",
+     "population": 3111
+    },
+    {
+     "commune": "Venette",
+     "population": 2758
+    },
+    {
+     "commune": "Le Meux",
+     "population": 2327
+    },
+    {
+     "commune": "Jaux",
+     "population": 2243
+    },
+    {
+     "commune": "Clairoix",
+     "population": 2208
+    },
+    {
+     "commune": "Saint-Sauveur",
+     "population": 1751
+    },
+    {
+     "commune": "Saintines",
+     "population": 1060
+    },
+    {
+     "commune": "Béthisy-Saint-Martin",
+     "population": 996
+    },
+    {
+     "commune": "Lachelle",
+     "population": 805
+    },
+    {
+     "commune": "Néry",
+     "population": 670
+    },
+    {
+     "commune": "Saint-Vaast-de-Longmont",
+     "population": 654
+    },
+    {
+     "commune": "Janville",
+     "population": 640
+    },
+    {
+     "commune": "Vieux-Moulin",
+     "population": 593
+    },
+    {
+     "commune": "Jonquières",
+     "population": 588
+    },
+    {
+     "commune": "Armancourt",
+     "population": 548
+    },
+    {
+     "commune": "Bienville",
+     "population": 495
+    },
+    {
+     "commune": "Saint-Jean-aux-Bois",
+     "population": 345
+    }
+   ],
+   "series": [
+    {
+     "key": "population",
+     "label": "Population municipale"
+    }
+   ],
+   "unit": "habitants",
+   "sources": [
+    {
+     "id": "cog",
+     "name": "Découpage administratif (COG 2026) et populations légales",
+     "url": "https://github.com/etalab/decoupage-administratif",
+     "retrievedAt": "2026-10-10T14:11:49.593Z",
+     "vintage": "2023"
+    }
+   ]
+  }
+ ],
+ "maps": [],
+ "findings": [
+  {
+   "kind": "a_verifier",
+   "theme": "identite",
+   "text": "Contours, surface, densité et voisinage : Source indisponible : Échec de la requête (fetch failed).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F1"
+  },
+  {
+   "kind": "a_verifier",
+   "theme": "demographie",
+   "text": "Statistiques INSEE — Compiègne : Source indisponible : Aucun jeu INSEE obtenu pour Compiègne (Échec de la requête (fetch failed) ; Hôte injoignable (api.insee.fr)).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F2"
+  },
+  {
+   "kind": "a_verifier",
+   "theme": "demographie",
+   "text": "Statistiques INSEE — CA de la Région de Compiègne et de la Basse Automne : Source indisponible : Aucun jeu INSEE obtenu pour CA de la Région de Compiègne et de la Basse Automne (Hôte injoignable (api.insee.fr)).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F3"
+  },
+  {
+   "kind": "a_verifier",
+   "theme": "demographie",
+   "text": "Statistiques INSEE — Oise : Source indisponible : Aucun jeu INSEE obtenu pour Oise (Hôte injoignable (api.insee.fr)).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F4"
+  },
+  {
+   "kind": "a_verifier",
+   "theme": "demographie",
+   "text": "Statistiques INSEE — Hauts-de-France : Source indisponible : Aucun jeu INSEE obtenu pour Hauts-de-France (Hôte injoignable (api.insee.fr)).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F5"
+  },
+  {
+   "kind": "a_verifier",
+   "theme": "demographie",
+   "text": "Statistiques INSEE — France : Source indisponible : Aucun jeu INSEE obtenu pour France (Hôte injoignable (api.insee.fr)).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F6"
+  },
+  {
+   "kind": "a_verifier",
+   "theme": "immobilier",
+   "text": "Prix immobiliers (DVF) : Source indisponible : Échec de la requête (fetch failed).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F7"
+  },
+  {
+   "kind": "a_verifier",
+   "theme": "equipements",
+   "text": "Équipements et services (OpenStreetMap) : Source indisponible : Échec de la requête (fetch failed).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F8"
+  },
+  {
+   "kind": "a_verifier",
+   "theme": "education",
+   "text": "Établissements scolaires : Source indisponible : Échec de la requête (fetch failed).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F9"
+  },
+  {
+   "kind": "a_verifier",
+   "theme": "mobilite",
+   "text": "Gares et fréquentation : Source indisponible : Échec de la requête (fetch failed).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F10"
+  },
+  {
+   "kind": "a_verifier",
+   "theme": "economie",
+   "text": "Établissements et employeurs (SIRENE) : Source indisponible : Échec de la requête (fetch failed).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F11"
+  },
+  {
+   "kind": "a_verifier",
+   "theme": "risques",
+   "text": "Risques naturels et technologiques : Source indisponible : Échec de la requête (fetch failed).",
+   "evidence": [],
+   "weight": 20,
+   "id": "F12"
+  }
+ ],
+ "sections": [
+  {
+   "id": "A",
+   "letter": "A",
+   "title": "Présentation générale du territoire",
+   "blocks": [
+    {
+     "type": "paragraph",
+     "text": "Compiègne (code INSEE 60159, code postal 60200) est une commune du département de l'Oise (60), en région Hauts-de-France, dans l'arrondissement de Compiègne. Elle compte 40 761 hab. (population municipale légale, millésime 2023). Elle se classe au 2e rang des 680 communes du département par la population. Elle est membre de CA de la Région de Compiègne et de la Basse Automne (83 708 hab.), dont elle regroupe 48,7 % de la population.",
+     "evidence": [
+      "pop_municipale@commune:60159",
+      "pop_municipale@epci:200067965"
+     ]
+    },
+    {
+     "type": "kpis",
+     "indicatorIds": [
+      "pop_municipale",
+      "surface",
+      "densite",
+      "evol_pop_annuelle"
+     ]
+    },
+    {
+     "type": "locator"
+    },
+    {
+     "type": "table",
+     "tableId": "table_perimetre"
+    },
+    {
+     "type": "chart",
+     "chartId": "chart_perimetre_pop"
+    },
+    {
+     "type": "table",
+     "tableId": "table_comparables"
+    }
+   ]
+  },
+  {
+   "id": "B",
+   "letter": "B",
+   "title": "Profil sociodémographique",
+   "blocks": [
+    {
+     "type": "findings",
+     "themes": [
+      "demographie",
+      "menages",
+      "revenus",
+      "formation"
+     ],
+     "kinds": [
+      "constat"
+     ],
+     "title": "Constats chiffrés"
+    },
+    {
+     "type": "comparison",
+     "title": "Comparaison aux territoires de référence",
+     "indicatorIds": [
+      "pop_municipale",
+      "densite",
+      "evol_pop_annuelle",
+      "part_moins_15",
+      "part_moins_30",
+      "part_60_plus",
+      "part_75_plus",
+      "part_menages_une_personne",
+      "part_familles_monoparentales",
+      "revenu_median",
+      "taux_pauvrete",
+      "rapport_interdecile",
+      "part_sans_diplome",
+      "part_diplome_superieur"
+     ]
+    },
+    {
+     "type": "missing",
+     "themes": [
+      "demographie",
+      "menages",
+      "revenus",
+      "formation"
+     ]
+    },
+    {
+     "type": "note",
+     "text": "Les écarts statistiques décrivent des situations moyennes : ils ne permettent pas d'inférer les caractéristiques ou comportements d'individus, ni d'établir une causalité entre indicateurs corrélés."
+    }
+   ]
+  },
+  {
+   "id": "C",
+   "letter": "C",
+   "title": "Économie et emploi",
+   "blocks": [
+    {
+     "type": "findings",
+     "themes": [
+      "emploi",
+      "economie"
+     ],
+     "kinds": [
+      "constat",
+      "hypothese"
+     ]
+    },
+    {
+     "type": "comparison",
+     "title": "Emploi et activité",
+     "indicatorIds": [
+      "taux_emploi",
+      "taux_chomage_rp",
+      "concentration_emploi",
+      "emplois_lieu_travail",
+      "part_sans_diplome",
+      "part_diplome_superieur"
+     ]
+    },
+    {
+     "type": "note",
+     "text": "Non couverts automatiquement à ce stade : évolution annuelle de l'emploi salarié (URSSAF / Acoss), zones d'activité économique, offre de formation et d'insertion, évolution du tissu commercial. Ces éléments sont listés dans la partie I comme compléments à recueillir."
+    },
+    {
+     "type": "missing",
+     "themes": [
+      "emploi",
+      "economie"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "D",
+   "letter": "D",
+   "title": "Services publics et équipements",
+   "blocks": [
+    {
+     "type": "findings",
+     "themes": [
+      "equipements",
+      "sante",
+      "education"
+     ]
+    },
+    {
+     "type": "missing",
+     "themes": [
+      "equipements",
+      "sante",
+      "education"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E",
+   "letter": "E",
+   "title": "Mobilité et accessibilité",
+   "blocks": [
+    {
+     "type": "findings",
+     "themes": [
+      "mobilite"
+     ]
+    },
+    {
+     "type": "note",
+     "text": "Les distances sont calculées à vol d'oiseau. Les fréquences et destinations des trains, les lignes de bus et les temps de trajet nécessitent l'exploitation des flux GTFS publiés sur transport.data.gouv.fr (non intégrée dans cette version)."
+    },
+    {
+     "type": "missing",
+     "themes": [
+      "mobilite"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "F",
+   "letter": "F",
+   "title": "Logement et cadre de vie",
+   "blocks": [
+    {
+     "type": "comparison",
+     "title": "Parc de logements",
+     "indicatorIds": [
+      "part_residences_principales",
+      "part_residences_secondaires",
+      "part_logements_vacants",
+      "part_maisons",
+      "part_proprietaires",
+      "part_locataires_prives",
+      "part_locataires_hlm"
+     ]
+    },
+    {
+     "type": "findings",
+     "themes": [
+      "logement",
+      "immobilier",
+      "risques"
+     ]
+    },
+    {
+     "type": "note",
+     "text": "Non couverts automatiquement : performance énergétique du parc (DPE de l'ADEME), logements sociaux au sens du répertoire RPLS, artificialisation des sols (portail de l'artificialisation), différences infracommunales (IRIS)."
+    },
+    {
+     "type": "missing",
+     "themes": [
+      "logement",
+      "immobilier",
+      "risques"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "G",
+   "letter": "G",
+   "title": "Contexte institutionnel et électoral",
+   "blocks": [
+    {
+     "type": "note",
+     "text": "Chapitre strictement descriptif. Les résultats présentés sont des agrégats officiels publiés par le ministère de l'Intérieur. Ils ne permettent pas de déduire les opinions d'individus ou de groupes sociaux, et ne doivent pas servir au ciblage de personnes ou de quartiers."
+    },
+    {
+     "type": "paragraph",
+     "text": "Les résultats électoraux n'ont pas pu être récupérés lors de la génération de cette fiche (voir la liste des sources).",
+     "evidence": []
+    },
+    {
+     "type": "findings",
+     "themes": [
+      "elections"
+     ],
+     "kinds": [
+      "constat"
+     ]
+    },
+    {
+     "type": "missing",
+     "themes": [
+      "elections"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "H",
+   "letter": "H",
+   "title": "Analyse transversale du territoire",
+   "blocks": [
+    {
+     "type": "paragraph",
+     "text": "Cette partie rassemble les enseignements issus des chapitres précédents. Chaque affirmation renvoie aux indicateurs qui la fondent. Les atouts et points de vigilance reposent sur des écarts significatifs aux références (règle : au moins 2 points et 10 % d'écart relatif pour les taux, 10 % pour les autres grandeurs) ; les hypothèses sont des pistes d'explication à vérifier.",
+     "evidence": []
+    },
+    {
+     "type": "findings",
+     "kinds": [
+      "atout"
+     ],
+     "title": "Atouts et ressources"
+    },
+    {
+     "type": "findings",
+     "kinds": [
+      "vigilance"
+     ],
+     "title": "Fragilités et points de vigilance"
+    },
+    {
+     "type": "findings",
+     "kinds": [
+      "hypothese"
+     ],
+     "title": "Hypothèses d'interprétation (à vérifier)"
+    },
+    {
+     "type": "findings",
+     "kinds": [
+      "piste"
+     ],
+     "title": "Enjeux et pistes de travail"
+    },
+    {
+     "type": "findings",
+     "kinds": [
+      "a_verifier"
+     ],
+     "title": "Questions nécessitant une enquête de terrain ou des données complémentaires"
+    }
+   ]
+  },
+  {
+   "id": "I",
+   "letter": "I",
+   "title": "Synthèse opérationnelle",
+   "blocks": [
+    {
+     "type": "paragraph",
+     "text": "Compiègne (40 761 hab.), Oise, Hauts-de-France. Cette fiche mobilise 1 indicateurs communaux issus de 1 source(s) publique(s) interrogée(s) avec succès. Sources indisponibles lors de la génération : API Découpage administratif (geo.api.gouv.fr) ; INSEE — API Melodi (recensement, Filosofi, populations de référence) ; Demandes de valeurs foncières géolocalisées (DVF) ; OpenStreetMap (API Overpass) ; Annuaire de l'éducation ; SNCF Open Data — fréquentation des gares ; API Recherche d'entreprises (base SIRENE) ; Géorisques — base GASPAR (risques, arrêtés CatNat) ; Résultats électoraux officiels. Les rubriques correspondantes sont signalées comme manquantes.",
+     "evidence": []
+    },
+    {
+     "type": "kpis",
+     "indicatorIds": [
+      "pop_municipale",
+      "densite",
+      "evol_pop_annuelle",
+      "part_60_plus",
+      "revenu_median",
+      "taux_pauvrete",
+      "taux_chomage_rp",
+      "part_logements_vacants",
+      "part_locataires_hlm",
+      "prix_m2_appartement",
+      "unites_legales_actives",
+      "nb_etablissements_scolaires"
+     ]
+    },
+    {
+     "type": "missing",
+     "themes": []
+    },
+    {
+     "type": "findings",
+     "kinds": [
+      "a_verifier"
+     ],
+     "title": "Vérifications à mener auprès des acteurs locaux"
+    },
+    {
+     "type": "list",
+     "title": "Acteurs à consulter",
+     "items": [
+      {
+       "text": "Mairie et services de l'intercommunalité (urbanisme, habitat, action sociale)"
+      },
+      {
+       "text": "Centre communal d'action sociale (CCAS) et espace France Services"
+      },
+      {
+       "text": "France Travail et mission locale"
+      },
+      {
+       "text": "Bailleurs sociaux présents sur la commune"
+      },
+      {
+       "text": "Communauté professionnelle territoriale de santé (CPTS) et agence régionale de santé"
+      },
+      {
+       "text": "Autorité organisatrice des mobilités"
+      },
+      {
+       "text": "Associations locales et conseils de quartier"
+      }
+     ]
+    },
+    {
+     "type": "list",
+     "title": "Ressources publiques pour approfondir",
+     "items": [
+      {
+       "text": "INSEE — Dossier complet de la commune",
+       "url": "https://www.insee.fr/fr/statistiques/2011101"
+      },
+      {
+       "text": "INSEE — Base permanente des équipements (BPE)",
+       "url": "https://www.insee.fr/fr/metadonnees/source/serie/s1161"
+      },
+      {
+       "text": "Observatoire des territoires (ANCT)",
+       "url": "https://www.observatoire-des-territoires.gouv.fr/"
+      },
+      {
+       "text": "DREES — Accessibilité potentielle localisée aux médecins (APL)",
+       "url": "https://data.drees.solidarites-sante.gouv.fr/"
+      },
+      {
+       "text": "Données LOVAC sur la vacance des logements",
+       "url": "https://www.data.gouv.fr/fr/datasets/logements-vacants-du-parc-prive-par-commune-epci-departement-region/"
+      },
+      {
+       "text": "Répertoire du parc locatif social (RPLS)",
+       "url": "https://www.statistiques.developpement-durable.gouv.fr/"
+      },
+      {
+       "text": "Géorisques — rapport de risques par adresse",
+       "url": "https://www.georisques.gouv.fr/"
+      },
+      {
+       "text": "transport.data.gouv.fr — horaires de transport (GTFS)",
+       "url": "https://transport.data.gouv.fr/"
+      },
+      {
+       "text": "Portail de l'artificialisation des sols",
+       "url": "https://artificialisation.developpement-durable.gouv.fr/"
+      },
+      {
+       "text": "Résultats électoraux officiels (data.gouv.fr)",
+       "url": "https://www.data.gouv.fr/fr/pages/donnees-des-elections/"
+      },
+      {
+       "text": "Annuaire de l'administration — services publics locaux",
+       "url": "https://lannuaire.service-public.fr/"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "runs": [
+  {
+   "sourceId": "cog",
+   "name": "Découpage administratif (référentiel embarqué)",
+   "step": "identite",
+   "status": "ok",
+   "durationMs": 0,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:49.593Z"
+  },
+  {
+   "sourceId": "geoapi",
+   "name": "API Découpage administratif (geo.api.gouv.fr)",
+   "step": "geographie",
+   "status": "failed",
+   "message": "Échec de la requête (fetch failed)",
+   "durationMs": 1060,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:50.671Z"
+  },
+  {
+   "sourceId": "insee_melodi",
+   "name": "INSEE — API Melodi (recensement, Filosofi, populations de référence)",
+   "step": "insee:commune",
+   "status": "failed",
+   "message": "Aucun jeu INSEE obtenu pour Compiègne (Échec de la requête (fetch failed) ; Hôte injoignable (api.insee.fr))",
+   "durationMs": 2111,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:52.782Z"
+  },
+  {
+   "sourceId": "insee_melodi",
+   "name": "INSEE — API Melodi (recensement, Filosofi, populations de référence)",
+   "step": "insee:epci",
+   "status": "failed",
+   "message": "Aucun jeu INSEE obtenu pour CA de la Région de Compiègne et de la Basse Automne (Hôte injoignable (api.insee.fr))",
+   "durationMs": 2,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:52.784Z"
+  },
+  {
+   "sourceId": "insee_melodi",
+   "name": "INSEE — API Melodi (recensement, Filosofi, populations de référence)",
+   "step": "insee:departement",
+   "status": "failed",
+   "message": "Aucun jeu INSEE obtenu pour Oise (Hôte injoignable (api.insee.fr))",
+   "durationMs": 4,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:52.788Z"
+  },
+  {
+   "sourceId": "insee_melodi",
+   "name": "INSEE — API Melodi (recensement, Filosofi, populations de référence)",
+   "step": "insee:region",
+   "status": "failed",
+   "message": "Aucun jeu INSEE obtenu pour Hauts-de-France (Hôte injoignable (api.insee.fr))",
+   "durationMs": 2,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:52.790Z"
+  },
+  {
+   "sourceId": "insee_melodi",
+   "name": "INSEE — API Melodi (recensement, Filosofi, populations de référence)",
+   "step": "insee:france",
+   "status": "failed",
+   "message": "Aucun jeu INSEE obtenu pour France (Hôte injoignable (api.insee.fr))",
+   "durationMs": 2,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:52.792Z"
+  },
+  {
+   "sourceId": "insee_melodi",
+   "name": "INSEE — API Melodi (recensement, Filosofi, populations de référence)",
+   "step": "insee:perimetre",
+   "status": "failed",
+   "message": "DS_FILOSOFI_CC : Hôte injoignable (api.insee.fr)",
+   "durationMs": 224,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:53.017Z"
+  },
+  {
+   "sourceId": "insee_melodi",
+   "name": "INSEE — API Melodi (recensement, Filosofi, populations de référence)",
+   "step": "insee:comparables",
+   "status": "failed",
+   "message": "DS_FILOSOFI_CC : Hôte injoignable (api.insee.fr)",
+   "durationMs": 13,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:53.051Z"
+  },
+  {
+   "sourceId": "dvf",
+   "name": "Demandes de valeurs foncières géolocalisées (DVF)",
+   "step": "immobilier",
+   "status": "failed",
+   "message": "Échec de la requête (fetch failed)",
+   "durationMs": 1009,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:54.060Z"
+  },
+  {
+   "sourceId": "osm",
+   "name": "OpenStreetMap (API Overpass)",
+   "step": "equipements",
+   "status": "failed",
+   "message": "Échec de la requête (fetch failed)",
+   "durationMs": 1011,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:55.071Z"
+  },
+  {
+   "sourceId": "education",
+   "name": "Annuaire de l'éducation",
+   "step": "education",
+   "status": "failed",
+   "message": "Échec de la requête (fetch failed)",
+   "durationMs": 1008,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:56.079Z"
+  },
+  {
+   "sourceId": "sncf",
+   "name": "SNCF Open Data — fréquentation des gares",
+   "step": "transports",
+   "status": "failed",
+   "message": "Échec de la requête (fetch failed)",
+   "durationMs": 1007,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:57.086Z"
+  },
+  {
+   "sourceId": "entreprises",
+   "name": "API Recherche d'entreprises (base SIRENE)",
+   "step": "entreprises",
+   "status": "failed",
+   "message": "Échec de la requête (fetch failed)",
+   "durationMs": 1008,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:58.094Z"
+  },
+  {
+   "sourceId": "georisques",
+   "name": "Géorisques — base GASPAR (risques, arrêtés CatNat)",
+   "step": "risques",
+   "status": "failed",
+   "message": "Échec de la requête (fetch failed)",
+   "durationMs": 1008,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:11:59.102Z"
+  },
+  {
+   "sourceId": "elections",
+   "name": "Résultats électoraux officiels",
+   "step": "elections:LG24T1",
+   "status": "failed",
+   "message": "Échec de la requête (fetch failed)",
+   "durationMs": 1007,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:12:00.109Z"
+  },
+  {
+   "sourceId": "elections",
+   "name": "Résultats électoraux officiels",
+   "step": "elections:EU24",
+   "status": "failed",
+   "message": "Hôte injoignable (www.data.gouv.fr)",
+   "durationMs": 0,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:12:00.109Z"
+  },
+  {
+   "sourceId": "elections",
+   "name": "Résultats électoraux officiels",
+   "step": "elections:PR22T1",
+   "status": "failed",
+   "message": "Hôte injoignable (www.data.gouv.fr)",
+   "durationMs": 1,
+   "requests": 0,
+   "fromCache": 0,
+   "retrievedAt": "2026-10-10T14:12:00.110Z"
+  }
+ ],
+ "missing": [
+  {
+   "theme": "identite",
+   "label": "Contours, surface, densité et voisinage",
+   "reason": "Source indisponible : Échec de la requête (fetch failed)",
+   "sourceId": "geoapi"
+  },
+  {
+   "theme": "demographie",
+   "label": "Statistiques INSEE — Compiègne",
+   "reason": "Source indisponible : Aucun jeu INSEE obtenu pour Compiègne (Échec de la requête (fetch failed) ; Hôte injoignable (api.insee.fr))",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "demographie",
+   "label": "Statistiques INSEE — CA de la Région de Compiègne et de la Basse Automne",
+   "reason": "Source indisponible : Aucun jeu INSEE obtenu pour CA de la Région de Compiègne et de la Basse Automne (Hôte injoignable (api.insee.fr))",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "demographie",
+   "label": "Statistiques INSEE — Oise",
+   "reason": "Source indisponible : Aucun jeu INSEE obtenu pour Oise (Hôte injoignable (api.insee.fr))",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "demographie",
+   "label": "Statistiques INSEE — Hauts-de-France",
+   "reason": "Source indisponible : Aucun jeu INSEE obtenu pour Hauts-de-France (Hôte injoignable (api.insee.fr))",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "demographie",
+   "label": "Statistiques INSEE — France",
+   "reason": "Source indisponible : Aucun jeu INSEE obtenu pour France (Hôte injoignable (api.insee.fr))",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "immobilier",
+   "label": "Prix immobiliers (DVF)",
+   "reason": "Source indisponible : Échec de la requête (fetch failed)",
+   "sourceId": "dvf"
+  },
+  {
+   "theme": "equipements",
+   "label": "Équipements et services (OpenStreetMap)",
+   "reason": "Source indisponible : Échec de la requête (fetch failed)",
+   "sourceId": "osm"
+  },
+  {
+   "theme": "education",
+   "label": "Établissements scolaires",
+   "reason": "Source indisponible : Échec de la requête (fetch failed)",
+   "sourceId": "education"
+  },
+  {
+   "theme": "mobilite",
+   "label": "Gares et fréquentation",
+   "reason": "Source indisponible : Échec de la requête (fetch failed)",
+   "sourceId": "sncf"
+  },
+  {
+   "theme": "economie",
+   "label": "Établissements et employeurs (SIRENE)",
+   "reason": "Source indisponible : Échec de la requête (fetch failed)",
+   "sourceId": "entreprises"
+  },
+  {
+   "theme": "risques",
+   "label": "Risques naturels et technologiques",
+   "reason": "Source indisponible : Échec de la requête (fetch failed)",
+   "sourceId": "georisques"
+  },
+  {
+   "theme": "elections",
+   "label": "Résultats — Législatives 2024 — 1er tour",
+   "reason": "Source indisponible : Échec de la requête (fetch failed)",
+   "sourceId": "elections"
+  },
+  {
+   "theme": "elections",
+   "label": "Résultats — Européennes 2024",
+   "reason": "Source indisponible : Hôte injoignable (www.data.gouv.fr)",
+   "sourceId": "elections"
+  },
+  {
+   "theme": "elections",
+   "label": "Résultats — Présidentielle 2022 — 1er tour",
+   "reason": "Source indisponible : Hôte injoignable (www.data.gouv.fr)",
+   "sourceId": "elections"
+  },
+  {
+   "theme": "revenus",
+   "label": "Revenu médian (Filosofi)",
+   "reason": "Source INSEE indisponible lors de la génération",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "revenus",
+   "label": "Taux de pauvreté (Filosofi)",
+   "reason": "Source INSEE indisponible lors de la génération",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "emploi",
+   "label": "Taux de chômage (recensement)",
+   "reason": "Source INSEE indisponible lors de la génération",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "demographie",
+   "label": "Structure par âge (recensement)",
+   "reason": "Source INSEE indisponible lors de la génération",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "logement",
+   "label": "Parc de logements (recensement)",
+   "reason": "Source INSEE indisponible lors de la génération",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "logement",
+   "label": "Statut d'occupation (recensement)",
+   "reason": "Source INSEE indisponible lors de la génération",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "formation",
+   "label": "Niveau de diplôme (recensement)",
+   "reason": "Source INSEE indisponible lors de la génération",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "menages",
+   "label": "Composition des familles (recensement)",
+   "reason": "Source INSEE indisponible lors de la génération",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "demographie",
+   "label": "Évolution historique de la population",
+   "reason": "Source INSEE indisponible lors de la génération",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "emploi",
+   "label": "Emploi au lieu de travail et concentration d'emploi",
+   "reason": "Source INSEE indisponible lors de la génération",
+   "sourceId": "insee_melodi"
+  },
+  {
+   "theme": "elections",
+   "label": "Résultats électoraux",
+   "reason": "Source indisponible lors de la génération",
+   "sourceId": "elections"
+  },
+  {
+   "theme": "elections",
+   "label": "Résultats par bureau de vote",
+   "reason": "Non intégré : nécessite les contours des bureaux de vote (REU) — voir STATUS.md"
+  },
+  {
+   "theme": "mobilite",
+   "label": "Temps d'accès routiers et horaires de transport (GTFS)",
+   "reason": "Non intégré : nécessite un calculateur d'itinéraires et l'exploitation des flux GTFS de transport.data.gouv.fr"
+  },
+  {
+   "theme": "demographie",
+   "label": "Données infracommunales (IRIS, quartiers prioritaires)",
+   "reason": "Non intégré dans cette version"
+  }
+ ],
+ "narrativeEngine": "gabarits déterministes",
+ "warnings": [
+  "17 étape(s) de collecte en échec : les données concernées sont signalées comme manquantes."
+ ]
+}

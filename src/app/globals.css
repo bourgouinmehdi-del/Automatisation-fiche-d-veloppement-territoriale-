@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #8a8984;
+  --line: #e7e6e2;
+  --accent: #1c5cab;
+  --accent-strong: #0d366b;
+  --accent-soft: #eef5fd;
+}
+
+html, body { background: var(--bg); color: var(--ink); }
+body { font-family: "Public Sans", Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.btn { display: inline-flex; align-items: center; gap: .4rem; border-radius: 8px; padding: .5rem .9rem; font-weight: 600; font-size: .875rem; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.btn:hover { border-color: var(--accent); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-strong); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.tag { display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: .1rem .4rem; border-radius: 4px; background: #eef2f7; color: var(--accent); margin-right: .35rem; }
+.tag-atout { background: #e3f5ec; color: #0b6b47; }
+.tag-vigilance { background: #fdecea; color: #a12a29; }
+.tag-hypothese { background: #f1eefc; color: #4a3aa7; }
+.tag-piste { background: #fff3e0; color: #8a5300; }
+.tag-a_verifier { background: #f3f3f1; color: var(--ink-2); }
+table.data { width: 100%; border-collapse: collapse; font-size: .82rem; }
+table.data th { text-align: left; background: #f3f6fb; font-weight: 600; padding: .45rem .6rem; border-bottom: 1px solid #b7d3f6; vertical-align: bottom; }
+table.data td { padding: .4rem .6rem; border-bottom: 1px solid #eeeeec; vertical-align: top; }
+table.data td.r, table.data th.r { text-align: right; font-variant-numeric: tabular-nums; }
+.leaflet-container { font-family: inherit; }
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}
