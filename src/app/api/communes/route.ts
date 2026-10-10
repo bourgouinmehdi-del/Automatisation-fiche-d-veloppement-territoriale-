@@ -9,5 +9,9 @@ export async function GET(req: Request) {
   const q = url.searchParams.get("q") ?? "";
   const epci = url.searchParams.get("epci");
   if (epci) return NextResponse.json({ communes: epciMembers(epci) });
-  return NextResponse.json({ query: q, communes: searchCommunes(q) });
+  try {
+    return NextResponse.json({ query: q, communes: searchCommunes(q) });
+  } catch (e) {
+    return NextResponse.json({ query: q, communes: [], error: `Référentiel des communes illisible sur ce serveur : ${e instanceof Error ? e.message : e}` }, { status: 500 });
+  }
 }

@@ -111,6 +111,28 @@ Exemples dans `docs/exemples-interne/`. Uniquement des agrégats par commune : a
 
 **Garde-fous** : uniquement des agrégats publics (commune, bureau de vote) ; aucune donnée individuelle ; aucune variable d'origine ou de nationalité ; explications présentées comme hypothèses.
 
+## 2 ter. Déploiement en ligne
+
+**Vercel n'est pas adapté à la génération des fiches** : une génération dure plusieurs minutes, télécharge des fichiers nationaux de plusieurs centaines de Mo (résultats par bureau de vote, contours), a besoin d'environ 2 Go de mémoire, d'un cache persistant et de Chromium pour le PDF. Les fonctions serverless de Vercel sont limitées en durée, n'ont pas de disque persistant et arrêtent les traitements lancés en arrière-plan. Sur Vercel, l'application démarre (recherche de communes, consultation) mais refuse la génération avec un message explicite (`ALLOW_SERVERLESS_GENERATION=1` pour forcer, à vos risques).
+
+**Hébergement recommandé : un serveur ou un conteneur** (Railway, Render, Fly.io, ou un petit VPS), à partir du `Dockerfile` fourni :
+
+- au moins **2 Go de RAM** ;
+- un **volume persistant** monté sur `/data` (cache et fiches générées) ;
+- port exposé : `3000` (ou variable `PORT`).
+
+Exemple sur Railway : *New Project → Deploy from GitHub repo* → le Dockerfile est détecté → *Settings → Volumes* : ajouter un volume monté sur `/data` → *Networking* : générer un domaine.
+
+Exemple sur un VPS (Debian/Ubuntu avec Docker) :
+
+```bash
+git clone <dépôt> fiches && cd fiches
+docker build -t fiches .
+docker run -d --restart unless-stopped -p 80:3000 -v fiches-data:/data --name fiches fiches
+```
+
+Pour protéger l'accès (fiches contenant des données internes), placer le service derrière une authentification (ex. accès restreint de la plateforme, ou proxy avec mot de passe).
+
 ## 3. Architecture
 
 ```

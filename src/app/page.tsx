@@ -55,7 +55,8 @@ export default function Home() {
     }
     const t = setTimeout(async () => {
       const r = await fetch(`/api/communes?q=${encodeURIComponent(query)}`);
-      const d = await r.json();
+      const d = await r.json().catch(() => ({ error: `Erreur serveur (HTTP ${r.status})` }));
+      setError(r.ok ? null : d.error ?? `Erreur serveur (HTTP ${r.status})`);
       setCands(d.communes ?? []);
       setSelected(d.communes?.length === 1 ? d.communes[0].code : null);
     }, 200);
@@ -133,7 +134,7 @@ export default function Home() {
             {cands[0].population?.toLocaleString("fr-FR")} habitants
           </p>
         )}
-        {q.trim().length >= 5 && cands.length === 0 && <p className="mt-3 text-sm text-[#a12a29]">Aucune commune trouvée.</p>}
+        {q.trim().length >= 5 && cands.length === 0 && !error && <p className="mt-3 text-sm text-[#a12a29]">Aucune commune trouvée.</p>}
 
         <details className="mt-5">
           <summary className="cursor-pointer text-sm font-semibold text-[var(--ink-2)]">Réglages avancés (facultatif) : périmètre d&apos;analyse</summary>

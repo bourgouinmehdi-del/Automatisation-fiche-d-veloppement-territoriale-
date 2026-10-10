@@ -2,7 +2,10 @@ import path from "node:path";
 
 /** Configuration lue depuis l'environnement (voir `.env.example`). */
 export const config = {
-  dataDir: path.resolve(process.env.DATA_DIR || "./data"),
+  // Sur Vercel (et autres plateformes serverless), seul /tmp est inscriptible.
+  dataDir: path.resolve(process.env.DATA_DIR || (process.env.VERCEL ? "/tmp/fiche-data" : "./data")),
+  /** Plateforme serverless : la génération longue (plusieurs minutes, gros fichiers) n'y est pas fiable. */
+  serverless: !!process.env.VERCEL && process.env.ALLOW_SERVERLESS_GENERATION !== "1",
   cacheTtlHours: Number(process.env.CACHE_TTL_HOURS || 720),
   httpTimeoutMs: Number(process.env.HTTP_TIMEOUT_MS || 20000),
   offline: process.env.OFFLINE === "1" || process.env.OFFLINE === "true",
