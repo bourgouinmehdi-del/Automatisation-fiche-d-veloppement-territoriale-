@@ -123,6 +123,8 @@ Exemples dans `docs/exemples-interne/`. Uniquement des agrégats par commune : a
 
 Exemple sur Railway : *New Project → Deploy from GitHub repo* → le Dockerfile est détecté → *Settings → Volumes* : ajouter un volume monté sur `/data` → *Networking* : générer un domaine.
 
+Si la page de génération indique « génération interrompue » : le serveur a redémarré en cours de route, le plus souvent faute de mémoire. Vérifier dans Railway l'onglet *Metrics* (pic de mémoire) et *Deployments → Logs* (`Killed`, `out of memory`), passer à une offre avec plus de mémoire (formule d'essai insuffisante) et relancer : grâce au volume `/data`, les fichiers déjà téléchargés ne le sont pas une seconde fois. Les gros fichiers nationaux sont téléchargés sur disque et lus en flux pour limiter la mémoire nécessaire.
+
 Exemple sur un VPS (Debian/Ubuntu avec Docker) :
 
 ```bash

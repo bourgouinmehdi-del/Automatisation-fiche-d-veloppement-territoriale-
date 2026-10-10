@@ -41,6 +41,40 @@ export async function readCache(key: string): Promise<CacheEntry | null> {
   }
 }
 
+/** Chemin du corps brut d'une entrée (lecture en flux des gros fichiers). */
+export function bodyPath(key: string) {
+  return entryPath(key).replace(/\.json$/, ".body");
+}
+
+/** Métadonnées seules, sans charger le corps en mémoire. */
+export async function readCacheMeta(key: string): Promise<Omit<CacheEntry, "body"> | null> {
+  try {
+    const meta = JSON.parse(await fs.readFile(entryPath(key), "utf8")) as CacheEntry;
+    await fs.access(bodyPath(key));
+    return meta;
+  } catch {
+    return null;
+  }
+}
+
+/** Enregistre une entrée dont le corps a déjà été écrit dans `tmpBody`. */
+export async function commitCacheFile(meta: Omit<CacheEntry, "body">, tmpBody: string): Promise<string> {
+  const p = entryPath(meta.key);
+  await fs.mkdir(path.dirname(p), { recursive: true });
+  await fs.rename(tmpBody, bodyPath(meta.key));
+  const tmp = p + "." + process.pid + "." + Date.now() + ".tmp";
+  await fs.writeFile(tmp, JSON.stringify(meta));
+  await fs.rename(tmp, p);
+  return bodyPath(meta.key);
+}
+
+/** Fichier temporaire dans le dossier du cache (même volume que la destination). */
+export async function tempCachePath(key: string): Promise<string> {
+  const p = entryPath(key);
+  await fs.mkdir(path.dirname(p), { recursive: true });
+  return p + "." + process.pid + "." + Date.now() + ".download";
+}
+
 export async function writeCache(entry: CacheEntry): Promise<void> {
   const p = entryPath(entry.key);
   await fs.mkdir(path.dirname(p), { recursive: true });

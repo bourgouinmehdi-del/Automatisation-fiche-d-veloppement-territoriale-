@@ -1,3 +1,4 @@
+import { createReadStream, promises as fsp } from "node:fs";
 import Papa from "papaparse";
 import type { TrackedHttp } from "./context";
 
@@ -284,26 +285,70 @@ export function detectDelimiter(text: string): string {
   return [";", "\t", ",", "|"].reduce((best, d) => (count(d) > count(best) ? d : best), ";");
 }
 
-/** Lit un CSV de résultats et ne garde que les lignes d'un département. */
-export function filterCsv(text: string, dep: string, label: string) {
+/** Filtre ligne à ligne : ne garde que les lignes d'un département. */
+function departmentFilter(dep: string, label: string) {
   const rows: Record<string, unknown>[] = [];
   let fields: string[] = [];
   let c: Columns | null = null;
-  Papa.parse<Record<string, unknown>>(text, {
-    header: true,
-    skipEmptyLines: true,
-    delimiter: detectDelimiter(text),
-    step: (res) => {
-      const r = res.data;
-      if (!c) {
-        fields = res.meta.fields ?? Object.keys(r);
-        c = detectColumns(fields, r, label);
-      }
-      const keep = c.cDep ? normDep(r[c.cDep]) === dep : rowCode(r, c, dep).startsWith(dep);
-      if (keep) rows.push(r);
-    },
+  const step = (res: Papa.ParseStepResult<Record<string, unknown>>) => {
+    const r = res.data;
+    if (!c) {
+      fields = res.meta.fields ?? Object.keys(r);
+      c = detectColumns(fields, r, label);
+    }
+    const keep = c.cDep ? normDep(r[c.cDep]) === dep : rowCode(r, c, dep).startsWith(dep);
+    if (keep) rows.push(r);
+  };
+  return { step, result: () => ({ rows, fields }) };
+}
+
+/** Lit un CSV de résultats et ne garde que les lignes d'un département. */
+export function filterCsv(text: string, dep: string, label: string) {
+  const f = departmentFilter(dep, label);
+  Papa.parse<Record<string, unknown>>(text, { header: true, skipEmptyLines: true, delimiter: detectDelimiter(text), step: f.step });
+  return f.result();
+}
+
+/** Encodage d'un fichier : UTF-8 s'il est valide, sinon ISO-8859-1 (vérifié en flux). */
+export async function detectFileEncoding(file: string): Promise<"utf8" | "latin1"> {
+  const dec = new TextDecoder("utf-8", { fatal: true });
+  try {
+    for await (const chunk of createReadStream(file, { highWaterMark: 1 << 20 })) dec.decode(chunk as Buffer, { stream: true });
+    dec.decode();
+    return "utf8";
+  } catch {
+    return "latin1";
+  }
+}
+
+/**
+ * Variante en flux de `filterCsv` pour un fichier sur disque : la mémoire
+ * utilisée ne dépend que du nombre de lignes conservées (un département).
+ */
+export async function filterCsvFile(file: string, dep: string, label: string) {
+  const encoding = await detectFileEncoding(file);
+  const fh = await fsp.open(file, "r");
+  let head: string;
+  try {
+    const buf = Buffer.alloc(16384);
+    const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+    head = buf.subarray(0, bytesRead).toString(encoding);
+  } finally {
+    await fh.close();
+  }
+  const f = departmentFilter(dep, label);
+  await new Promise<void>((resolve, reject) => {
+    Papa.parse<Record<string, unknown>>(createReadStream(file, { encoding }) as unknown as File, {
+      header: true,
+      skipEmptyLines: true,
+      delimiter: detectDelimiter(head.replace(/^\uFEFF/, "")),
+      transformHeader: (h: string) => h.replace(/^\uFEFF/, ""),
+      step: f.step,
+      complete: () => resolve(),
+      error: (e: Error) => reject(e),
+    });
   });
-  return { rows, fields };
+  return f.result();
 }
 
 const normDep = (v: unknown) => String(v ?? "").trim().padStart(2, "0");
@@ -355,8 +400,8 @@ async function departmentRows(http: TrackedHttp, e: ElectionConfig, dep: string,
   } catch {
     if (!res.url) throw new Error(`Ressource sans URL de téléchargement (${e.label})`);
     http.notes.push(`${e.id} (${level}) : lecture du fichier national`);
-    const f = await http.text(res.url, { timeoutMs: 600000, retries: 1, decodeLatin1: true });
-    const { rows: raw, fields } = filterCsv(f.data, dep, e.label);
+    const f = await http.file(res.url, { timeoutMs: 900000, retries: 1 });
+    const { rows: raw, fields } = await filterCsvFile(f.data, dep, e.label);
     const rows = expandExtraColumns(raw, fields);
     if (!rows.length) throw new Error(`Aucune ligne pour le département ${dep} (${e.label})`);
     out = { rows, c: detectColumns(Object.keys(rows[0]), rows[0], e.label), url: res.url, retrievedAt: f.retrievedAt };

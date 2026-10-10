@@ -162,7 +162,9 @@ async function fromContours(http: TrackedHttp, codeInsee: string): Promise<Burea
       .filter((r) => (/json/i.test(r.format ?? "") || /\.(geo)?json$/i.test(r.url ?? "")) && r.url && (!r.filesize || r.filesize <= maxBytes))
       .sort((x, y) => (x.filesize ?? 0) - (y.filesize ?? 0))[0];
     if (!res?.url) continue;
-    const r = await http.text(res.url, { timeoutMs: 900000, retries: 1 });
+    // Téléchargé sur disque d'abord (pas de double copie en mémoire), puis lu une fois.
+    const f = await http.file(res.url, { timeoutMs: 900000, retries: 1 });
+    const r = { data: await fs.readFile(f.data, "utf8"), retrievedAt: f.retrievedAt };
     // Le fichier INSEE est un TopoJSON (frontières partagées) ; d'autres sont du GeoJSON.
     const isTopo = /^\s*\{\s*"type"\s*:\s*"Topology"/.test(r.data.slice(0, 200));
     const n = normalizeBvFeatures(isTopo ? extractTopoJson(r.data, codeInsee) : extractFeaturesByText(r.data, codeInsee), codeInsee);

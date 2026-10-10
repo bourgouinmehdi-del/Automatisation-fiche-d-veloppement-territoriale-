@@ -12,8 +12,10 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     CHROMIUM_PATH=/usr/bin/chromium \
     DATA_DIR=/data \
-    NODE_OPTIONS=--max-old-space-size=3072 \
     PORT=3000
+# Pas de NODE_OPTIONS imposé : Node dimensionne sa mémoire selon le conteneur.
+# Sur une machine de 2 Go ou plus, on peut ajouter la variable
+# NODE_OPTIONS=--max-old-space-size=1536 dans l'hébergeur.
 
 COPY package.json package-lock.json ./
 RUN npm ci

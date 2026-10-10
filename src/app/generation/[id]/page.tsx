@@ -18,16 +18,29 @@ export default function Generation({ params }: { params: Promise<{ id: string }>
   const [events, setEvents] = useState<Ev[]>([]);
   const [status, setStatus] = useState("running");
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState<Record<string, unknown> | null>(null);
+  const [relaunching, setRelaunching] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let stop = false;
+    let unknownCount = 0;
     const tick = async () => {
       try {
         const r = await fetch(`/api/reports/${id}/progress`, { cache: "no-store" });
         const d = await r.json();
         if (stop) return;
+        if (d.status === "unknown") {
+          // Laisse quelques secondes au serveur (démarrage de la tâche) avant de conclure.
+          if (++unknownCount < 5) {
+            setTimeout(tick, 1000);
+            return;
+          }
+        } else unknownCount = 0;
         setEvents(d.events ?? []);
         setStatus(d.status);
+        if (d.query) setQuery(d.query);
+        if (d.status === "interrupted" || d.status === "unknown") return;
         if (d.status === "done") {
           router.replace(`/rapport/${id}`);
           return;
@@ -45,7 +58,28 @@ export default function Generation({ params }: { params: Promise<{ id: string }>
     return () => {
       stop = true;
     };
-  }, [id, router]);
+  }, [id, router, attempt]);
+
+  /** Relance la génération (les données déjà téléchargées sont en cache). */
+  const relaunch = async () => {
+    setRelaunching(true);
+    const [code, scope] = id.split("-");
+    const body = query ?? { codeInsee: code, scope };
+    try {
+      const r = await fetch("/api/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`);
+      setError(null);
+      setEvents([]);
+      setStatus("running");
+      if (d.id !== id) router.replace(`/generation/${d.id}`);
+      else setAttempt((a) => a + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRelaunching(false);
+    }
+  };
 
   const last = events[events.length - 1];
   const pct = last ? Math.round((100 * last.done) / last.total) : 0;
@@ -77,6 +111,21 @@ export default function Generation({ params }: { params: Promise<{ id: string }>
             </li>
           ))}
         </ol>
+        {(status === "interrupted" || status === "unknown") && (
+          <div className="mt-4 rounded bg-[#fff4e0] p-3 text-sm text-[#7a4b00]">
+            <p className="mb-2 font-semibold">
+              {status === "interrupted" ? "La génération a été interrompue : le serveur a redémarré en cours de route." : "Cette génération n'est plus suivie par le serveur (redémarrage probable)."}
+            </p>
+            <p className="mb-3">
+              Cause la plus fréquente : mémoire insuffisante sur l&apos;hébergement (prévoir au moins 1 à 2 Go). Les données déjà téléchargées sont
+              conservées en cache si un volume persistant est monté : une relance va plus vite.
+            </p>
+            <button type="button" className="btn" onClick={relaunch} disabled={relaunching}>
+              {relaunching ? "Relance…" : "Relancer la génération"}
+            </button>{" "}
+            <a href="/">Revenir à l&apos;accueil</a>
+          </div>
+        )}
         {error && (
           <p className="mt-4 rounded bg-[#fdecea] p-3 text-sm text-[#a12a29]">
             Échec de la génération : {error}. <a href="/">Revenir à l&apos;accueil</a>

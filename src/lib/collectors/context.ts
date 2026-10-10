@@ -1,4 +1,4 @@
-import { fetchJson, fetchText, FetchOptions, FetchResult } from "../http";
+import { fetchJson, fetchText, fetchToFile, FetchOptions, FetchResult } from "../http";
 import { SOURCES } from "./catalog";
 import type { MissingItem, SourceRef, SourceRun, ThemeId } from "../types";
 
@@ -98,5 +98,9 @@ export class TrackedHttp {
   }
   async text(url: string, opts?: FetchOptions) {
     return this.track(await fetchText(url, opts));
+  }
+  /** Télécharge sur disque ; `data` est le chemin du fichier local. */
+  async file(url: string, opts?: FetchOptions) {
+    return this.track(await fetchToFile(url, opts));
   }
 }

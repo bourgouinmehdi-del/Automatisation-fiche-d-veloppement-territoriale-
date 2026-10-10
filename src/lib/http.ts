@@ -1,4 +1,8 @@
-import { cacheKey, isFresh, readCache, writeCache } from "./cache";
+import { createWriteStream, promises as fsp } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeWebStream } from "node:stream/web";
+import { bodyPath as bodyFile, cacheKey, commitCacheFile, isFresh, readCache, readCacheMeta, tempCachePath, writeCache } from "./cache";
 import { config } from "./config";
 
 /**
@@ -137,6 +141,62 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<F
   }
   const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
   throw new HttpError(`Échec de la requête (${msg})`, lastErr instanceof HttpError ? lastErr.status : undefined, url);
+}
+
+/**
+ * Télécharge une ressource volumineuse directement sur disque (dans le cache)
+ * sans jamais la charger en mémoire, et renvoie le chemin du fichier.
+ * Indispensable sur les hébergements à mémoire limitée : les fichiers
+ * nationaux de résultats par bureau de vote pèsent plusieurs centaines de Mo.
+ */
+export async function fetchToFile(url: string, opts: FetchOptions = {}): Promise<FetchResult<string>> {
+  const key = cacheKey(url);
+  const cached = await readCacheMeta(key);
+  const fromCached = (stale: boolean) => ({ data: bodyFile(key), url, retrievedAt: cached!.fetchedAt, fromCache: true, stale });
+  if (cached && isFresh({ ...cached, body: "" }, opts.ttlHours)) return fromCached(false);
+  if (config.offline) {
+    if (cached) return fromCached(true);
+    throw new HttpError("Mode hors ligne : aucune copie en cache", undefined, url);
+  }
+  if (hostIsDown(url)) {
+    if (cached) return fromCached(true);
+    throw new HttpError(`Hôte injoignable (${new URL(url).host})`, undefined, url);
+  }
+  const retries = opts.retries ?? 1;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) await sleep(2000 * 2 ** (attempt - 1));
+    await throttle(url, opts.minIntervalMs ?? 0);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 600_000);
+    const tmp = await tempCachePath(key);
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": config.userAgent, Accept: "text/csv, */*", ...opts.headers }, signal: ctrl.signal });
+      markHost(url, true);
+      if (res.status === 429 || res.status >= 500) {
+        lastErr = new HttpError(`HTTP ${res.status}`, res.status, url);
+        continue;
+      }
+      if (!res.ok || !res.body) throw new HttpError(`HTTP ${res.status}`, res.status, url);
+      await pipeline(Readable.fromWeb(res.body as unknown as NodeWebStream), createWriteStream(tmp));
+      const retrievedAt = new Date().toISOString();
+      const file = await commitCacheFile({ key, url, fetchedAt: retrievedAt, status: res.status }, tmp);
+      return { data: file, url, retrievedAt, fromCache: false, stale: false };
+    } catch (e) {
+      lastErr = e;
+      await fsp.rm(tmp, { force: true });
+      if (e instanceof HttpError && e.status && e.status < 500 && e.status !== 429) break;
+      if (!(e instanceof HttpError)) {
+        markHost(url, false);
+        if (hostIsDown(url)) break;
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  if (cached) return fromCached(true);
+  const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  throw new HttpError(`Échec du téléchargement (${msg})`, lastErr instanceof HttpError ? lastErr.status : undefined, url);
 }
 
 function decodeBody(bytes: Uint8Array): string {
