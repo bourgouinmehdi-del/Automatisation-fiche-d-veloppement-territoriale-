@@ -132,6 +132,15 @@ export function mockExtra(url: URL): Response | null {
       ],
     });
   if (h === "static.data.gouv.fr" && p === "/qpv-2024-geojson.zip") return bin(qpvZip());
+  // Municipales, 1er tour : comme en octobre 2026, la ressource n'est plus servie par l'API
+  // tabulaire (HTTP 410) ; le fichier CSV national reste téléchargeable.
+  if (h === "www.data.gouv.fr" && p === "/api/1/datasets/elections-municipales-2026-resultats-du-premier-tour/")
+    return json({ resources: [{ id: "4feeef01-24f7-4d5a-914f-8aa806f31ec2", title: "Municipales 2026 - Résultats - Communes_2026-03-20.csv", format: "csv", url: "https://static.data.gouv.fr/municipales-2026-t1-communes.csv" }] });
+  if (h === "static.data.gouv.fr" && p === "/municipales-2026-t1-communes.csv") {
+    const rows = ["60159", "60382", "60338", "60667", "60151", "60156", "60057"].map((c) => muniRow(c, "60", 1));
+    const head = Object.keys(rows[0]);
+    return new Response([head.join(";"), ...rows.map((r) => head.map((k) => String(r[k] ?? "")).join(";"))].join("\n"), { status: 200 });
+  }
   if (h === "tabular-api.data.gouv.fr") {
     const rid = p.split("/")[3];
     const one = url.searchParams.get("page_size") === "1";
@@ -141,7 +150,8 @@ export function mockExtra(url: URL): Response | null {
       const all = [{ code_qp: QPV.code, lib_qp: QPV.nom, insee_dep: 60, insee_com: '="60159"', lib_com: "Compiègne" }];
       return reply(all.filter((r) => r.insee_com.includes(com)));
     }
-    if (rid === "4feeef01-24f7-4d5a-914f-8aa806f31ec2" || rid === "6ff67a28-01bf-459e-beca-dd7aa8132dc1") {
+    if (rid === "4feeef01-24f7-4d5a-914f-8aa806f31ec2") return new Response(JSON.stringify({ message: "Gone" }), { status: 410 });
+    if (rid === "6ff67a28-01bf-459e-beca-dd7aa8132dc1") {
       const tour = rid.startsWith("4f") ? 1 : 2;
       const com = url.searchParams.get("Code commune__exact");
       const dep = url.searchParams.get("Code département__exact");

@@ -102,7 +102,7 @@ Les textes acceptent une mise en évidence minimale (`**gras**`), rendue dans l'
 
 **Export court** : bouton « PDF fiche d'action » (ou `…/export/pdf?fiche=1`, et `<id>-fiche-action.pdf` en ligne de commande) — la fiche d'action seule, quelques pages, comme le document de référence.
 
-**Méthode de priorisation des bureaux** : potentiel = moyenne de deux scores z calculés entre les bureaux de la commune — part LFI des exprimés (réservoir) et taux d'abstention (marge de mobilisation) ; priorité 1 = un quart des bureaux, 4 au maximum ; priorité 2 = jusqu'à la moitié.
+**Méthode de priorisation des bureaux** : potentiel = moyenne de deux scores z calculés entre les bureaux de la commune — réservoir (part LFI des exprimés aux européennes 2024, moyennée avec la part de J.-L. Mélenchon au 1er tour de la présidentielle 2022 pour les bureaux appariés) et marge de mobilisation (taux d'abstention aux européennes) ; priorité 1 = un quart des bureaux, 4 au maximum ; priorité 2 = jusqu'à la moitié. La fiche présente les deux scrutins côte à côte : chiffres clés, cartes par bureau (vote LFI / participation 2024, vote Mélenchon / participation 2022), classement, graphique, quartiers et porte-à-porte.
 
 **Géographie des bureaux de vote** (dans l'ordre) : fichier fourni `data/interne/bv-<code INSEE>.geojson` (contours officiels de la mairie, propriété `bv` ou `numero`), contours publiés sur data.gouv.fr, ou enveloppes approximatives calculées à partir des adresses du Répertoire électoral unique (INSEE).
 

@@ -215,9 +215,21 @@ function sectionE(x: Ctx): Section {
   });
   blocks.push(...optional(x, "chart", "chart_dist_mode_transport"), ...optional(x, "chart", "chart_dist_lieu_travail"), ...optional(x, "chart", "chart_dist_voitures"));
   blocks.push({ type: "findings", themes: ["mobilite"] });
+  const routes = x.c.routes?.routes ?? [];
+  const tts = (x.c.timetables?.stations ?? []).filter((t) => t.departs);
+  const h = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}` : `${m} min`);
+  if (routes.length || tts.length)
+    blocks.push({
+      type: "list",
+      title: "Temps de trajet et desserte ferroviaire",
+      items: [
+        ...routes.map((r) => ({ text: `${r.nom} (${r.label.toLowerCase()}) : ${h(r.minutes)} en voiture, ${fmtNumber(r.km)} km (calculateur OSRM, sans trafic).` })),
+        ...tts.map((t) => ({ text: `${t.nom} : ${t.departs} passages de trains un mardi type${t.pointe ? `, pointe entre ${t.pointe[0]} h et ${t.pointe[1]} h` : ""}${t.paris ? ` ; Paris en ${h(t.paris.minMinutes)} par trajet direct` : ""} (horaires théoriques SNCF).` })),
+      ],
+    });
   blocks.push({
     type: "note",
-    text: "Les distances sont calculées à vol d'oiseau. Les fréquences et destinations des trains, les lignes de bus et les temps de trajet nécessitent l'exploitation des flux GTFS publiés sur transport.data.gouv.fr (non intégrée dans cette version).",
+    text: `Les distances des tableaux sont calculées à vol d'oiseau.${routes.length ? " Les temps de trajet routiers sont théoriques (sans trafic)." : ""} Les lignes de bus et de cars régionales (GTFS de transport.data.gouv.fr) ne sont pas exploitées.`,
   });
   blocks.push({ type: "missing", themes: ["mobilite"] });
   return { id: "E", letter: "E", title: "Mobilité et accessibilité", blocks };

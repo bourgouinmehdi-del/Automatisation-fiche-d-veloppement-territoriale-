@@ -205,6 +205,19 @@ describe("chaîne de génération (API simulées)", () => {
     expect(fiche.blocks.some((b) => b.type === "callout" && /Groupe d'action fictif/.test(b.text))).toBe(true);
   });
 
+  it("présidentielle 2022 (Mélenchon) à côté des européennes dans la fiche", () => {
+    const fiche = report.sections[0];
+    const glance = fiche.blocks.find((b) => b.type === "glance") as Extract<(typeof fiche.blocks)[number], { type: "glance" }>;
+    expect(glance.items.map((i) => i.label)).toEqual(expect.arrayContaining(["Vote LFI (européennes 2024)", "Vote Mélenchon (présidentielle 2022)"]));
+    const bv = report.tables.find((t) => t.id === "lfi_bureaux")!;
+    expect(bv.columns.map((c) => c.key)).toEqual(expect.arrayContaining(["lfi2", "lfi2exp"]));
+    expect(report.maps.some((m) => m.id === "lfi_map_bv_p22")).toBe(true);
+    expect(fiche.blocks.filter((b) => b.type === "mapPair")).toHaveLength(2);
+    expect(report.charts.find((c) => c.id === "lfi_chart_bureaux")!.series.map((x) => x.key)).toContain("mel");
+    const actions = fiche.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
+    expect(actions.groups[0].items[0]).toMatch(/Mélenchon/);
+  });
+
   it("retours du terrain : enregistrés, conservés à la régénération, repris dans les exports", async () => {
     const { saveReport, saveFieldNotes, getReport } = await import("@/lib/report/store");
     const { renderReportHtml } = await import("@/lib/render/html");

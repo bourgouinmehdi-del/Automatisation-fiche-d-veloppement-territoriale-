@@ -1,5 +1,6 @@
 import * as turf from "@turf/turf";
 import {
+  referentiel,
   communeFromReferentiel,
   departementContour,
   departementGeo,
@@ -499,7 +500,7 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
       "municipales",
       "municipales",
       async (http) => {
-        const m = await collectMunicipales(http, commune.code);
+        const m = await collectMunicipales(http, commune.code, commune.departement.code);
         c.municipal = { ...m, source: ctx.ref("municipales", m.urls[0], m.retrievedAt, { vintage: "2026" }) };
       },
       { theme: "elections", label: "Municipales 2026 et maire" },
@@ -537,13 +538,24 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
   /* 17. Temps de trajet routiers */
   step("acces", "Temps de trajet routiers (OSRM)");
   if (enabled("osrm") && commune.centre) {
-    const targets: { label: string; nom: string; to: [number, number] }[] = [];
-    if (c.parisCentre && commune.code !== "75056") targets.push({ label: "Paris", nom: "Paris", to: c.parisCentre });
     await ctx.step("osrm", "acces:routes", async (http) => {
       const fc = await franceCentres(http);
+      const centre = (code: string) => fc.communes.find((x) => x.code === code)?.centre?.coordinates as [number, number] | undefined;
+      const targets: { label: string; nom: string; to: [number, number] }[] = [];
+      const add = (label: string, code: string, nom: string) => {
+        const to = centre(code);
+        if (to && code !== commune.code && !targets.some((t) => t.nom === nom)) targets.push({ label, nom, to });
+      };
+      // Pôle urbain le plus proche, grande ville la plus proche (100 000 hab. et plus), préfecture.
       const pole = c.poles[0];
-      const pc = pole ? fc.communes.find((x) => x.code === pole.code)?.centre?.coordinates : null;
-      if (pole && pc) targets.unshift({ label: "Pôle urbain le plus proche", nom: pole.nom, to: pc as [number, number] });
+      if (pole) add("Pôle urbain le plus proche", pole.code, pole.nom);
+      const big = c.poles.find((p) => p.population >= 100000);
+      if (big) add("Grande ville la plus proche", big.code, big.nom);
+      const prefCode = referentiel().departements.get(commune.departement.code)?.chefLieu;
+      const pref = prefCode ? referentiel().byCode.get(prefCode) : null;
+      if (pref) add("Préfecture", pref.code, pref.nom);
+      // Paris seulement s'il reste à portée (moins de 250 km à vol d'oiseau).
+      if (c.parisCentre && c.parisKm != null && c.parisKm <= 250 && commune.code !== "75056") targets.push({ label: "Paris", nom: "Paris", to: c.parisCentre });
       if (!targets.length) throw new Error("Aucune destination");
       const r = await collectRoutes(http, commune.centre!, targets);
       c.routes = { routes: r.routes, source: ctx.ref("osrm", r.url, r.retrievedAt) };
