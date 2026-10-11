@@ -245,6 +245,24 @@ describe("chaîne de génération (API simulées)", () => {
     await fs.writeFile(path.join(os.tmpdir(), "fiche-test-mock.json"), JSON.stringify(report));
   }, 60000);
 
+  it("fiche au format du document de référence (HTML et Word)", async () => {
+    const { renderReportHtml } = await import("@/lib/render/html");
+    const { reportToDocx } = await import("@/lib/export/docx");
+    const { unzipSync, strFromU8 } = await import("fflate");
+    const html = renderReportHtml(report, { sectionIds: ["LFI"], style: "yonne" });
+    expect(html).toContain("Pôle d'études électorales");
+    expect(html).toContain('class="fiche yonne"');
+    expect(html).not.toContain('class="glance"');
+    const docx = await reportToDocx(report, { sectionIds: ["LFI"], style: "yonne" });
+    const xml = strFromU8(unzipSync(new Uint8Array(docx))["word/document.xml"]);
+    expect(xml).toContain("Arial");
+    expect(xml).toContain("Proposition de ciblage");
+    expect(xml).not.toContain("Journal de collecte");
+    // Le thème « yonne » ne doit pas fuir sur l'export complet suivant.
+    const full = strFromU8(unzipSync(new Uint8Array(await reportToDocx(report)))["word/document.xml"]);
+    expect(full).not.toContain('w:ascii="Arial"');
+  }, 60000);
+
   it("export PDF (si Chromium est disponible)", async () => {
     const { findChromium, reportToPdf } = await import("@/lib/export/pdf");
     if (!findChromium()) return;

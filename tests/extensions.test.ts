@@ -89,6 +89,28 @@ describe("lecteurs des nouvelles sources", () => {
     expect(nuanceFamily("LUXD")).toBe("extreme_droite");
   });
 
+  it("municipales : blocs de listes sans en-tête (format « 2022 ») et rapprochement des tours", async () => {
+    const { expandListBlocks, parseMunicipalRow, sameList } = await import("@/lib/collectors/municipales");
+    const fields = ["Code commune", "Inscrits", "Votants", "Exprimés", "Numéro de panneau", "Nuance liste", "Libellé de liste", "Nom tête de liste", "Prénom tête de liste", "Voix", "Sièges au CM"];
+    const rows = expandListBlocks(
+      [{ "Code commune": "48095", Inscrits: "7800", Votants: "4000", Exprimés: "3900", "Numéro de panneau": "1", "Nuance liste": "LDVD", "Libellé de liste": "Liste A", "Nom tête de liste": "SAINT", "Prénom tête de liste": "Paul", Voix: "1340", "Sièges au CM": "0", __parsed_extra: ["2", "LUG", "Liste B", "PERIS", "Anne", "700", "0", "3", "LDVC", "Liste C", "MAURIN", "Lise", "1860", "0"] }],
+      fields,
+    );
+    const r = parseMunicipalRow(rows[0], 1)!;
+    expect(r.listes.map((l) => l.libelle)).toEqual(["Liste C", "Liste A", "Liste B"]);
+    expect(r.listes[1].tete).toBe("Paul SAINT");
+    expect(sameList(r.listes[1], { ...r.listes[1], tete: "" })).toBe(true); // même libellé, tête absente au 2nd tour
+  });
+
+  it("bureaux : les très petits bureaux restent hors priorité", async () => {
+    const { rankBureaux } = await import("@/lib/analysis/political");
+    const e = { id: "EU24", label: "E24", date: "2024-06-09", dataset: "", search: "", titleRe: /x/ };
+    const b = (bv: string, ins: number, lfi: number, vot: number) => ({ election: e, bv, inscrits: ins, votants: vot, abstentions: ins - vot, exprimes: vot, blancs: 0, nuls: 0, candidates: [{ label: "LFI", voix: lfi }, { label: "AUTRE", voix: vot - lfi }], sourceUrl: "", retrievedAt: "" });
+    const rows = rankBureaux([b("1", 1000, 50, 600), b("2", 1100, 80, 500), b("3", 900, 30, 650), b("4", 1200, 60, 700), b("8", 49, 5, 15)], null, new Map());
+    expect(rows.find((x) => x.bv === "8")!.priorite).toBe(3);
+    expect(rows[rows.length - 1].bv).toBe("8");
+  });
+
   it("Action Populaire : commune retrouvée par code postal et ville, colonnes nominatives ignorées", async () => {
     const { parseGroupes } = await import("@/lib/collectors/interne");
     const { groupes, unmatched } = parseGroupes(

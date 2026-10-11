@@ -88,8 +88,9 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
-      <div className="mb-1 text-xs font-semibold uppercase tracking-[.12em] text-[var(--fiche)]">Développement territorial</div>
-      <h1 className="mb-2 text-3xl font-bold text-[var(--accent-strong)]">Fiche d&apos;action et diagnostic territorial</h1>
+      <h1 className="mb-8 mt-24 text-6xl uppercase leading-[.98] sm:text-7xl">
+        <span className="iso">Où aller,<br />qui rencontrer,<br /><span className="text-[var(--mark)]">quoi dire.</span></span>
+      </h1>
       <p className="mb-5 text-[var(--ink-2)]">
         Saisissez un code postal ou le nom d&apos;une commune : l&apos;application collecte les données publiques (INSEE, élections par bureau de vote,
         OpenStreetMap, SNCF, éducation…), les compare au département et produit une fiche d&apos;action sourcée, suivie du diagnostic complet.
@@ -102,13 +103,13 @@ export default function Home() {
           ["Actions recommandées", "porte-à-porte, marchés, gares, commerces, accessibilité"],
         ].map(([t, d]) => (
           <li key={t} className="rounded-lg border border-[var(--line)] bg-white px-3 py-2">
-            <span className="font-semibold">{t}</span> <span className="text-[var(--ink-2)]">— {d}</span>
+            <span className="block font-semibold">{t}</span> <span className="text-[var(--ink-2)]">{d.charAt(0).toUpperCase() + d.slice(1)}.</span>
           </li>
         ))}
       </ul>
 
       <div className="card p-5">
-        <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-[#f1f0ec] p-1 text-sm font-semibold" role="tablist">
+        <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-[var(--accent-soft)] p-1 text-sm font-semibold" role="tablist">
           {[
             ["commune", "Fiche d'une commune"],
             ["departement", "Ciblage d'un département"],
@@ -129,7 +130,6 @@ export default function Home() {
         </label>
         <input
           id="q"
-          autoFocus
           inputMode="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -149,7 +149,7 @@ export default function Home() {
                   <input type="radio" name="commune" checked={selected === c.code} onChange={() => setSelected(c.code)} />
                   <span className="font-semibold">{c.nom}</span>
                   <span className="text-[var(--ink-2)]">
-                    {c.departementNom} ({c.departement}) · INSEE {c.code} · {c.population != null ? `${c.population.toLocaleString("fr-FR")} hab.` : "population n.d."}
+                    {c.departementNom} ({c.departement}), INSEE {c.code}, {c.population != null ? `${c.population.toLocaleString("fr-FR")} hab.` : "population n.d."}
                   </span>
                 </label>
               ))}
@@ -199,13 +199,13 @@ export default function Home() {
             {recent.map((r) => (
               <li key={r.id} className="flex items-center justify-between px-4 py-3 text-sm">
                 <a href={`/rapport/${r.id}`} className="font-semibold">
-                  {r.nom} <span className="font-normal text-[var(--ink-2)]">({r.departement}) — {r.scope}</span>
+                  {r.nom} <span className="font-normal text-[var(--ink-2)]">({r.departement}), {r.scope}</span>
                 </a>
                 <span className="flex items-center gap-3 text-[var(--muted)]">
                   <a href={`/api/reports/${r.id}/export/pdf?fiche=1`} className="text-xs font-normal">
                     PDF fiche
                   </a>
-                  v{r.version} · {new Date(r.updatedAt).toLocaleDateString("fr-FR")}
+                  v{r.version}, {new Date(r.updatedAt).toLocaleDateString("fr-FR")}
                 </span>
               </li>
             ))}

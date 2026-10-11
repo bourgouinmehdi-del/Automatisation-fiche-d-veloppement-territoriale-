@@ -15,11 +15,11 @@ import { colorFor, MISSING_COLOR } from "../report/assemble";
  */
 
 export const PALETTE = {
-  series: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"],
+  series: ["#4c0297", "#d1271c", "#9c6ee8", "#f9a89e", "#212320", "#8f120a", "#c9adff", "#85877f"],
   text: "#0b0b0b",
   text2: "#52514e",
   muted: "#8a8984",
-  grid: "#e7e6e2",
+  grid: "#e9e3d3",
   surface: "#ffffff",
 };
 

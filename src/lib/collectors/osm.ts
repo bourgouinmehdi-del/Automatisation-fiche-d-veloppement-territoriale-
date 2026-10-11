@@ -148,16 +148,40 @@ export function toFeatures(elements: OverpassElement[]): GeoJSON.Feature<GeoJSON
   return out;
 }
 
+
+/**
+ * Instances Overpass essayées dans l'ordre : l'instance principale répond
+ * souvent 504 (surcharge) ; on bascule alors sur des instances miroirs.
+ */
+export const OVERPASS_MIRRORS = [config.overpassUrl, ...(process.env.OVERPASS_MIRRORS ?? "https://overpass.kumi.systems/api/interpreter,https://overpass.private.coffee/api/interpreter").split(",")]
+  .map((u) => u.trim())
+  .filter((u, i, a) => u && a.indexOf(u) === i);
+
+async function overpass<T>(http: TrackedHttp, query: string): Promise<{ data: T | null; retrievedAt: string; url: string }> {
+  let last: unknown = null;
+  for (const url of OVERPASS_MIRRORS) {
+    try {
+      const r = await http.json<T>(url, {
+        method: "POST",
+        body: "data=" + encodeURIComponent(query),
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        timeoutMs: 120000,
+        minIntervalMs: 1000,
+        retries: 1,
+      });
+      if (url !== OVERPASS_MIRRORS[0]) http.notes.push(`Overpass : instance de secours ${new URL(url).host}`);
+      return { data: r.data, retrievedAt: r.retrievedAt, url };
+    } catch (e) {
+      last = e;
+    }
+  }
+  throw last instanceof Error ? last : new Error("Overpass indisponible");
+}
+
 export async function collectEquipments(http: TrackedHttp, codeInsee: string) {
   const query = buildEquipmentQuery(codeInsee);
-  const url = config.overpassUrl;
-  const r = await http.json<{ elements?: OverpassElement[]; remark?: string }>(url, {
-    method: "POST",
-    body: "data=" + encodeURIComponent(query),
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    timeoutMs: 120000,
-    minIntervalMs: 1000,
-  });
+  const r = await overpass<{ elements?: OverpassElement[]; remark?: string }>(http, query);
+  const url = r.url;
   if (r.data?.remark && !r.data.elements?.length) throw new Error("Overpass : " + r.data.remark);
   const features = toFeatures(r.data?.elements ?? []);
   return { url: `${url}?data=${encodeURIComponent(query)}`, retrievedAt: r.retrievedAt, features };
@@ -175,14 +199,8 @@ area["boundary"="administrative"]["admin_level"="8"]["ref:INSEE"="${codeInsee}"]
   way["cycleway:both"~"^(lane|track)$"](area.a);
 );
 out geom;`;
-  const url = config.overpassUrl;
-  const r = await http.json<{ elements?: OverpassElement[] }>(url, {
-    method: "POST",
-    body: "data=" + encodeURIComponent(query),
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    timeoutMs: 120000,
-    minIntervalMs: 1000,
-  });
+  const r = await overpass<{ elements?: OverpassElement[] }>(http, query);
+  const url = r.url;
   const lines: GeoJSON.Feature<GeoJSON.LineString>[] = (r.data?.elements ?? [])
     .filter((e) => e.geometry && e.geometry.length > 1)
     .map((e) => ({
@@ -205,13 +223,7 @@ export async function collectNearest(http: TrackedHttp, lon: number, lat: number
   nwr["amenity"="university"]${around};
 );
 out center tags;`;
-  const url = config.overpassUrl;
-  const r = await http.json<{ elements?: OverpassElement[] }>(url, {
-    method: "POST",
-    body: "data=" + encodeURIComponent(query),
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    timeoutMs: 120000,
-    minIntervalMs: 1000,
-  });
+  const r = await overpass<{ elements?: OverpassElement[] }>(http, query);
+  const url = r.url;
   return { url: `${url}?data=${encodeURIComponent(query)}`, retrievedAt: r.retrievedAt, elements: r.data?.elements ?? [] };
 }

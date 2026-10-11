@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import "@fontsource-variable/archivo/wdth.css";
+import "@fontsource-variable/stack-sans-text";
 import "./globals.css";
 import "leaflet/dist/leaflet.css";
 
@@ -11,16 +13,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fr">
       <body className="min-h-screen antialiased">
-        <header className="no-print border-b border-[var(--line)] bg-white">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-            <a href="/" className="font-bold text-[var(--accent-strong)] no-underline">
-              Fiches territoriales
+        <header className="site-header no-print">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 gap-4 pb-3 pt-7">
+            <a href="/" className="site-logo no-underline">
+              <span className="iso-soft">
+                <span className="l1 block">Fiches</span>
+                <span className="l2 block">territoriales</span>
+              </span>
             </a>
-            <nav className="flex gap-5 text-sm text-[var(--ink-2)]">
-              <a href="/donnees-internes" className="text-[var(--ink-2)]">
+            <nav className="site-nav flex gap-3 text-right text-xs sm:gap-5 sm:text-sm">
+              <a href="/donnees-internes">
                 Données internes
               </a>
-              <a href="/methodologie" className="text-[var(--ink-2)]">
+              <a href="/methodologie">
                 Méthodologie et sources
               </a>
             </nav>

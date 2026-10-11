@@ -17,7 +17,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id, format } = await params;
   const r = await getReport(id);
   if (!r) return new Response("Rapport introuvable", { status: 404 });
-  const sub = new URL(req.url).searchParams.get("id") ?? "";
+  const q = new URL(req.url).searchParams;
+  const sub = q.get("id") ?? "";
+  const style = q.get("style") === "yonne" ? "yonne" : "moderne";
+  const ciblage = r.sections.some((s) => s.id === "CIBLAGE");
+  const ficheIds = [ciblage ? "CIBLAGE" : "LFI"];
+  const ficheName = (ext: string) => `${name}-${ciblage ? "ciblage" : "fiche-action"}${style === "yonne" ? "-yonne" : ""}.${ext}`;
   const name = `diagnostic-${r.commune.nom.normalize("NFD").replace(/[^\w]+/g, "-").toLowerCase()}-${r.commune.code}`;
   const file = (body: BodyInit, type: string, filename: string, inline = false) =>
     new Response(body, { headers: { "Content-Type": type, "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${filename}"` } });
@@ -25,17 +30,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     case "pdf":
       try {
         // ?fiche=1 : fiche d'action seule (quelques pages, comme le document de référence).
-        if (new URL(req.url).searchParams.get("fiche")) {
-          const ciblage = r.sections.some((s) => s.id === "CIBLAGE");
-          return file(new Uint8Array(await reportToPdf(r, { sectionIds: [ciblage ? "CIBLAGE" : "LFI"] })), "application/pdf", `${name}-${ciblage ? "ciblage" : "fiche-action"}.pdf`);
-        }
+        if (q.get("fiche")) return file(new Uint8Array(await reportToPdf(r, { sectionIds: ficheIds, style })), "application/pdf", ficheName("pdf"));
         return file(new Uint8Array(await reportToPdf(r)), "application/pdf", `${name}.pdf`);
       } catch (e) {
         return new Response(`Export PDF impossible : ${e instanceof Error ? e.message : e}. Renseignez CHROMIUM_PATH.`, { status: 500 });
       }
     case "docx":
+      // ?fiche=1 : fiche seule, au format Word du document de référence (modifiable).
+      if (q.get("fiche")) return file(new Uint8Array(await reportToDocx(r, { sectionIds: ficheIds, style: "yonne" })), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ficheName("docx").replace("-yonne", ""));
       return file(new Uint8Array(await reportToDocx(r)), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", `${name}.docx`);
     case "html":
+      if (q.get("fiche")) return file(renderReportHtml(r, { sectionIds: ficheIds, style }), "text/html; charset=utf-8", ficheName("html"), true);
       return file(renderReportHtml(r), "text/html; charset=utf-8", `${name}.html`, true);
     case "json":
       return file(JSON.stringify(r, null, 1), "application/json", `${name}.json`);

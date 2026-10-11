@@ -34,8 +34,17 @@ import type { Block, DataTable, Indicator, Report, SourceRef } from "../types";
  * notes de sources numérotées et bibliographie.
  */
 
-const FONT = "Calibri";
+let FONT = "Calibri";
 const BLUE = "0D366B";
+
+/** Thème courant : « moderne » (diagnostic complet) ou « yonne » (fiche seule, modèle Word de référence). */
+let THEME = { yonne: false, color: "7B13D6", head: "F3F6FB", hl: "F7F9FC", rule: "B7D3F6", inner: "EEEEEC" };
+const MODERNE = { ...THEME };
+const tint = (hex: string, k = 0.3) => {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(255 - (255 - v) * k));
+  return c.map((v) => v.toString(16).padStart(2, "0")).join("").toUpperCase();
+};
 
 function svgToPng(svg: string, width = 1400): { data: Buffer; w: number; h: number } {
   const r = new Resvg(svg, { fitTo: { mode: "width", value: width }, font: { loadSystemFonts: true, defaultFontFamily: "DejaVu Sans" }, background: "#ffffff" });
@@ -64,8 +73,8 @@ const caption = (text: string) => new Paragraph({ spacing: { before: 200, after:
 
 function cellP(text: string, bold = false, right = false, hl = false) {
   return new TableCell({
-    children: [new Paragraph({ alignment: right ? AlignmentType.RIGHT : AlignmentType.LEFT, children: runs(text, { size: 17, bold: bold || hl }) })],
-    shading: bold ? { type: ShadingType.CLEAR, color: "auto", fill: "F3F6FB" } : hl ? { type: ShadingType.CLEAR, color: "auto", fill: "F7F9FC" } : undefined,
+    children: [new Paragraph({ alignment: THEME.yonne && bold ? AlignmentType.CENTER : right ? AlignmentType.RIGHT : AlignmentType.LEFT, children: runs(text, { size: THEME.yonne ? 18 : 17, bold: bold || hl, color: THEME.yonne && hl ? THEME.color : undefined }) })],
+    shading: bold ? { type: ShadingType.CLEAR, color: "auto", fill: THEME.head } : hl && !THEME.yonne ? { type: ShadingType.CLEAR, color: "auto", fill: THEME.hl } : undefined,
     margins: { top: 40, bottom: 40, left: 80, right: 80 },
   });
 }
@@ -73,7 +82,12 @@ function cellP(text: string, bold = false, right = false, hl = false) {
 function table(headers: string[], rows: string[][], rightCols: number[] = [], highlight: number[] = []) {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    borders: {
+    borders: THEME.yonne
+      ? (() => {
+          const l = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
+          return { top: l, bottom: l, left: l, right: l, insideHorizontal: l, insideVertical: l };
+        })()
+      : {
       top: { style: BorderStyle.SINGLE, size: 4, color: "B7D3F6" },
       bottom: { style: BorderStyle.SINGLE, size: 4, color: "B7D3F6" },
       left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
@@ -159,10 +173,26 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       ];
     }
     case "heading":
+      if (THEME.yonne) return [new Paragraph({ spacing: { before: 280, after: 100 }, keepNext: true, children: [new TextRun({ text: b.text, font: FONT, size: 28, color: THEME.color })] })];
       return [new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun({ text: b.text, font: FONT })] })];
     case "targets":
       return b.items.flatMap((t, k) => {
         const tb = r.tables.find((x) => x.id === t.tableId);
+        if (THEME.yonne) {
+          const prev = THEME.color;
+          const c = t.color.replace("#", "").toUpperCase();
+          THEME = { ...THEME, color: c, head: tint(c) };
+          const out = [
+            new Paragraph({ pageBreakBefore: true, children: [new TextRun({ text: `Proposition de ciblage n°${k + 1}`, font: FONT, size: 28, color: c, underline: {} })] }),
+            new Paragraph({ children: [new TextRun({ text: t.nom, font: FONT, size: 28, color: c })] }),
+            ...(t.focus?.length ? [new Paragraph({ children: [new TextRun({ text: `(Focus possibles : ${t.focus.join(", ")})`, font: FONT, size: 24, color: c })] })] : []),
+            new Paragraph({ spacing: { before: 120 }, children: [] }),
+            ...t.raisons.map((x) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 60 }, children: runs(x) })),
+            ...(tb ? dataTable(tb, cit) : []),
+          ];
+          THEME = { ...THEME, color: prev, head: tint(prev) };
+          return out;
+        }
         return [
           new Paragraph({ pageBreakBefore: true, children: [new TextRun({ text: `Proposition de ciblage n°${k + 1}`, font: FONT, size: 21, bold: true, underline: {} })] }),
           new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun({ text: t.nom, font: FONT })] }),
@@ -184,6 +214,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       ];
     }
     case "glance":
+      if (THEME.yonne) return b.items.map((i) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 40 }, children: runs(`${i.label} : **${i.value}**${i.detail ? ` (${i.detail})` : ""}`) }));
       return [
         table(
           b.items.map((i) => i.label),
@@ -196,7 +227,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       return [
         ...(b.title ? [new Paragraph({ heading: HeadingLevel.HEADING_3, children: [new TextRun({ text: b.title, font: FONT })] })] : []),
         ...b.groups.flatMap((g) => [
-          new Paragraph({ spacing: { before: 120, after: 40 }, keepNext: true, children: [new TextRun({ text: g.title, font: FONT, size: 20, bold: true }), ...(g.hint ? [new TextRun({ text: ` (${g.hint})`, font: FONT, size: 20, color: "52514E" })] : []), new TextRun({ text: " :", font: FONT, size: 20, bold: true })] }),
+          new Paragraph({ spacing: { before: 120, after: 40 }, keepNext: true, children: [new TextRun({ text: g.title, font: FONT, size: 20, bold: !THEME.yonne, underline: THEME.yonne ? {} : undefined }), ...(g.hint ? [new TextRun({ text: ` (${g.hint})`, font: FONT, size: 20, color: "52514E" })] : []), new TextRun({ text: " :", font: FONT, size: 20, bold: true })] }),
           ...g.items.map((i) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 40 }, children: runs(i, { size: 19 }) })),
         ]),
       ];
@@ -265,7 +296,74 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
   }
 }
 
-export async function reportToDocx(r: Report): Promise<Buffer> {
+/**
+ * Fiche seule au format Word, sur le modèle du document de référence
+ * « Développement territorial » : Arial, titres soulignés, une couleur par
+ * proposition de ciblage, tableaux quadrillés, listes à puces simples.
+ */
+async function ficheToDocx(r: Report, sectionIds: string[]): Promise<Buffer> {
+  const cit = new Citations();
+  const sections = r.sections.filter((s) => sectionIds.includes(s.id));
+  const ciblage = sections.some((s) => s.id === "CIBLAGE");
+  FONT = "Arial";
+  THEME = { yonne: true, color: "7B13D6", head: tint("7B13D6"), hl: "FFFFFF", rule: "000000", inner: "000000" };
+  let doc: Document;
+  // Construction synchrone : le thème global est rétabli avant tout `await`.
+  try {
+    const body: (Paragraph | Table)[] = [];
+    for (const s of sections) for (const b of s.blocks) body.push(...blockDocx(r, b, cit));
+    const head = [
+      new Paragraph({ children: [new TextRun({ text: "Pôle d'études électorales", font: FONT, size: 32, underline: {} })] }),
+      new Paragraph({ children: [new TextRun({ text: "Développement territorial", font: FONT, size: 32 })] }),
+      new Paragraph({ spacing: { after: 240 }, children: [new TextRun({ text: ciblage ? r.commune.departement.nom : `${r.commune.nom} (${r.commune.departement.nom})`, font: FONT, size: 32 })] }),
+      ...(ciblage
+        ? []
+        : [
+            new Paragraph({ children: [new TextRun({ text: "Proposition de ciblage", font: FONT, size: 28, color: THEME.color, underline: {} })] }),
+            new Paragraph({ spacing: { after: 200 }, children: [new TextRun({ text: r.commune.nom, font: FONT, size: 28, color: THEME.color })] }),
+          ]),
+    ];
+    const biblio = [
+      new Paragraph({ pageBreakBefore: true, spacing: { after: 120 }, children: [new TextRun({ text: "Sources", font: FONT, size: 28, underline: {} })] }),
+      ...cit.all().map(
+        (s, i) =>
+          new Paragraph({
+            spacing: { after: 60 },
+            children: [
+              new TextRun({ text: `[${i + 1}] ${sourceLabel(s)}. Consulté le ${fmtDate(s.retrievedAt)}. `, font: FONT, size: 16 }),
+              new ExternalHyperlink({ link: s.url, children: [new TextRun({ text: s.url.length > 120 ? s.url.slice(0, 117) + "…" : s.url, style: "Hyperlink", font: FONT, size: 14 })] }),
+            ],
+          }),
+      ),
+    ];
+    doc = new Document({
+      creator: "fiche-territoriale",
+      title: ciblage ? `Développement territorial — ${r.commune.departement.nom}` : `Fiche d'action — ${r.commune.nom}`,
+      styles: {
+        default: { document: { run: { font: FONT, size: 22 } } },
+        paragraphStyles: [
+          { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true, run: { size: 28, font: FONT }, paragraph: { spacing: { before: 240, after: 120 } } },
+          { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true, run: { size: 28, font: FONT, color: "7B13D6" }, paragraph: { spacing: { before: 240, after: 120 } } },
+          { id: "Heading3", name: "Heading 3", basedOn: "Normal", next: "Normal", quickFormat: true, run: { size: 22, font: FONT, underline: {} }, paragraph: { spacing: { before: 200, after: 80 } } },
+        ],
+      },
+      sections: [
+        {
+          properties: { page: { margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } } },
+          footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 18 })] })] }) },
+          children: [...head, ...body, ...biblio],
+        },
+      ],
+    });
+  } finally {
+    FONT = "Calibri";
+    THEME = { ...MODERNE };
+  }
+  return Packer.toBuffer(doc);
+}
+
+export async function reportToDocx(r: Report, opts: { sectionIds?: string[]; style?: "moderne" | "yonne" } = {}): Promise<Buffer> {
+  if (opts.sectionIds) return ficheToDocx(r, opts.sectionIds);
   const cit = new Citations();
   const body: (Paragraph | Table | TableOfContents)[] = [];
   for (const s of r.sections) {

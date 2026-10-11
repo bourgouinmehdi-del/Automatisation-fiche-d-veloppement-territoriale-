@@ -191,7 +191,7 @@ export interface BvRow {
 export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, labels: Map<string, string>): BvRow[] {
   const eid = ref[0]?.election.id;
   const sid = second?.[0]?.election.id;
-  const base = ref
+  const all = ref
     .map((b) => {
       const s = score(eid, b, "lfi");
       if (!s) return null;
@@ -215,6 +215,13 @@ export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, 
       };
     })
     .filter((x): x is NonNullable<typeof x> => !!x);
+  if (!all.length) return [];
+  // Les très petits bureaux (bureaux spéciaux, quelques dizaines d'inscrits) ont des taux
+  // instables : ils sont classés à part, en priorité 3, et n'entrent pas dans les scores z.
+  const medIns = median(all.map((b) => b.inscrits)) ?? 0;
+  const tiny = (b: { inscrits: number }) => all.length >= 3 && b.inscrits < Math.max(100, 0.2 * medIns);
+  const small = all.filter(tiny);
+  const base = all.filter((b) => !tiny(b));
   if (!base.length) return [];
   // Réservoir : part LFI des exprimés au scrutin principal, moyennée avec celle du
   // second scrutin (Mélenchon 2022) lorsque les bureaux sont appariés.
@@ -238,7 +245,13 @@ export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, 
   // priorité 2 jusqu'à la moitié des bureaux.
   const p1 = Math.max(1, Math.min(4, Math.ceil(n / 4)));
   const p2 = Math.max(p1, Math.ceil(n / 2));
-  return sorted.map((b, i) => ({ ...b, priorite: (i < p1 ? 1 : i < p2 ? 2 : 3) as 1 | 2 | 3 }));
+  return [
+    ...sorted.map((b, i) => ({ ...b, priorite: (i < p1 ? 1 : i < p2 ? 2 : 3) as 1 | 2 | 3 })),
+    ...small.map((b) => {
+      const type: BvType = b.lfiPctExp >= mL ? (b.abstPct >= mA ? "bastion_a_mobiliser" : "bastion") : b.abstPct >= mA ? "reservoir_abstention" : "terrain_difficile";
+      return { ...b, potentiel: Number.NEGATIVE_INFINITY, type, priorite: 3 as const };
+    }),
+  ];
 }
 
 /** Performance d'une famille dans la commune rapportée au département (% des exprimés). */
