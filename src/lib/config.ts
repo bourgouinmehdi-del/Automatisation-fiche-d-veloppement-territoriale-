@@ -16,6 +16,8 @@ export const config = {
   /** Intervalle minimal entre deux requêtes INSEE (limite publique : 30 requêtes/minute). */
   inseeMinIntervalMs: Number(process.env.INSEE_MIN_INTERVAL_MS ?? 2100),
   overpassUrl: process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter",
+  /** Sources désactivées (ex. « bpe,gtfs,iris » pour éviter les gros fichiers nationaux). */
+  disabledSources: new Set((process.env.DISABLE_SOURCES || "").split(/[\s,;]+/).filter(Boolean)),
   userAgent: "fiche-territoriale/0.1 (diagnostic territorial ; données publiques agrégées)",
 };
 

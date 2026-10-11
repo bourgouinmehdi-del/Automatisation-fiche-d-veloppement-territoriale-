@@ -51,7 +51,7 @@ export async function reportToPdf(r: Report, opts: { sectionIds?: string[] } = {
       printBackground: true,
       displayHeaderFooter: true,
       margin: { top: "18mm", bottom: "20mm", left: "16mm", right: "16mm" },
-      headerTemplate: `<div style="${small} display:flex; justify-content:space-between;"><span>${opts.sectionIds ? "Développement territorial · fiche d'action" : "Diagnostic territorial"} — ${r.commune.nom.replace(/</g, "")} (${r.commune.code})</span><span>${fmtDate(r.updatedAt)}</span></div>`,
+      headerTemplate: `<div style="${small} display:flex; justify-content:space-between;"><span>${opts.sectionIds?.includes("CIBLAGE") ? `Développement territorial — ${r.commune.departement.nom.replace(/</g, "")}` : `${opts.sectionIds ? "Développement territorial · fiche d'action" : "Diagnostic territorial"} — ${r.commune.nom.replace(/</g, "")} (${r.commune.code})`}</span><span>${fmtDate(r.updatedAt)}</span></div>`,
       footerTemplate: `<div style="${small} display:flex; justify-content:space-between;"><span>Données publiques — voir bibliographie</span><span>Page <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,
     });
     return Buffer.from(pdf);

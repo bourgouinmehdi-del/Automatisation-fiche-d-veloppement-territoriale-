@@ -39,6 +39,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
   const refs = (evidence: string[] = []) => [...new Set(evidence.map(ev).filter(Boolean).map((i) => cit.cite(i!.source)))];
   const failed = r.runs.filter((x) => x.status === "failed");
   const hasFiche = r.sections.some((s) => s.id === "LFI");
+  const hasCiblage = r.sections.some((s) => s.id === "CIBLAGE");
 
   // Partie visible (surbrillance dans la navigation).
   useEffect(() => {
@@ -88,6 +89,36 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
           <div key={key} className={`callout callout-${b.tone ?? "info"}`}>
             {b.title && <div className="mb-1 font-semibold">{b.title}</div>}
             <Rich text={b.text} />
+          </div>
+        );
+      case "fieldNotes":
+        return <FieldNotes key={key} id={r.id} initial={r.fieldNotes} />;
+      case "targets":
+        return (
+          <div key={key} className="my-6 space-y-5">
+            {b.items.map((t, k) => {
+              const tb = r.tables.find((x) => x.id === t.tableId);
+              return (
+                <div key={t.tableId} className="target-card" style={{ borderTopColor: t.color }}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]">Proposition de ciblage n°{k + 1}</div>
+                      <div className="text-2xl font-bold">{t.nom}</div>
+                      {t.focus && <div className="text-sm italic text-[var(--ink-2)]">Focus possibles : {t.focus.join(", ")}</div>}
+                    </div>
+                    <GenerateButton codes={t.codes} kind={t.kind} />
+                  </div>
+                  <ul className="mt-3 list-disc space-y-1.5 pl-5 leading-relaxed">
+                    {t.raisons.map((x, j) => (
+                      <li key={j}>
+                        <Rich text={x} />
+                      </li>
+                    ))}
+                  </ul>
+                  {tb && renderBlock({ type: "table", tableId: tb.id }, 0)}
+                </div>
+              );
+            })}
           </div>
         );
       case "glance":
@@ -349,12 +380,12 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
 
   // Rendu des sections avant la liste des sources pour une numérotation cohérente.
   const sections = r.sections.map((s) =>
-    s.id === "LFI" ? (
+    s.id === "LFI" || s.id === "CIBLAGE" ? (
       <section key={s.id} id={`part-${s.id}`} className="card fiche mb-8 scroll-mt-20 overflow-hidden">
         <div className="fiche-band">
-          <div className="text-[11px] font-semibold uppercase tracking-[.12em] opacity-80">Développement territorial · fiche d&apos;action</div>
-          <div className="mt-3 inline-block border-b-2 border-white/70 pb-0.5 text-sm font-semibold">Proposition de ciblage</div>
-          <div className="mt-1 text-3xl font-bold">{r.commune.nom}</div>
+          <div className="text-[11px] font-semibold uppercase tracking-[.12em] opacity-80">Développement territorial · {s.id === "CIBLAGE" ? "ciblage départemental" : "fiche d'action"}</div>
+          <div className="mt-3 inline-block border-b-2 border-white/70 pb-0.5 text-sm font-semibold">{s.id === "CIBLAGE" ? "Propositions de ciblage" : "Proposition de ciblage"}</div>
+          <div className="mt-1 text-3xl font-bold">{s.id === "CIBLAGE" ? r.commune.departement.nom : r.commune.nom}</div>
         </div>
         <div className="p-5 md:p-8">{s.blocks.map(renderBlock)}</div>
       </section>
@@ -373,8 +404,8 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
     <div className="mx-auto max-w-7xl px-4 py-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="text-xs uppercase tracking-wider text-[var(--ink-2)]">Diagnostic territorial</div>
-          <h1 className="text-3xl font-bold text-[var(--accent-strong)]">{r.commune.nom}</h1>
+          <div className="text-xs uppercase tracking-wider text-[var(--ink-2)]">{hasCiblage ? "Ciblage départemental" : "Diagnostic territorial"}</div>
+          <h1 className="text-3xl font-bold text-[var(--accent-strong)]">{hasCiblage ? r.commune.departement.nom : r.commune.nom}</h1>
           <div className="text-sm text-[var(--ink-2)]">
             {r.commune.departement.nom} ({r.commune.departement.code}) · {r.commune.region.nom}
             {r.commune.epci && ` · ${r.commune.epci.nom}`} · INSEE {r.commune.code}
@@ -384,12 +415,12 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
           </div>
         </div>
         <div className="no-print flex flex-wrap items-center gap-2">
-          {hasFiche && (
+          {(hasFiche || hasCiblage) && (
             <a className="btn btn-primary" href={exp("pdf", "?fiche=1")}>
-              PDF fiche d&apos;action
+              {hasCiblage ? "PDF ciblage" : "PDF fiche d'action"}
             </a>
           )}
-          <a className={`btn ${hasFiche ? "" : "btn-primary"}`} href={exp("pdf")}>
+          <a className={`btn ${hasFiche || hasCiblage ? "" : "btn-primary"}`} href={exp("pdf")}>
             PDF complet
           </a>
           <details className="menu">
@@ -431,9 +462,9 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
           <ol className="card space-y-0.5 p-2 text-sm">
             {r.sections.map((s) => (
               <li key={s.id}>
-                <a href={`#part-${s.id}`} className={`nav-link ${active === s.id ? "nav-active" : ""} ${s.id === "LFI" ? "nav-fiche" : ""}`}>
-                  {s.id === "LFI" ? (
-                    <>Fiche d&apos;action</>
+                <a href={`#part-${s.id}`} className={`nav-link ${active === s.id ? "nav-active" : ""} ${s.id === "LFI" || s.id === "CIBLAGE" ? "nav-fiche" : ""}`}>
+                  {s.id === "LFI" || s.id === "CIBLAGE" ? (
+                    <>{s.id === "CIBLAGE" ? "Ciblage départemental" : "Fiche d'action"}</>
                   ) : (
                     <>
                       <span className="w-4 shrink-0 font-semibold text-[var(--accent)]">{s.letter}</span>
@@ -573,5 +604,69 @@ function MapBlock({ maps, cite, exp }: { maps: Report["maps"]; cite: (s: Report[
         Sources : {srcs.map((s) => `[${cite(s)}]`).join(" ")} · Fond de carte © contributeurs OpenStreetMap{m.note ? ` — ${m.note}` : ""}
       </div>
     </figure>
+  );
+}
+
+/** Retours du terrain : texte libre enregistré avec la fiche et repris dans les exports. */
+function FieldNotes({ id, initial }: { id: string; initial?: Report["fieldNotes"] }) {
+  const [text, setText] = useState(initial?.text ?? "");
+  const [saved, setSaved] = useState(initial?.updatedAt ?? null);
+  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const [open, setOpen] = useState(!!initial?.text);
+  const dirty = text !== (initial?.text ?? "") && state !== "saving";
+  async function save() {
+    setState("saving");
+    const res = await fetch(`/api/reports/${id}/notes`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    if (!res.ok) return setState("error");
+    const d = await res.json();
+    setSaved(d.updatedAt);
+    setState("idle");
+    if (initial) initial.text = text;
+  }
+  if (!open)
+    return (
+      <button className="no-print my-3 text-sm font-semibold text-[#0b6b47] underline" onClick={() => setOpen(true)}>
+        + Ajouter des retours du terrain
+      </button>
+    );
+  return (
+    <div className="callout callout-terrain">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <span className="font-semibold">Retours du terrain</span>
+        <span className="text-xs text-[var(--ink-2)]">{saved ? `Enregistré le ${fmtDate(saved)}` : "Non enregistré"} · repris dans le PDF et le Word</span>
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={5}
+        placeholder="Ce que les militants locaux savent et que les données ne disent pas : quartiers, lieux de passage, horaires de marché, contacts associatifs, corrections… (**gras** possible)"
+        className="no-print w-full rounded-md border border-[var(--line)] bg-white p-2 text-sm"
+      />
+      <div className="print-only whitespace-pre-wrap">{text}</div>
+      <div className="no-print mt-2 flex items-center gap-3">
+        <button className="btn btn-primary" onClick={save} disabled={!dirty}>
+          {state === "saving" ? "Enregistrement…" : "Enregistrer"}
+        </button>
+        {state === "error" && <span className="text-sm text-[#a12a29]">Échec de l&apos;enregistrement</span>}
+      </div>
+    </div>
+  );
+}
+
+/** Lance la génération de la fiche détaillée d'une proposition de ciblage. */
+function GenerateButton({ codes, kind }: { codes: string[]; kind: "commune" | "groupement" }) {
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    setBusy(true);
+    const body = kind === "commune" ? { codeInsee: codes[0], scope: "commune" } : { codeInsee: codes[0], scope: "custom", customCommunes: codes };
+    const res = await fetch("/api/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await res.json();
+    if (res.ok) window.location.href = `/generation/${d.id}`;
+    else setBusy(false);
+  }
+  return (
+    <button className="btn no-print" onClick={go} disabled={busy}>
+      {busy ? "Lancement…" : "Générer la fiche"}
+    </button>
   );
 }

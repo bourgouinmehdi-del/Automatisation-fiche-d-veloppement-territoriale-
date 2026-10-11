@@ -22,6 +22,8 @@ beforeAll(async () => {
   await fs.mkdir(path.join(dir, "interne"), { recursive: true });
   await fs.writeFile(path.join(dir, "interne", "parrains.csv"), "code_commune;parrains\n60159;40\n60382;5\n60057;20\n");
   await fs.writeFile(path.join(dir, "interne", "groupes.csv"), "code_commune;nom;membres;statut\n60159;Groupe d'action fictif;9;actif\n");
+  // Export Action Populaire : commune retrouvée par code postal et ville.
+  await fs.writeFile(path.join(dir, "interne", "action-populaire.csv"), "Nom;Code postal;Ville;Nombre de membres;Certifié\nGroupe des étudiants;60200;Compiègne;4;Oui\n");
   vi.stubGlobal("fetch", mockFetch());
   build = (await import("@/lib/report/build")).buildReport;
   report = await build({ codeInsee: "60159", scope: "commune" });
@@ -169,6 +171,51 @@ describe("chaîne de génération (API simulées)", () => {
     expect(html).toContain("Proposition de ciblage");
     expect(tableCsv(report.tables.find((t) => t.id === "lfi_politique")!)).not.toContain("**");
   });
+
+  it("quartiers, contexte municipal, services, horaires et temps de trajet", () => {
+    // Quartiers : QPV et IRIS, rattachés aux bureaux de vote.
+    const q = report.tables.find((t) => t.id === "lfi_quartiers")!;
+    expect(q.rows[0].nom).toMatch(/Quartier Fictif Nord.*QPV/);
+    expect(q.rows[0].pauvrete).toMatch(/^50\s%$/);
+    expect(q.rows[0].bv).toBe("2");
+    expect(q.rows.length).toBe(6); // 1 QPV + 4 IRIS + commune
+    const bv = report.tables.find((t) => t.id === "lfi_bureaux")!;
+    expect(bv.rows.find((r) => r.bv === "2")!.quartier).toMatch(/QPV/);
+    expect(report.tables.find((t) => t.id === "lfi_politique")!.rows.some((r) => /QPV quartier Fictif Nord|QPV Quartier Fictif Nord/.test(String(r.territoire)))).toBe(true);
+    expect(report.findings.some((f) => /concentre la pauvreté/.test(f.text))).toBe(true);
+    expect(report.maps.find((m) => m.id === "lfi_map_bv")!.layers.some((l) => l.id === "qpv")).toBe(true);
+    // Municipales 2026 et maire.
+    const muni = report.tables.find((t) => t.id === "lfi_municipales")!;
+    expect(muni.rows).toHaveLength(3);
+    expect(muni.highlight).toEqual([0]);
+    const fiche = report.sections[0];
+    expect(fiche.blocks.some((b) => b.type === "paragraph" && /dirigée par Alice DURAND/.test(b.text) && /gauche battue/.test(b.text))).toBe(true);
+    // BPE : désert médical (2 médecins pour ~41 000 habitants, département bien mieux doté).
+    const socio = fiche.blocks.find((b) => b.type === "list" && b.items.some((i) => /habitants/.test(i.text))) as Extract<(typeof fiche.blocks)[number], { type: "list" }>;
+    expect(socio.items.some((i) => /Désert médical/.test(i.text) && /France Services/.test(i.text))).toBe(true);
+    // Horaires GTFS : pointe du soir et temps vers Paris ; temps routiers.
+    const actions = fiche.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
+    const gare = actions.groups.find((g) => g.title === "Gare")!;
+    expect(gare.items[0]).toMatch(/entre 17 h et 19 h/);
+    expect(gare.items[0]).toMatch(/Paris en 52 min/);
+    expect(actions.groups.some((g) => g.title === "Services publics")).toBe(true);
+    const access = fiche.blocks.find((b) => b.type === "callout" && /Accessibilité/.test(b.text)) as { text: string };
+    expect(access.text).toMatch(/en voiture/);
+    // Groupe d'action importé depuis l'export Action Populaire (code postal + ville).
+    expect(fiche.blocks.some((b) => b.type === "callout" && /Groupe d'action fictif/.test(b.text))).toBe(true);
+  });
+
+  it("retours du terrain : enregistrés, conservés à la régénération, repris dans les exports", async () => {
+    const { saveReport, saveFieldNotes, getReport } = await import("@/lib/report/store");
+    const { renderReportHtml } = await import("@/lib/render/html");
+    await saveReport(structuredClone(report));
+    await saveFieldNotes(report.id, "Marché du samedi très fréquenté.");
+    const again = await build({ codeInsee: "60159", scope: "commune" });
+    await saveReport(again);
+    const stored = (await getReport(report.id))!;
+    expect(stored.fieldNotes?.text).toBe("Marché du samedi très fréquenté.");
+    expect(renderReportHtml(stored, { sectionIds: ["LFI"] })).toContain("Retours du terrain");
+  }, 60000);
 
   it("exports HTML, DOCX et CSV", async () => {
     const { renderReportHtml } = await import("@/lib/render/html");

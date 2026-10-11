@@ -160,6 +160,29 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
     }
     case "heading":
       return [new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun({ text: b.text, font: FONT })] })];
+    case "targets":
+      return b.items.flatMap((t, k) => {
+        const tb = r.tables.find((x) => x.id === t.tableId);
+        return [
+          new Paragraph({ pageBreakBefore: true, children: [new TextRun({ text: `Proposition de ciblage n°${k + 1}`, font: FONT, size: 21, bold: true, underline: {} })] }),
+          new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun({ text: t.nom, font: FONT })] }),
+          ...(t.focus?.length ? [p(`Focus possibles : ${t.focus.join(", ")}`, { italics: true })] : []),
+          ...t.raisons.map((x) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 60 }, children: runs(x, { size: 19 }) })),
+          ...(tb ? dataTable(tb, cit) : []),
+        ];
+      });
+    case "fieldNotes": {
+      if (!r.fieldNotes?.text.trim()) return [];
+      const side = { style: BorderStyle.SINGLE, size: 8, color: "1BAF7A", space: 6 };
+      return [
+        new Paragraph({
+          spacing: { before: 120, after: 200 },
+          border: { top: side, bottom: side, left: side, right: side },
+          shading: { type: ShadingType.CLEAR, color: "auto", fill: "F1FAF6" },
+          children: [new TextRun({ text: `Retours du terrain (${fmtDate(r.fieldNotes.updatedAt)}) — `, font: FONT, size: 20, bold: true }), ...runs(r.fieldNotes.text.trim(), { size: 20 })],
+        }),
+      ];
+    }
     case "glance":
       return [
         table(

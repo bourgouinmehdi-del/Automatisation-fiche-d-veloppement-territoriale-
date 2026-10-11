@@ -14,7 +14,8 @@ export type GeoLevel =
   | "departement"
   | "region"
   | "france"
-  | "bureau_vote";
+  | "bureau_vote"
+  | "quartier";
 
 export interface GeoRef {
   level: GeoLevel;
@@ -162,6 +163,8 @@ export interface MapLayer {
   color?: string;
   /** Contour seul, sans remplissage. */
   outlineOnly?: boolean;
+  /** Propriété affichée en étiquette au centre des polygones. */
+  labelProperty?: string;
   /** Couche affichée par défaut. */
   visible: boolean;
   source: SourceRef;
@@ -233,6 +236,13 @@ export type Block =
   /** Actions regroupées par type de lieu (porte-à-porte, marchés, gares…). */
   | { type: "actions"; title?: string; groups: { title: string; hint?: string; items: string[] }[] }
   | { type: "missing"; themes: ThemeId[] }
+  /** Notes de terrain saisies dans l'application (lues dans `Report.fieldNotes` au moment du rendu). */
+  | { type: "fieldNotes" }
+  /** Propositions de ciblage (mode département) : une carte par territoire, avec son tableau. */
+  | {
+      type: "targets";
+      items: { code: string; codes: string[]; nom: string; kind: "commune" | "groupement"; focus?: string[]; color: string; raisons: string[]; tableId: string; evidence: string[] }[];
+    }
   /** Carte de localisation nationale (fond SVG embarqué, fonctionne hors ligne). */
   | { type: "locator" }
   | { type: "list"; title?: string; items: { text: string; url?: string; evidence?: string[] }[] };
@@ -325,6 +335,8 @@ export interface Report {
   narrativeEngine: string;
   /** Avertissements globaux (mode hors ligne, sources indisponibles...). */
   warnings: string[];
+  /** Retours du terrain saisis par les militants (conservés d'une régénération à l'autre). */
+  fieldNotes?: { text: string; updatedAt: string };
 }
 
 export interface ProgressEvent {

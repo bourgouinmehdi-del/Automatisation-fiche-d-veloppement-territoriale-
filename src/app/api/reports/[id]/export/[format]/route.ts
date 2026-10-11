@@ -25,7 +25,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     case "pdf":
       try {
         // ?fiche=1 : fiche d'action seule (quelques pages, comme le document de référence).
-        if (new URL(req.url).searchParams.get("fiche")) return file(new Uint8Array(await reportToPdf(r, { sectionIds: ["LFI"] })), "application/pdf", `${name}-fiche-action.pdf`);
+        if (new URL(req.url).searchParams.get("fiche")) {
+          const ciblage = r.sections.some((s) => s.id === "CIBLAGE");
+          return file(new Uint8Array(await reportToPdf(r, { sectionIds: [ciblage ? "CIBLAGE" : "LFI"] })), "application/pdf", `${name}-${ciblage ? "ciblage" : "fiche-action"}.pdf`);
+        }
         return file(new Uint8Array(await reportToPdf(r)), "application/pdf", `${name}.pdf`);
       } catch (e) {
         return new Response(`Export PDF impossible : ${e instanceof Error ? e.message : e}. Renseignez CHROMIUM_PATH.`, { status: 500 });

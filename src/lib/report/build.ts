@@ -7,6 +7,7 @@ import { assemble } from "./assemble";
 import { collect } from "./collect";
 import { buildSections } from "./sections";
 import { buildLfi } from "./lfi";
+import { buildCiblage } from "./ciblage";
 
 /**
  * Chaîne complète de génération d'une fiche :
@@ -40,8 +41,8 @@ export async function buildReport(
     population: c.commune.population,
   });
 
-  // Fiche d'action (approche LFI) : bureaux de vote, atouts, hypothèses, actions.
-  const lfi = buildLfi(c, a.indicators);
+  // Fiche d'action (approche LFI) pour une commune ; ciblage départemental pour un département.
+  const lfi = query.scope === "departement" ? { ...buildCiblage(c), charts: [] } : buildLfi(c, a.indicators);
   a.indicators.push(...lfi.indicators);
   a.tables.push(...lfi.tables);
   a.charts.push(...lfi.charts);
