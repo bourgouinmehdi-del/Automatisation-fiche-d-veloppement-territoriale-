@@ -9,7 +9,7 @@ import type { Block, ChartSpec, DataTable, Finding, GeoRef, Indicator, MapLegend
 import { MISSING_COLOR, SEQ_COLORS } from "./assemble";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
-import { NUANCES, nuanceFamily } from "../collectors/municipales";
+import { NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
 import { BPE_TYPES } from "../collectors/bpe";
 import { fmtDuration } from "../collectors/routes";
 import type { Collected } from "./collect";
@@ -941,7 +941,9 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
     pushLieu(`Sortie de ${s.type.toLowerCase()}`, s.nom, s.priorite && !/^non$/i.test(s.priorite) ? `éducation prioritaire (${s.priorite})` : s.statut, s.lon, s.lat);
   }
   if (centroids.size && prioSet.size) {
-    const keep = lieux.filter((l) => l.prioritaire || l.type === "Marché" || l.type === "Gare" || l.type === "Service public");
+    // Marchés, gares, services publics et établissements scolaires attirent toute la commune :
+    // ils sont gardés même hors des bureaux prioritaires ; les commerces, seulement dans ceux-ci.
+    const keep = lieux.filter((l) => l.prioritaire || l.type !== "Supermarché");
     lieux.length = 0;
     lieux.push(...keep);
   }
@@ -979,7 +981,13 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
       title: "Porte-à-porte",
       hint: "priorité",
       items: prio.map((p) => {
-        const adr = c.bvGeo?.points.find((f) => String(f.properties?.bv) === p.bv)?.properties?.adresse as string | undefined;
+        const rawAdr = c.bvGeo?.points.find((f) => String(f.properties?.bv) === p.bv)?.properties?.adresse as string | undefined;
+        // Adresses du REU en majuscules : « 14 PLACE DE LA FRATERNITE 48000 mende » → « 14 Place de la Fraternite, 48000 Mende ».
+        const adr = rawAdr
+          ?.toLowerCase()
+          .replace(/(^|[\s'-])([a-zà-ÿ])/g, (_m, a: string, ch: string) => a + ch.toUpperCase())
+          .replace(/\b(De|Du|Des|La|Le|Les|Et|D|L|Sur|Sous|En)\b/g, (w) => w.toLowerCase())
+          .replace(/\s(\d{5})\s/, ", $1 ");
         const ns = nearSchools(p.bv);
         const where = adr ? `lieu de vote : ${adr}` : ns.length ? `repères : ${ns.join(", ")}` : "";
         const q = quartierOf(p.bv);
@@ -1003,8 +1011,9 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
         ...gares.map((g) => {
           const t = tt(g.nom);
           if (!t || !t.departs) return `${B(g.nom)} : ${g.infos}.`;
-          const freq = t.departs >= 30 ? `un train toutes les ~${Math.max(5, Math.round((16 * 60) / t.departs / 5) * 5)} minutes en moyenne` : `${t.departs} passages un jour de semaine`;
-          const pointe = t.pointe ? `, priorité entre ${t.pointe[0]} h et ${t.pointe[1]} h (${t.parHeure[t.pointe[0]] + t.parHeure[t.pointe[0] + 1]} passages)` : "";
+          const freq = t.departs >= 30 ? `un train toutes les ~${Math.max(5, Math.round((16 * 60) / t.departs / 5) * 5)} minutes en moyenne` : `${t.departs} passage${t.departs > 1 ? "s" : ""} un jour de semaine`;
+          const np = t.pointe ? t.parHeure[t.pointe[0]] + t.parHeure[t.pointe[0] + 1] : 0;
+          const pointe = t.pointe ? `, priorité entre ${t.pointe[0]} h et ${t.pointe[1]} h (${np} passage${np > 1 ? "s" : ""})` : "";
           return `${B(g.nom)} : ${g.infos} ; ${freq}${pointe}${t.paris ? ` ; Paris en ${fmtDuration(t.paris.minMinutes)} (trajets directs)` : ""}.`;
         }),
         ...(gares.some((g) => tt(g.nom)?.departs) ? [] : ["Privilégier les heures de pointe (7 h-9 h, 17 h-19 h), à confirmer avec les fiches horaires TER."]),
@@ -1041,7 +1050,7 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
     if (r) access.push(`${r.nom}${lab === "Préfecture" ? " (préfecture)" : ""} à ${fmtDuration(r.minutes)}`);
   }
   if (trainParis != null || rParis) access.push(`Paris à ${[trainParis != null ? `${fmtDuration(trainParis)} en train direct` : "", rParis ? `${fmtDuration(rParis.minutes)} en voiture` : ""].filter(Boolean).join(", ")}`);
-  else if (c.parisKm != null) access.push(`Paris à ${fmtValue(c.parisKm, "km")}`);
+  else if (c.parisKm != null && c.parisKm <= 250) access.push(`Paris à ${fmtValue(c.parisKm, "km")}`);
   const cy = get("km_amenagements_cyclables", geos.commune);
   if (cy) access.push(`${fmtValue(cy.value, "km")} d'aménagements cyclables`);
 
@@ -1113,15 +1122,16 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
     const maj = m.majorite;
     const t1 = m.rounds.find((r) => r.tour === 1);
     const t2 = m.rounds.find((r) => r.tour === 2);
-    const majT1 = maj && t1 ? t1.listes.find((l) => l.tete === maj.tete) : null;
+    const majT1 = maj && t1 ? t1.listes.find((l) => sameList(l, maj)) : null;
+    const majT2 = maj && t2 ? t2.listes.find((l) => sameList(l, maj)) : null;
     const parts: string[] = [];
     if (maj) {
       const fam = nuanceFamily(maj.nuance);
       parts.push(
-        `${B(`La commune est dirigée par ${m.maire ? `${m.maire.prenom} ${m.maire.nom}` : maj.tete}`)}${maj.nuance ? ` (${nu(maj.nuance)}${fam === "gauche" ? ", mairie de gauche" : ""})` : ""} : sa liste « ${maj.libelle} » a obtenu ${majT1 ? `${pct(majT1.pctExprimes, 0)} des exprimés au 1er tour des municipales 2026${t2 ? "" : " (élection dès le 1er tour)"}` : "la majorité en 2026"}${t2 && t2.listes.find((l) => l.tete === maj.tete) ? ` et ${pct(t2.listes.find((l) => l.tete === maj.tete)!.pctExprimes, 0)} au 2nd tour` : ""}.`,
+        `${B(`La commune est dirigée par ${m.maire ? `${m.maire.prenom} ${m.maire.nom}` : maj.tete}`)}${maj.nuance ? ` (${nu(maj.nuance)}${fam === "gauche" ? ", mairie de gauche" : ""})` : ""} : sa liste « ${maj.libelle} » a obtenu ${majT1 ? `${pct(majT1.pctExprimes, 0)} des exprimés au 1er tour des municipales 2026${t2 ? "" : " (élection dès le 1er tour)"}` : "la majorité aux municipales 2026"}${majT2 && majT1 ? ` et ${pct(majT2.pctExprimes, 0)} au 2nd tour` : majT2 ? ` : ${pct(majT2.pctExprimes, 0)} des exprimés au 2nd tour` : ""}.`,
       );
       const last = t2 ?? t1;
-      const left = last?.listes.filter((l) => l !== maj && l.tete !== maj.tete && nuanceFamily(l.nuance) === "gauche") ?? [];
+      const left = last?.listes.filter((l) => !sameList(l, maj) && nuanceFamily(l.nuance) === "gauche") ?? [];
       if (left.length && nuanceFamily(maj.nuance) !== "gauche")
         parts.push(`Liste${left.length > 1 ? "s" : ""} de gauche battue${left.length > 1 ? "s" : ""} : ${left.map((l) => `« ${l.libelle} » (${nu(l.nuance)}, ${pct(l.pctExprimes, 0)})`).join(", ")}.`);
       if (!last?.listes.some((l) => nuanceFamily(l.nuance) === "gauche")) parts.push("Aucune liste de gauche au tour décisif.");
@@ -1129,7 +1139,14 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
     } else if (m.maire) parts.push(`Maire : ${B(`${m.maire.prenom} ${m.maire.nom}`)} (commune sans scrutin de liste).`);
     municipalText = parts.join(" ");
     if (m.rounds.some((r) => r.listes.length)) {
-      const allTetes = [...new Set(m.rounds.flatMap((r) => r.listes.map((l) => l.tete)))];
+      // Listes rapprochées d'un tour à l'autre (tête de liste, sinon libellé).
+      const lists: { a?: MunicipalList; b?: MunicipalList }[] = [];
+      for (const l of t1?.listes ?? []) lists.push({ a: l });
+      for (const l of t2?.listes ?? []) {
+        const hit = lists.find((x) => x.a && !x.b && sameList(x.a, l));
+        if (hit) hit.b = l;
+        else lists.push({ b: l });
+      }
       out.tables.push({
         id: "lfi_municipales",
         title: "Élections municipales 2026",
@@ -1141,13 +1158,12 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
           ...(t2 ? [{ key: "t2", label: "2nd tour (% exprimés)", align: "right" as const }] : []),
           { key: "sieges", label: "Sièges au conseil", align: "right" },
         ],
-        rows: allTetes.map((tete) => {
-          const a = t1?.listes.find((l) => l.tete === tete);
-          const b = t2?.listes.find((l) => l.tete === tete);
+        rows: lists.map(({ a, b }) => {
           const any = (b ?? a)!;
-          return { liste: `${any.libelle || "—"} (${tete})`, nuance: nu(any.nuance), t1: a ? pct(a.pctExprimes) : "", t2: b ? pct(b.pctExprimes) : "", sieges: (b ?? a)?.sieges ?? "" };
+          const tete = b?.tete || a?.tete || "";
+          return { liste: `${any.libelle || "—"}${tete ? ` (${tete})` : ""}`, nuance: nu(any.nuance), t1: a ? pct(a.pctExprimes) : "", t2: b ? pct(b.pctExprimes) : "", sieges: (b?.sieges ?? a?.sieges) ?? "" };
         }),
-        highlight: maj ? [allTetes.indexOf(maj.tete)] : [],
+        highlight: maj ? [lists.findIndex((x) => (x.b && sameList(x.b, maj)) || (x.a && sameList(x.a, maj)))] : [],
         sources: [m.source],
         note: "Résultats définitifs par commune (ministère de l'Intérieur) ; nuances attribuées par les préfectures. Maire : Répertoire national des élus.",
       });

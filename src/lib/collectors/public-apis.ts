@@ -193,7 +193,10 @@ export async function collectStations(http: TrackedHttp, codeInsee: string, code
         const freq = parseFrequentation(rec);
         const st = stations.find((s) => (uic && s.uic.includes(uic.slice(-6))) || s.nom.toLowerCase() === nom.toLowerCase());
         if (st) st.frequentation = freq;
-        else stations.push({ nom, uic, segment: str(pick(rec, "segmentation_drg")), frequentation: freq, lon: null, lat: null });
+        // Les fréquentations sont cherchées par code postal, partagé avec des communes voisines
+        // (ex. Barjac et Balsièges pour Mende) : une gare absente de la liste des gares de la
+        // commune n'est retenue que si celle-ci n'en a aucune.
+        else if (!g.data?.results?.length) stations.push({ nom, uic, segment: str(pick(rec, "segmentation_drg")), frequentation: freq, lon: null, lat: null });
       }
     } catch {
       http.partial = true;

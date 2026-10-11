@@ -89,39 +89,71 @@ export interface MunicipalResult {
   retrievedAt: string;
 }
 
+/**
+ * Variante « 2022 » des fichiers du ministère : seul le premier bloc de liste
+ * porte des en-têtes, les suivants arrivent sans nom (`__parsed_extra` de
+ * Papa Parse). On les renomme « <en-tête> 2 », « <en-tête> 3 »…
+ */
+export function expandListBlocks(rows: Record<string, unknown>[], fields: string[]): Record<string, unknown>[] {
+  const start = fields.findIndex((f) => /^(n(°|um[ée]ro)\s*(de\s*)?panneau|nuance)/i.test(f.trim()));
+  if (start < 0) return rows;
+  const group = fields.slice(start);
+  const base = (f: string) => f.replace(/[ _]\d+$/, "").trim();
+  return rows.map((r) => {
+    const extra = r.__parsed_extra as unknown[] | undefined;
+    if (!Array.isArray(extra) || !extra.length) return r;
+    const o: Record<string, unknown> = { ...r };
+    delete o.__parsed_extra;
+    for (const f of group) if (!/[ _]\d+$/.test(f)) o[`${base(f)} 1`] = r[f];
+    for (let k = 0; (k + 1) * group.length <= extra.length; k++) group.forEach((f, j) => (o[`${base(f)} ${k + 2}`] = extra[k * group.length + j]));
+    return o;
+  });
+}
+
 /** Lit une ligne « large » (blocs répétés par liste) en résultats structurés. */
 export function parseMunicipalRow(r: Record<string, unknown>, tour: 1 | 2): MunicipalRound | null {
   const keys = Object.keys(r);
-  const k = (re: RegExp) => keys.find((c) => re.test(c));
+  const k = (re: RegExp) => keys.find((c) => re.test(c.trim()));
   const ins = num(r[k(/^inscrits$/i) ?? ""]);
   const exp = num(r[k(/^exprim[ée]s$/i) ?? ""]);
   if (ins == null || exp == null) return null;
+  // Blocs par suffixe numérique (« Voix 3 », « Voix_3 ») ; colonnes sans suffixe = bloc 1.
+  const blocks = new Map<string, Map<string, unknown>>();
+  for (const key of keys) {
+    const m = key.trim().match(/^(.*?)[ _](\d+)$/);
+    const [b, id] = m ? [m[1], m[2]] : [key.trim(), "1"];
+    if (!blocks.has(id)) blocks.set(id, new Map());
+    if (!blocks.get(id)!.has(b)) blocks.get(id)!.set(b, r[key]);
+  }
+  const field = (blk: Map<string, unknown>, re: RegExp, not?: RegExp) => {
+    for (const [b, v] of blk) if (re.test(b) && !(not && not.test(b))) return String(v ?? "").trim();
+    return "";
+  };
   const listes: MunicipalList[] = [];
-  const ids = [...new Set(keys.map((c) => c.match(/^Voix (\d+)$/i)?.[1]).filter(Boolean))] as string[];
-  for (const i of ids) {
-    const voix = num(r[`Voix ${i}`]);
+  for (const blk of blocks.values()) {
+    const voix = num(field(blk, /^voix$/i));
     if (voix == null) continue;
-    const g = (re: RegExp) => {
-      const c = keys.find((x) => re.test(x) && x.endsWith(` ${i}`));
-      return c ? String(r[c] ?? "").trim() : "";
-    };
-    const nom = g(/^Nom candidat/i);
-    const prenom = g(/^Pr[ée]nom candidat/i);
-    const lib = g(/^Libell[ée] de liste/i) || g(/^Libell[ée] abr[ée]g[ée]/i);
+    const nom = field(blk, /^nom/i, /nuance|^nom (de (la )?)?liste/i);
+    const prenom = field(blk, /^pr[ée]nom/i);
+    const lib = field(blk, /^libell[ée] (de )?(la )?liste$/i) || field(blk, /^libell[ée].*(abr|liste)/i);
     if (!nom && !lib) continue;
     listes.push({
       tete: [prenom, nom].filter(Boolean).join(" "),
-      nuance: g(/^Nuance liste/i),
+      nuance: field(blk, /nuance/i),
       libelle: lib,
       voix,
       pctExprimes: exp ? (100 * voix) / exp : 0,
-      sieges: num(g(/^Si[èe]ges au CM/i)),
-      elu: /^(oui|elu|élu|1|true)$/i.test(g(/^Elu/i)),
+      sieges: num(field(blk, /si[èe]ges.*(cm|conseil municipal)|^si[èe]ges$/i)),
+      elu: /^(oui|elu|élu|1|true)$/i.test(field(blk, /^[ée]lu/i)),
     });
   }
   listes.sort((a, b) => b.voix - a.voix);
   return { tour, inscrits: ins, votants: num(r[k(/^votants$/i) ?? ""]) ?? 0, exprimes: exp, listes };
 }
+
+/** Même liste d'un tour à l'autre : tête de liste, sinon libellé (et nuance). */
+export const sameList = (a: MunicipalList, b: MunicipalList) =>
+  (!!a.tete && a.tete === b.tete) || (!!a.libelle && a.libelle.toLowerCase() === b.libelle.toLowerCase() && (!a.nuance || !b.nuance || a.nuance === b.nuance));
 
 /** Liste qui détient la majorité au conseil municipal (tour décisif). */
 export function majorityList(rounds: MunicipalRound[]): MunicipalList | null {
@@ -160,7 +192,8 @@ async function roundRows(http: TrackedHttp, which: "t1" | "t2", dep: string, com
       http.notes.push(`municipales ${which} : lecture du fichier national`);
       const f = await http.file(res.url, { timeoutMs: 600000, retries: 1 });
       retrievedAt = f.retrievedAt;
-      rows = (await filterCsvFile(f.data, dep, `municipales ${which}`)).rows;
+      const x = await filterCsvFile(f.data, dep, `municipales ${which}`);
+      rows = expandListBlocks(x.rows, x.fields);
       fileMemo.set(key, rows);
     }
     const code = (r: Record<string, unknown>) => clean(r["Code commune"]).padStart(5, "0");
