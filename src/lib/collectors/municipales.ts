@@ -1,0 +1,206 @@
+import type { TrackedHttp } from "./context";
+import { clean, findResource, num, tabular } from "./datagouv";
+
+/**
+ * Contexte municipal : résultats des élections municipales 2026 (1er et 2nd
+ * tours, ministère de l'Intérieur) et maire en fonction (Répertoire national
+ * des élus). Données publiques agrégées par liste ; le nom du maire est une
+ * information publique relative à un mandat électif.
+ *
+ * Format relevé en octobre 2026 (résultats par commune) : colonnes
+ * « Code commune », « Inscrits », « Votants », « Exprimés », puis par liste N :
+ * « Nom candidat N », « Prénom candidat N », « Nuance liste N »,
+ * « Libellé de liste N », « Voix N », « Elu N », « Sièges au CM N ».
+ */
+
+export const MUNICIPALES = {
+  year: "2026",
+  t1: { dataset: "elections-municipales-2026-resultats-du-premier-tour", fallback: { id: "4feeef01-24f7-4d5a-914f-8aa806f31ec2" } },
+  t2: { dataset: "elections-municipales-2026-resultats-du-second-tour", fallback: { id: "6ff67a28-01bf-459e-beca-dd7aa8132dc1" } },
+  rne: { dataset: "repertoire-national-des-elus-1", fallback: { id: "2876a346-d50c-4911-934e-19ee07b0e503" } },
+};
+
+/** Libellés des nuances de listes (municipales). */
+export const NUANCES: Record<string, string> = {
+  LEXG: "Extrême gauche",
+  LFI: "La France insoumise",
+  LCOM: "Parti communiste",
+  LSOC: "Parti socialiste",
+  LUG: "Union de la gauche",
+  LDVG: "Divers gauche",
+  LECO: "Écologistes",
+  LVEC: "Les Écologistes",
+  LREG: "Régionalistes",
+  LDIV: "Divers",
+  LGJ: "Gilets jaunes",
+  LREN: "Renaissance",
+  LENS: "Ensemble",
+  LMDM: "MoDem",
+  LHOR: "Horizons",
+  LUDI: "UDI",
+  LUC: "Union du centre",
+  LDVC: "Divers centre",
+  LLR: "Les Républicains",
+  LUD: "Union de la droite",
+  LDVD: "Divers droite",
+  LDSV: "Droite souverainiste",
+  LRN: "Rassemblement national",
+  LUXD: "Union de l'extrême droite",
+  LREC: "Reconquête",
+  LEXD: "Extrême droite",
+  LNC: "Non communiqué",
+};
+
+/** Famille politique d'une nuance (gauche / centre / droite / extrême droite / divers). */
+export function nuanceFamily(code: string): "gauche" | "centre" | "droite" | "extreme_droite" | "divers" {
+  if (/^L(EXG|FI|COM|SOC|UG|DVG|ECO|VEC)$/.test(code)) return "gauche";
+  if (/^L(REN|ENS|MDM|HOR|UDI|UC|DVC)$/.test(code)) return "centre";
+  if (/^L(LR|UD|DVD|DSV)$/.test(code)) return "droite";
+  if (/^L(RN|UXD|REC|EXD)$/.test(code)) return "extreme_droite";
+  return "divers";
+}
+
+export interface MunicipalList {
+  tete: string;
+  nuance: string;
+  libelle: string;
+  voix: number;
+  pctExprimes: number;
+  sieges: number | null;
+  elu: boolean;
+}
+
+export interface MunicipalRound {
+  tour: 1 | 2;
+  inscrits: number;
+  votants: number;
+  exprimes: number;
+  listes: MunicipalList[];
+}
+
+export interface MunicipalResult {
+  code: string;
+  rounds: MunicipalRound[];
+  /** Liste majoritaire au conseil municipal (tour décisif). */
+  majorite: MunicipalList | null;
+  maire: { nom: string; prenom: string; debutFonction: string | null } | null;
+  urls: string[];
+  retrievedAt: string;
+}
+
+/** Lit une ligne « large » (blocs répétés par liste) en résultats structurés. */
+export function parseMunicipalRow(r: Record<string, unknown>, tour: 1 | 2): MunicipalRound | null {
+  const keys = Object.keys(r);
+  const k = (re: RegExp) => keys.find((c) => re.test(c));
+  const ins = num(r[k(/^inscrits$/i) ?? ""]);
+  const exp = num(r[k(/^exprim[ée]s$/i) ?? ""]);
+  if (ins == null || exp == null) return null;
+  const listes: MunicipalList[] = [];
+  const ids = [...new Set(keys.map((c) => c.match(/^Voix (\d+)$/i)?.[1]).filter(Boolean))] as string[];
+  for (const i of ids) {
+    const voix = num(r[`Voix ${i}`]);
+    if (voix == null) continue;
+    const g = (re: RegExp) => {
+      const c = keys.find((x) => re.test(x) && x.endsWith(` ${i}`));
+      return c ? String(r[c] ?? "").trim() : "";
+    };
+    const nom = g(/^Nom candidat/i);
+    const prenom = g(/^Pr[ée]nom candidat/i);
+    const lib = g(/^Libell[ée] de liste/i) || g(/^Libell[ée] abr[ée]g[ée]/i);
+    if (!nom && !lib) continue;
+    listes.push({
+      tete: [prenom, nom].filter(Boolean).join(" "),
+      nuance: g(/^Nuance liste/i),
+      libelle: lib,
+      voix,
+      pctExprimes: exp ? (100 * voix) / exp : 0,
+      sieges: num(g(/^Si[èe]ges au CM/i)),
+      elu: /^(oui|elu|élu|1|true)$/i.test(g(/^Elu/i)),
+    });
+  }
+  listes.sort((a, b) => b.voix - a.voix);
+  return { tour, inscrits: ins, votants: num(r[k(/^votants$/i) ?? ""]) ?? 0, exprimes: exp, listes };
+}
+
+/** Liste qui détient la majorité au conseil municipal (tour décisif). */
+export function majorityList(rounds: MunicipalRound[]): MunicipalList | null {
+  const last = [...rounds].sort((a, b) => b.tour - a.tour).find((r) => r.listes.some((l) => (l.sieges ?? 0) > 0)) ?? rounds[rounds.length - 1];
+  if (!last?.listes.length) return null;
+  return [...last.listes].sort((a, b) => (b.sieges ?? 0) - (a.sieges ?? 0) || b.voix - a.voix)[0];
+}
+
+async function roundRows(http: TrackedHttp, which: "t1" | "t2", filters: { col: string; value: string }[]) {
+  const cfg = MUNICIPALES[which];
+  const res = await findResource(http, cfg.dataset, /^Municipales 2026 - R[ée]sultats - Communes/i, cfg.fallback);
+  if (!res) throw new Error(`Résultats municipaux (${which}) introuvables`);
+  return tabular(
+    http,
+    res.id,
+    filters.map((f) => ({ col: f.col, op: "exact" as const, value: f.value })),
+    20,
+  );
+}
+
+export async function collectMunicipales(http: TrackedHttp, codeInsee: string): Promise<MunicipalResult> {
+  const rounds: MunicipalRound[] = [];
+  const urls: string[] = [];
+  let retrievedAt = "";
+  for (const [which, tour] of [["t1", 1], ["t2", 2]] as const) {
+    try {
+      const t = await roundRows(http, which, [{ col: "Code commune", value: codeInsee }]);
+      urls.push(t.url);
+      retrievedAt ||= t.retrievedAt;
+      const row = t.rows[0];
+      const parsed = row ? parseMunicipalRow(row, tour) : null;
+      if (parsed?.listes.length) rounds.push(parsed);
+    } catch (e) {
+      if (tour === 1) throw e;
+    }
+  }
+  let maire: MunicipalResult["maire"] = null;
+  try {
+    const res = await findResource(http, MUNICIPALES.rne.dataset, /maire/i, MUNICIPALES.rne.fallback);
+    if (res) {
+      const t = await tabular(http, res.id, [{ col: "Code de la commune", op: "exact", value: codeInsee }], 2);
+      urls.push(t.url);
+      const r = t.rows[0];
+      if (r) maire = { nom: clean(r["Nom de l'élu"]), prenom: clean(r["Prénom de l'élu"]), debutFonction: r["Date de début de la fonction"] ? clean(r["Date de début de la fonction"]) : null };
+    }
+  } catch {
+    /* le maire reste inconnu */
+  }
+  if (!rounds.length && !maire) throw new Error("Aucun résultat municipal 2026 pour la commune (communes de moins de 1 000 habitants : scrutin sans listes)");
+  return { code: codeInsee, rounds, majorite: majorityList(rounds), maire, urls, retrievedAt: retrievedAt || new Date().toISOString() };
+}
+
+/** Nuance de la liste majoritaire pour toutes les communes d'un département (mode département). */
+export async function collectMunicipalesDepartement(http: TrackedHttp, dep: string): Promise<{ byCommune: Map<string, { nuance: string; tete: string; pct: number }>; url: string; retrievedAt: string }> {
+  const byCommune = new Map<string, { nuance: string; tete: string; pct: number }>();
+  const rows = new Map<string, MunicipalRound[]>();
+  let url = "";
+  let retrievedAt = "";
+  for (const [which, tour] of [["t1", 1], ["t2", 2]] as const) {
+    let t;
+    try {
+      t = await roundRows(http, which, [{ col: "Code département", value: dep }]);
+      if (!t.rows.length && dep.startsWith("0")) t = await roundRows(http, which, [{ col: "Code département", value: dep.slice(1) }]);
+    } catch (e) {
+      if (tour === 1) throw e;
+      continue;
+    }
+    url ||= t.url;
+    retrievedAt ||= t.retrievedAt;
+    for (const r of t.rows) {
+      const code = clean(r["Code commune"]).padStart(5, "0");
+      const p = parseMunicipalRow(r, tour);
+      if (!p) continue;
+      if (!rows.has(code)) rows.set(code, []);
+      rows.get(code)!.push(p);
+    }
+  }
+  for (const [code, rs] of rows) {
+    const m = majorityList(rs);
+    if (m) byCommune.set(code, { nuance: m.nuance, tete: m.tete, pct: m.pctExprimes });
+  }
+  return { byCommune, url, retrievedAt };
+}

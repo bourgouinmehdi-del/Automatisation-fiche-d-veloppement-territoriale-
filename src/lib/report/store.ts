@@ -29,8 +29,19 @@ export async function saveReport(r: Report) {
   if (prev) {
     r.version = prev.version + 1;
     r.createdAt = prev.createdAt;
+    // Les retours du terrain survivent à la régénération.
+    r.fieldNotes ??= prev.fieldNotes;
   }
   await fs.writeFile(file(r.id), JSON.stringify(r));
+}
+
+/** Enregistre les retours du terrain d'une fiche (sans changer de version). */
+export async function saveFieldNotes(id: string, text: string) {
+  const r = await getReport(id);
+  if (!r) return null;
+  r.fieldNotes = { text: text.slice(0, 20000), updatedAt: new Date().toISOString() };
+  await fs.writeFile(file(r.id), JSON.stringify(r));
+  return r.fieldNotes;
 }
 
 export async function getReport(id: string): Promise<Report | null> {
@@ -47,7 +58,7 @@ export async function listReports() {
     const out = [];
     for (const f of files) {
       const r = JSON.parse(await fs.readFile(path.join(reportsDir(), f), "utf8")) as Report;
-      out.push({ id: r.id, nom: r.commune.nom, departement: r.commune.departement.nom, scope: r.query.scope, updatedAt: r.updatedAt, version: r.version });
+      out.push({ id: r.id, nom: r.query.scope === "departement" ? `Ciblage ${r.commune.departement.nom}` : r.commune.nom, departement: r.commune.departement.nom, scope: r.query.scope, updatedAt: r.updatedAt, version: r.version });
     }
     return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   } catch {

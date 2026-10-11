@@ -8,6 +8,8 @@
  * aucun territoire réel. Elles ne doivent jamais être utilisées ailleurs.
  */
 
+import { mockExtra } from "./mock-extra";
+
 const square = (lon: number, lat: number, d = 0.04): GeoJSON.Polygon => ({
   type: "Polygon",
   coordinates: [[[lon, lat], [lon + d, lat], [lon + d, lat + d], [lon, lat + d], [lon, lat]]],
@@ -216,6 +218,8 @@ export function mockFetch(): typeof fetch {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     const p = url.pathname;
     const h = url.host;
+    const extra = mockExtra(url);
+    if (extra) return extra;
     if (h === "geo.api.gouv.fr") {
       if (p === "/communes/60159")
         return json({ code: "60159", nom: "Compiègne", population: 40761, surface: 5300, centre: { type: "Point", coordinates: [LON0 + 0.02, LAT0 + 0.02] }, contour: square(LON0, LAT0) });

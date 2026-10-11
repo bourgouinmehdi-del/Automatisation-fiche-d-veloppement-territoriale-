@@ -24,7 +24,7 @@ interface Listed {
 const SCOPES = [
   { id: "commune", label: "Commune", help: "Analyse centrée sur la commune, comparée à son intercommunalité, son département, sa région et la France." },
   { id: "epci", label: "Intercommunalité", help: "Indicateurs de l'intercommunalité, tableau de ses communes membres." },
-  { id: "departement", label: "Département", help: "Indicateurs départementaux." },
+  { id: "departement", label: "Département (ciblage)", help: "Compare toutes les communes du département et propose les territoires où concentrer l'effort militant, comme la fiche Yonne." },
   { id: "custom", label: "Territoire personnalisé", help: "Liste de communes choisies (codes INSEE)." },
 ];
 
@@ -108,8 +108,24 @@ export default function Home() {
       </ul>
 
       <div className="card p-5">
+        <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-[#f1f0ec] p-1 text-sm font-semibold" role="tablist">
+          {[
+            ["commune", "Fiche d'une commune"],
+            ["departement", "Ciblage d'un département"],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={scope === id || (id === "commune" && scope !== "departement")}
+              onClick={() => setScope(id)}
+              className={`rounded-md px-3 py-2 ${scope === id || (id === "commune" && scope !== "departement") ? "bg-white shadow-sm" : "text-[var(--ink-2)]"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <label htmlFor="q" className="mb-1 block text-sm font-semibold">
-          Code postal ou commune
+          {scope === "departement" ? "Une commune du département (code postal ou nom)" : "Code postal ou commune"}
         </label>
         <input
           id="q"
@@ -171,7 +187,7 @@ export default function Home() {
         </details>
 
         <button className="btn btn-primary mt-5 w-full justify-center py-3 text-base" disabled={!selected || busy} onClick={generate}>
-          {busy ? "Lancement…" : "Générer la fiche"}
+          {busy ? "Lancement…" : scope === "departement" ? "Générer le ciblage départemental" : "Générer la fiche"}
         </button>
         {error && <p className="mt-2 text-sm text-[#a12a29]">{error}</p>}
       </div>

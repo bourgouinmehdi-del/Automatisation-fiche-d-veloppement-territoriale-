@@ -16,7 +16,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/" className="font-bold text-[var(--accent-strong)] no-underline">
               Fiches territoriales
             </a>
-            <nav className="text-sm text-[var(--ink-2)]">
+            <nav className="flex gap-5 text-sm text-[var(--ink-2)]">
+              <a href="/donnees-internes" className="text-[var(--ink-2)]">
+                Données internes
+              </a>
               <a href="/methodologie" className="text-[var(--ink-2)]">
                 Méthodologie et sources
               </a>

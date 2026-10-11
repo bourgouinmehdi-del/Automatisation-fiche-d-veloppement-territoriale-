@@ -157,6 +157,17 @@ export function blockHtml(r: Report, b: Block, cit: Citations): string {
       return `<div class="callout ${b.tone ?? "info"}">${b.title ? `<div class="callout-t">${esc(b.title)}</div>` : ""}${inline(b.text)}</div>`;
     case "heading":
       return `<h3 class="fh">${esc(b.text)}</h3>`;
+    case "targets":
+      return b.items
+        .map((t, k) => {
+          const tb = r.tables.find((x) => x.id === t.tableId);
+          return `<section class="target"><div class="target-k"><span class="dot" style="background:${esc(t.color)}"></span>Proposition de ciblage n°${k + 1}</div><h3 class="target-t">${esc(t.nom)}</h3>${t.focus?.length ? `<div class="target-f">Focus possibles : ${esc(t.focus.join(", "))}</div>` : ""}<ul class="list">${t.raisons.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>${tb ? tableHtml(tb, cit) : ""}</section>`;
+        })
+        .join("");
+    case "fieldNotes":
+      return r.fieldNotes?.text.trim()
+        ? `<div class="callout terrain"><div class="callout-t">Retours du terrain <span class="muted" style="font-weight:400">(mis à jour le ${esc(fmtDate(r.fieldNotes.updatedAt))})</span></div>${inline(r.fieldNotes.text.trim())}</div>`
+        : "";
     case "glance":
       return `<div class="glance">${b.items
         .map((i) => `<div class="gl ${i.tone ?? "neutral"}"><div class="gl-v">${esc(i.value)}</div><div class="gl-l">${esc(i.label)}</div>${i.detail ? `<div class="gl-d">${esc(i.detail)}</div>` : ""}</div>`)
@@ -245,6 +256,7 @@ h3.fh { font-size: 12.5pt; font-weight: 700; color: #0b0b0b; margin: 7mm 0 3mm; 
 .callout.accent { border-color: #c0503a; background: #fdf6f3; }
 .callout.info { border-color: #b7d3f6; background: #f3f7fd; }
 .callout-t { font-weight: 700; margin-bottom: 1mm; }
+.callout.terrain { border-color: #1baf7a; background: #f1faf6; }
 .glance { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin: 4mm 0 3mm; break-inside: avoid; }
 .gl { border: 1px solid #e7e6e2; border-radius: 2mm; padding: 2.5mm 3mm; border-top: 1mm solid #c3c2b7; }
 .gl.up { border-top-color: #c0503a; } .gl.down { border-top-color: #3f6fb0; }
@@ -264,6 +276,11 @@ p.prose.hyp { color: #2c2b29; }
 .pair-t { font-size: 9pt; font-weight: 600; color: #52514e; margin-bottom: 1mm; }
 .fiche section { break-before: auto; }
 .fiche section.fiche-src { break-before: page; }
+.fiche section.target { break-before: page; }
+.target-k { font-size: 10pt; font-weight: 700; text-decoration: underline; text-underline-offset: 1.2mm; display: flex; align-items: center; gap: 2mm; }
+.target-k .dot { width: 3.5mm; height: 3.5mm; border-radius: 50%; display: inline-block; }
+h3.target-t { font-size: 18pt; margin: 1mm 0 1mm; }
+.target-f { font-style: italic; color: #2c2b29; margin-bottom: 2mm; }
 .fiche-src .biblio li { font-size: 7.8pt; }
 `;
 
@@ -309,15 +326,18 @@ ${r.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
   // Version courte (fiche d'action) : en-tête sur le modèle des fiches « Développement
   // territorial », corps sans titre de partie, sources en petit corps.
   if (opts.sectionIds) {
-    const head = `<header class="fiche-head"><div class="fiche-k">Développement territorial · Fiche d'action</div><div class="fiche-pc">Proposition de ciblage</div><h1>${esc(r.commune.nom)}</h1><div class="fiche-sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}) · ${esc(r.commune.region.nom)}${r.commune.epci ? ` · ${esc(r.commune.epci.nom)}` : ""}</div><div class="fiche-meta">Code INSEE ${esc(r.commune.code)} · généré le ${esc(fmtDate(r.updatedAt))} · version ${r.version}</div></header>`;
-    const shortBody = sections.map((s) => `<section id="part-${s.id}">${s.id === "LFI" ? "" : `<h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>`}${s.blocks.map((b) => blockHtml(r, b, cit)).join("\n")}</section>`).join("\n");
+    const ciblage = sections.some((s) => s.id === "CIBLAGE");
+    const head = ciblage
+      ? `<header class="fiche-head"><div class="fiche-k">Développement territorial · ciblage départemental</div><h1>${esc(r.commune.departement.nom)}</h1><div class="fiche-sub">${esc(r.commune.region.nom)} · propositions de ciblage militant</div><div class="fiche-meta">Généré le ${esc(fmtDate(r.updatedAt))} · version ${r.version}</div></header>`
+      : `<header class="fiche-head"><div class="fiche-k">Développement territorial · Fiche d'action</div><div class="fiche-pc">Proposition de ciblage</div><h1>${esc(r.commune.nom)}</h1><div class="fiche-sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}) · ${esc(r.commune.region.nom)}${r.commune.epci ? ` · ${esc(r.commune.epci.nom)}` : ""}</div><div class="fiche-meta">Code INSEE ${esc(r.commune.code)} · généré le ${esc(fmtDate(r.updatedAt))} · version ${r.version}</div></header>`;
+    const shortBody = sections.map((s) => `<section id="part-${s.id}">${s.id === "LFI" || s.id === "CIBLAGE" ? "" : `<h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>`}${s.blocks.map((b) => blockHtml(r, b, cit)).join("\n")}</section>`).join("\n");
     const biblio = `<section class="part fiche-src"><h2>Sources</h2><ol class="biblio">${cit
       .all()
       .map((s) => `<li>${esc(sourceLabel(s))}. Consulté le ${esc(fmtDate(s.retrievedAt))}. <a href="${esc(s.url)}">${esc(s.url.length > 140 ? s.url.slice(0, 137) + "…" : s.url)}</a></li>`)
       .join("")}</ol></section>`;
     const short = `<div class="fiche">${head}${shortBody}${biblio}</div>`;
     if (opts.standalone === false) return short;
-    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Fiche d'action — ${esc(r.commune.nom)}</title><style>${REPORT_CSS}</style></head><body>${short}</body></html>`;
+    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${ciblage ? `Développement territorial — ${esc(r.commune.departement.nom)}` : `Fiche d'action — ${esc(r.commune.nom)}`}</title><style>${REPORT_CSS}</style></head><body>${short}</body></html>`;
   }
   const html = `${cover}\n${body}\n${method}`;
   if (opts.standalone === false) return html;

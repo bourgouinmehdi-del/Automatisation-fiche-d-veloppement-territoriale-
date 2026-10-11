@@ -37,6 +37,10 @@ export default function MapView({ map, height = 460 }: { map: MapSpec; height?: 
       }}
       onEachFeature={(f, layer) => {
         const p = (f.properties ?? {}) as Record<string, unknown>;
+        if (l.labelProperty && p[l.labelProperty]) {
+          layer.bindTooltip(esc(p[l.labelProperty]), { permanent: true, direction: "center", className: "map-label" });
+          return;
+        }
         const val = l.valueProperty ? `<br>${esc(l.label)} : <b>${p[l.valueProperty] == null ? "n.d." : esc(fmtValue(p[l.valueProperty] as number, map.legend?.unit ?? "nombre"))}</b>` : "";
         layer.bindTooltip(`<b>${esc(p.nom ?? p.name ?? "")}</b>${val}<br><span style="color:#8a8984">Source : ${esc(l.source.name)}</span>`, { sticky: true });
       }}

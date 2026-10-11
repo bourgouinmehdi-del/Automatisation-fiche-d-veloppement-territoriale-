@@ -17,6 +17,12 @@ import { collectDvf, DvfStat } from "../collectors/dvf";
 import { BureauResult, collectBureaux, collectElection, ELECTIONS, ElectionConfig, ElectionResult } from "../collectors/elections";
 import { BureauGeo, collectBureauxGeo } from "../collectors/bureaux-geo";
 import { InternalData, loadInternalData } from "../collectors/interne";
+import { collectIris, collectQpv, Quartier } from "../collectors/quartiers";
+import { collectMunicipales, collectMunicipalesDepartement, MunicipalResult } from "../collectors/municipales";
+import { BpeResult, BPE_VINTAGE, collectBpe } from "../collectors/bpe";
+import { collectTimetables, StationTimetable } from "../collectors/gtfs";
+import { collectRoutes, Route } from "../collectors/routes";
+import { config } from "../config";
 import { collectInsee, InseeResult } from "../collectors/insee-indicators";
 import { collectCycleways, collectEquipments, collectNearest } from "../collectors/osm";
 import { collectEntreprises, collectRisques, collectSchools, collectStations, Employer, RisquesResult, School, Station } from "../collectors/public-apis";
@@ -71,6 +77,16 @@ export interface Collected {
   bureaux: { election: ElectionConfig; results: BureauResult[]; source: SourceRef }[];
   bvGeo?: BureauGeo & { source: SourceRef };
   interne: InternalData;
+  /** Quartiers prioritaires et IRIS de la commune. */
+  quartiers?: { qpv: Quartier[]; iris: Quartier[]; sources: SourceRef[] };
+  /** Municipales 2026 (commune) et nuance de la majorité municipale (communes du département). */
+  municipal?: MunicipalResult & { source: SourceRef };
+  municipalDep?: { byCommune: Map<string, { nuance: string; tete: string; pct: number }>; source: SourceRef };
+  bpe?: BpeResult & { source: SourceRef };
+  timetables?: { stations: StationTimetable[]; source: SourceRef };
+  routes?: { routes: Route[]; source: SourceRef };
+  /** Centre de Paris (temps de trajet). */
+  parisCentre?: [number, number] | null;
   ctx: CollectContext;
   warnings: string[];
 }
@@ -94,6 +110,10 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
     "risques",
     "elections",
     "bureaux",
+    "quartiers",
+    "municipales",
+    "services",
+    "acces",
   ];
   let done = 0;
   const step = (id: string, label: string) => progress({ step: id, label, done: done++, total: steps.length + 3, status: "running" });
@@ -213,6 +233,7 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
       }
       const paris = fc.communes.find((x) => x.code === "75056");
       if (paris?.centre && commune.centre && commune.code !== "75056") c.parisKm = haversineKm(commune.centre, paris.centre.coordinates);
+      c.parisCentre = (paris?.centre?.coordinates as [number, number] | undefined) ?? null;
       // Densités des communes de France (sélection de communes comparables).
       densityByCode = new Map(
         fc.communes.map((x) => [x.code, density(x.population ?? null, x.surface != null ? x.surface / 100 : null)] as const),
@@ -436,7 +457,100 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
       { theme: "elections", label: "Contours / libellés des bureaux de vote" },
     );
 
-  /* 14. Données internes facultatives */
+  const enabled = (id: string) => !config.disabledSources.has(id);
+
+  /* 14. Quartiers : QPV et IRIS */
+  step("quartiers", "Quartiers prioritaires et IRIS (ANCT, INSEE, IGN)");
+  const quartiers: NonNullable<Collected["quartiers"]> = { qpv: [], iris: [], sources: [] };
+  if (enabled("qpv"))
+    await ctx.step(
+      "qpv",
+      "quartiers:qpv",
+      async (http) => {
+        const q = await collectQpv(http, commune.code);
+        quartiers.qpv = q.quartiers;
+        http.notes.push(...q.notes);
+        if (q.quartiers.length) {
+          quartiers.sources.push(ctx.ref("qpv", q.urls[0], q.retrievedAt, { vintage: "2024" }));
+          if (q.urls.length > 2) quartiers.sources.push(ctx.ref("insee_qpv", q.urls[q.urls.length - 1], q.retrievedAt, { vintage: "2021-2022" }));
+        } else http.notes.push("Aucun quartier prioritaire dans la commune");
+      },
+      { theme: "strategie", label: "Quartiers prioritaires (QPV)" },
+    );
+  if (enabled("iris") && (commune.population ?? 0) >= 5000)
+    await ctx.step(
+      "iris",
+      "quartiers:iris",
+      async (http) => {
+        const q = await collectIris(http, commune.code);
+        quartiers.iris = q.quartiers;
+        http.notes.push(...q.notes);
+        if (q.quartiers.length) quartiers.sources.push(ctx.ref("iris", q.urls[0], q.retrievedAt, { vintage: "2021" }));
+        else http.notes.push("Commune non découpée en IRIS");
+      },
+      { theme: "strategie", label: "Quartiers IRIS" },
+    );
+  if (quartiers.qpv.length || quartiers.iris.length) c.quartiers = quartiers;
+
+  /* 15. Contexte municipal */
+  step("municipales", "Élections municipales 2026 et maire (ministère de l'Intérieur)");
+  if (enabled("municipales")) {
+    await ctx.step(
+      "municipales",
+      "municipales",
+      async (http) => {
+        const m = await collectMunicipales(http, commune.code);
+        c.municipal = { ...m, source: ctx.ref("municipales", m.urls[0], m.retrievedAt, { vintage: "2026" }) };
+      },
+      { theme: "elections", label: "Municipales 2026 et maire" },
+    );
+    if (query.scope === "departement")
+      await ctx.step("municipales", "municipales:departement", async (http) => {
+        const m = await collectMunicipalesDepartement(http, commune.departement.code);
+        c.municipalDep = { byCommune: m.byCommune, source: ctx.ref("municipales", m.url, m.retrievedAt, { vintage: "2026" }) };
+      });
+  }
+
+  /* 16. Services (BPE) et horaires de train (GTFS) */
+  step("services", "Équipements (BPE) et horaires SNCF (GTFS)");
+  if (enabled("bpe"))
+    await ctx.step(
+      "bpe",
+      "services:bpe",
+      async (http) => {
+        const b = await collectBpe(http, commune.code, commune.departement.code);
+        c.bpe = { ...b, source: ctx.ref("bpe", b.url, b.retrievedAt, { vintage: BPE_VINTAGE }) };
+      },
+      { theme: "equipements", label: "Base permanente des équipements" },
+    );
+  if (enabled("gtfs") && c.stations?.stations.length)
+    await ctx.step(
+      "gtfs",
+      "services:gtfs",
+      async (http) => {
+        const t = await collectTimetables(http, c.stations!.stations);
+        c.timetables = { stations: t.stations, source: ctx.ref("gtfs", t.url, t.retrievedAt) };
+      },
+      { theme: "mobilite", label: "Horaires des trains (GTFS SNCF)" },
+    );
+
+  /* 17. Temps de trajet routiers */
+  step("acces", "Temps de trajet routiers (OSRM)");
+  if (enabled("osrm") && commune.centre) {
+    const targets: { label: string; nom: string; to: [number, number] }[] = [];
+    if (c.parisCentre && commune.code !== "75056") targets.push({ label: "Paris", nom: "Paris", to: c.parisCentre });
+    await ctx.step("osrm", "acces:routes", async (http) => {
+      const fc = await franceCentres(http);
+      const pole = c.poles[0];
+      const pc = pole ? fc.communes.find((x) => x.code === pole.code)?.centre?.coordinates : null;
+      if (pole && pc) targets.unshift({ label: "Pôle urbain le plus proche", nom: pole.nom, to: pc as [number, number] });
+      if (!targets.length) throw new Error("Aucune destination");
+      const r = await collectRoutes(http, commune.centre!, targets);
+      c.routes = { routes: r.routes, source: ctx.ref("osrm", r.url, r.retrievedAt) };
+    });
+  }
+
+  /* 18. Données internes facultatives */
   c.interne = await loadInternalData();
   if (c.interne.files.length)
     ctx.runs.push({ sourceId: "interne", name: "Données militantes internes (fichiers fournis)", step: "interne", status: "ok", message: c.interne.files.join(", "), durationMs: 0, requests: 0, fromCache: 0, retrievedAt: new Date().toISOString() });

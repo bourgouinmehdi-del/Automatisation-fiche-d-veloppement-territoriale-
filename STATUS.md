@@ -40,6 +40,24 @@ Ajouts : résultats par bureau de vote (E24, P22, LG24), géographie des bureaux
 
 Limites : les législatives 2024 ne permettent pas d'isoler LFI (candidatures NFP, nuance « UG ») ; le découpage des bureaux peut avoir changé entre 2022 et 2024 (appariement limité aux bureaux dont les inscrits varient de moins de 25 %) ; les heures de pointe des gares sont indicatives ; les quartiers prioritaires (QPV) et les données IRIS ne sont pas encore croisés avec les bureaux.
 
+## Quartiers, municipales, services, accès et ciblage départemental (version 0.3)
+
+Ajouts : quartiers prioritaires et IRIS croisés avec les bureaux de vote ; municipales 2026 et maire ; Base permanente des équipements ; horaires SNCF (GTFS) ; temps de trajet routiers (OSRM) ; ciblage départemental ; retours du terrain ; dépôt des données internes et import de l'export Action Populaire.
+
+Formats relevés sur les sources réelles le 11 octobre 2026 (documentation, API tabulaire de data.gouv.fr, WFS de l'IGN), puis testés avec des API simulées (`tests/fixtures/mock-extra.ts`, `tests/extensions.test.ts`). **Non encore exécuté sur les API réelles** (environnement de développement sans accès réseau). À vérifier lors de la première génération réelle (journal de collecte) :
+
+| Source | Point à confirmer |
+|---|---|
+| QPV (ANCT) | nom du fichier GeoJSON dans l'archive et propriété portant le code QPV (repérée par valeur) |
+| Estimations démographiques QPV (INSEE) | présence d'un fichier de métadonnées dans l'archive (les colonnes sont repérées par libellé) ; sinon note « colonnes repérées par leur code » au journal |
+| Bases IRIS (INSEE) | colonnes `IRIS`, `COM`, `P21_…` ; Filosofi IRIS `DISP_MED21`, `DISP_TP6021` (repérées par motif) |
+| Municipales 2026 | indexation par l'API tabulaire des fichiers « Résultats - Communes » des deux tours ; colonne « Sièges au CM N » |
+| BPE 2025 | durée de la première lecture du fichier national (≈ 136 Mo) |
+| GTFS SNCF | correspondance des gares par code UIC dans `stop_id` ; durée de lecture de `stop_times.txt` |
+| OSRM | disponibilité du serveur de démonstration (sinon renseigner `OSRM_URL`) |
+
+Limites : l'APL (DREES) n'est pas intégrée faute d'adresse de téléchargement stable ; les QPV et IRIS ne sont rattachés aux bureaux que par recouvrement de surfaces approximatives ; le score de ciblage est une aide à la décision, à confronter au terrain.
+
 ## Critères d'acceptation
 
 | # | Critère | État |
@@ -88,11 +106,11 @@ Le test d'intégration a permis de corriger un défaut réel (la règle « sans 
 
 1. **Validation complète** : codes géographiques de référence INSEE et élections à confirmer (cf. ci-dessus).
 2. **Partie C** : évolution annuelle de l'emploi salarié (URSSAF), zones d'activité, offre de formation/insertion, évolution du tissu commercial — non automatisés.
-3. **Partie D** : la BPE de l'INSEE devrait compléter OSM pour les décomptes d'équipements ; FINESS / APL pour la santé.
-4. **Partie E** : temps de trajet (calculateur d'itinéraires) et horaires/fréquences (GTFS) non intégrés ; distances à vol d'oiseau uniquement.
+3. **Partie D** : la BPE alimente la fiche d'action (santé, services publics) mais pas encore les décomptes de la partie D (OSM) ; APL non intégrée.
+4. **Partie E** : temps de trajet (OSRM) et horaires SNCF (GTFS) utilisés dans la fiche d'action ; la partie E reste en distances à vol d'oiseau ; bus et cars non couverts.
 5. **Partie F** : DPE, RPLS, LOVAC, artificialisation non intégrés ; pas de comparaison de prix DVF avec le département.
 6. **Partie G** : résultats par bureau de vote (contours REU) non intégrés ; composition des assemblées non collectée.
-7. **Infracommunal** (IRIS, QPV) : non intégré — c'est ce qui permettrait les tableaux par quartier du document de référence.
+7. **Infracommunal** (IRIS, QPV) : intégré dans la fiche d'action (tableau « Profil des quartiers », rattachement aux bureaux) ; pas encore dans les parties A à I.
 8. **Périmètres EPCI / département** : les indicateurs et constats sont calculés à l'échelle choisie, mais les paragraphes rédigés et les équipements restent centrés sur la commune saisie.
 9. **Voisinage** : les communes limitrophes situées dans un autre département ne sont pas listées.
 10. **Stockage** : fichiers JSON ; migration PostgreSQL/PostGIS à prévoir pour un usage multi-utilisateurs ; les tâches de génération vivent dans le processus serveur.

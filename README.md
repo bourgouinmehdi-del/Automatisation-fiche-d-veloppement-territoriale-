@@ -33,6 +33,10 @@ L'application interroge les hôtes suivants (HTTPS) ; ils doivent être joignabl
 | `geo.api.gouv.fr` | contours, surfaces, centres, communes du département |
 | `api.insee.fr` | API Melodi (recensement, Filosofi, populations de référence) |
 | `files.data.gouv.fr` | DVF géolocalisé |
+| `www.insee.fr` | fichiers nationaux : BPE, bases IRIS, statistiques QPV |
+| `data.geopf.fr` | contours IRIS (WFS de la Géoplateforme IGN) |
+| `eu.ftp.opendatasoft.com` | horaires SNCF (GTFS) |
+| `router.project-osrm.org` (configurable) | temps de trajet routiers |
 | `overpass-api.de` (configurable) | équipements OpenStreetMap |
 | `georisques.gouv.fr` | risques, CatNat, ICPE |
 | `data.education.gouv.fr` | annuaire de l'éducation |
@@ -113,6 +117,31 @@ Les textes acceptent une mise en évidence minimale (`**gras**`), rendue dans l'
 Exemples dans `docs/exemples-interne/`. Uniquement des agrégats par commune : aucun nom de personne.
 
 **Garde-fous** : uniquement des agrégats publics (commune, bureau de vote) ; aucune donnée individuelle ; aucune variable d'origine ou de nationalité ; explications présentées comme hypothèses.
+
+### Quartiers, contexte municipal, services et accès (fiche d'action)
+
+- **Quartiers** : quartiers prioritaires 2024 (ANCT : liste et contours ; INSEE : Filosofi 2021 et estimations démographiques 2022) et IRIS (IGN : contours ; INSEE : recensement et Filosofi 2021 à l'IRIS), dans un tableau « Profil des quartiers » (revenu médian, pauvreté, moins de 25 ans, 60 ans et plus, chômage, locataires dont HLM). Les bureaux de vote sont rattachés aux quartiers (au moins 30 % de leur surface) : lignes « BV 3 et 7 (QPV la Madeleine) » dans le tableau politique, vote LFI par quartier, contours des QPV sur les cartes des bureaux, hypothèse « ce quartier devrait nous être favorable » quand la pauvreté est forte mais le vote LFI moyen.
+- **Contexte municipal** : municipales 2026 (listes, nuances, 1er et 2nd tours, sièges) et maire en fonction (Répertoire national des élus) ; listes de gauche battues, liste unique.
+- **Services** (BPE 2025) : médecins généralistes pour 10 000 habitants comparés au département (« désert médical »), urgences, France Services, France Travail, poste ; supermarchés et services publics comme lieux d'action.
+- **Gares** (GTFS SNCF) : départs un mardi type, heures de pointe réelles, temps de trajet direct vers Paris.
+- **Accès** (OSRM) : temps de trajet en voiture vers le pôle urbain le plus proche et vers Paris.
+- **Retours du terrain** : texte libre saisi dans la fiche (bouton « Ajouter des retours du terrain »), conservé lors des régénérations et repris dans le PDF et le Word.
+
+### Ciblage départemental
+
+Choisir « Ciblage d'un département » sur la page d'accueil (ou `npm run generate -- <commune> --scope departement`). L'application compare toutes les communes du département, sur le modèle de la fiche Yonne :
+
+- unités : villes de 2 500 habitants et plus, et groupements de bourgs (1 000 à 2 500 habitants) d'une même intercommunalité avec leurs « focus possibles » ;
+- score : surperformance LFI (européennes 2024, % des inscrits) par rapport aux communes de taille comparable du département (35 %), écart d'abstention au département (25 %), ratio parrains / voix (20 %, si fourni), volume de voix LFI (20 %) ; pénalité pour les territoires déjà couverts par un groupe de 20 membres ou plus ; les deux plus grandes villes restent hors ciblage ;
+- sorties : liste des territoires proposés, carte du département, une page par proposition (raisons, tableau Inscrits / LFI P22 / LFI E24 / Parrains / Abstention), classement complet avec la nuance de la majorité municipale ; bouton « Générer la fiche » pour chaque proposition (fiche communale, ou territoire personnalisé pour un groupement) ; export « PDF ciblage ».
+
+### Données internes depuis l'interface
+
+Page **Données internes** : dépôt des parrainages, des groupes (format simple) ou de l'**export brut d'Action Populaire** (colonnes reconnues par leur intitulé ; commune retrouvée par code postal et ville ; colonnes nominatives ignorées). Les fichiers restent dans `data/interne/`. **En ligne, protéger l'application par une authentification** : cette page permet de déposer et supprimer ces fichiers.
+
+### Sources volumineuses
+
+La BPE (≈ 136 Mo), les bases IRIS (≈ 70 Mo) et le GTFS SNCF sont téléchargés une fois puis mis en cache (`CACHE_TTL_HOURS`) ; leur lecture en flux limite la mémoire. Pour s'en passer : `DISABLE_SOURCES=bpe,gtfs,iris`. Les adresses des fichiers INSEE (qui changent à chaque millésime) sont surchargeables : `INSEE_BPE_URL`, `INSEE_IRIS_POP_URL`, `INSEE_IRIS_LOGEMENT_URL`, `INSEE_IRIS_ACTIVITE_URL`, `INSEE_IRIS_FILOSOFI_URL`, `INSEE_QPV_FILOSOFI_URL`, `INSEE_QPV_RP_URL`, `SNCF_GTFS_URL`, `OSRM_URL`.
 
 ## 2 ter. Déploiement en ligne
 

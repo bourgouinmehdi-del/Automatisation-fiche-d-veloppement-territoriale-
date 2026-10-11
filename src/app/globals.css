@@ -61,6 +61,10 @@ table.data thead th { position: sticky; top: 0; z-index: 1; }
 .callout-warning { border-color: #2b2a28; border-width: 1.5px; background: #fff; }
 .callout-accent { border-color: #e4b7a6; background: var(--fiche-soft); }
 .callout-info { border-color: #b7d3f6; background: #f3f7fd; }
+.callout-terrain { border-color: #9fd9bf; background: #f1faf6; }
+.target-card { border: 1px solid var(--line); border-top: 6px solid; border-radius: 12px; padding: 1.1rem 1.25rem; background: #fff; }
+.print-only { display: none; }
+@media print { .print-only { display: block; } }
 .glance { border: 1px solid var(--line); border-top: 4px solid #c3c2b7; border-radius: 10px; padding: .7rem .85rem; background: #fff; }
 .glance-up { border-top-color: var(--fiche); }
 .glance-down { border-top-color: #3f6fb0; }
@@ -75,3 +79,5 @@ table.data thead th { position: sticky; top: 0; z-index: 1; }
   .no-print { display: none !important; }
   body { background: #fff; }
 }
+.leaflet-tooltip.map-label { background: transparent; border: 0; box-shadow: none; font-weight: 700; color: #111; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+.leaflet-tooltip.map-label::before { display: none; }

@@ -22,6 +22,11 @@ import { rankBureaux, score } from "../src/lib/analysis/political";
 import { loadInternalData } from "../src/lib/collectors/interne";
 import { collectInsee } from "../src/lib/collectors/insee-indicators";
 import { CollectContext } from "../src/lib/collectors/context";
+import { collectIris, collectQpv } from "../src/lib/collectors/quartiers";
+import { collectMunicipales } from "../src/lib/collectors/municipales";
+import { collectBpe } from "../src/lib/collectors/bpe";
+import { collectTimetables } from "../src/lib/collectors/gtfs";
+import { collectRoutes } from "../src/lib/collectors/routes";
 
 const args = process.argv.slice(2);
 const code = args[args.indexOf("--insee") + 1] && args.includes("--insee") ? args[args.indexOf("--insee") + 1] : "60159";
@@ -151,9 +156,44 @@ async function main() {
     for (const l of (await diagnoseBureauxGeo(h(), c.code)).filter((l) => /^contours «|^ {2}[^ •]/.test(l))) console.log("      " + l);
     return `${g.method} — ${g.features.length} contours, ${g.points.length} lieux de vote géocodés, ${g.labels.size} libellés (${g.sourceName})`;
   });
+  // Sources ajoutées en version 0.3 (quartiers, municipales, services, accès).
+  await check("QPV (ANCT + INSEE)", async () => {
+    const q = await collectQpv(h(), c.code);
+    for (const x of q.quartiers) console.log(`      ${x.code} ${x.nom} : contour ${x.geometry ? "oui" : "non"}, ${JSON.stringify(x.stats)}`);
+    for (const n of q.notes) console.log(`      note : ${n}`);
+    return `${q.quartiers.length} QPV`;
+  });
+  await check("IRIS (IGN + INSEE)", async () => {
+    const q = await collectIris(h(), c.code);
+    for (const x of q.quartiers.slice(0, 5)) console.log(`      ${x.code} ${x.nom} (${x.type}) : ${JSON.stringify(x.stats)}`);
+    for (const n of q.notes) console.log(`      note : ${n}`);
+    return `${q.quartiers.length} IRIS`;
+  });
+  await check("Municipales 2026 et maire", async () => {
+    const m = await collectMunicipales(h(), c.code);
+    for (const r of m.rounds) console.log(`      tour ${r.tour} : ${r.listes.map((l) => `${l.libelle} (${l.nuance}, ${l.pctExprimes.toFixed(1)} %, ${l.sieges ?? "?"} sièges)`).join(" | ")}`);
+    return `majorité : ${m.majorite?.libelle ?? "?"} (${m.majorite?.nuance ?? "?"}) ; maire : ${m.maire ? `${m.maire.prenom} ${m.maire.nom}` : "n.d."}`;
+  });
+  await check("BPE 2025 (fichier national)", async () => {
+    const b = await collectBpe(h(), c.code, c.departement.code);
+    const n = (t: string) => b.commune.filter((e) => e.type === t).length;
+    return `${b.commune.length} équipements retenus dans la commune ; médecins généralistes ${n("D265")} ; France Services ${n("A128")} ; département : ${b.countsDep.D265 ?? 0} médecins`;
+  });
+  await check("Horaires SNCF (GTFS)", async () => {
+    const st = await collectStations(h(), c.code, c.codesPostaux);
+    if (!st.stations.length) return "aucune gare dans la commune";
+    const t = await collectTimetables(h(), st.stations);
+    return t.stations.map((s) => `${s.nom} : ${s.departs} passages le ${s.date}, pointe ${s.pointe?.join("-") ?? "?"} h, Paris ${s.paris ? `${s.paris.minMinutes} min` : "pas de direct"}`).join(" ; ");
+  });
+  await check("Temps de trajet (OSRM)", async () => {
+    const e = await enrichCommune(h(), c);
+    if (!e.centre) throw new Error("centre de la commune inconnu");
+    const r = await collectRoutes(h(), e.centre, [{ label: "Paris", nom: "Paris", to: [2.3488, 48.8534] }]);
+    return r.routes.map((x) => `${x.nom} : ${x.minutes} min, ${x.km} km`).join(" ; ");
+  });
   await check("Données internes (data/interne)", async () => {
     const d = await loadInternalData();
-    return d.files.length ? `${d.files.join(", ")} : ${d.parrains.size} communes avec parrains, ${d.groupes.length} groupes` : "aucun fichier (facultatif)";
+    return d.files.length ? `${d.files.join(", ")} : ${d.parrains.size} communes avec parrains, ${d.groupes.length} groupes${d.unmatched ? ` (${d.unmatched} sans commune reconnue)` : ""}` : "aucun fichier (facultatif)";
   });
 }
 

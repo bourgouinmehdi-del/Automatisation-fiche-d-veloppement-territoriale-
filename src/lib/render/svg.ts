@@ -271,6 +271,11 @@ export function mapSvg(map: MapSpec, width = 720, height = 540): string {
     if (l.kind === "polygons") {
       for (const f of l.data.features) {
         const p = f.properties as Record<string, unknown>;
+        // Étiquette (ex. noms des territoires ciblés) au centre du polygone.
+        if (l.labelProperty && p[l.labelProperty]) {
+          const c = path.centroid(f);
+          if (Number.isFinite(c[0])) labelsSvg += `<text x="${c[0].toFixed(1)}" y="${(c[1] - 8).toFixed(1)}" text-anchor="middle" font-size="13" font-weight="600" fill="#111" stroke="#fff" stroke-width="3" paint-order="stroke" ${FONT}>${esc(p[l.labelProperty])}</text>`;
+        }
         // Numéro de bureau de vote au centre de chaque contour.
         if (p.bv != null && l.valueProperty) {
           const c = path.centroid(f);
