@@ -88,7 +88,9 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="mb-3 text-5xl font-bold leading-[.95]">Où aller, qui rencontrer, quoi dire.</h1>
+      <h1 className="mb-8 mt-24 text-6xl uppercase leading-[.98] sm:text-7xl">
+        <span className="iso">Où aller,<br />qui rencontrer,<br /><span className="text-[var(--mark)]">quoi dire.</span></span>
+      </h1>
       <p className="mb-5 text-[var(--ink-2)]">
         Saisissez un code postal ou le nom d&apos;une commune : l&apos;application collecte les données publiques (INSEE, élections par bureau de vote,
         OpenStreetMap, SNCF, éducation…), les compare au département et produit une fiche d&apos;action sourcée, suivie du diagnostic complet.
@@ -107,7 +109,7 @@ export default function Home() {
       </ul>
 
       <div className="card p-5">
-        <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-[var(--bg)] p-1 text-sm font-semibold" role="tablist">
+        <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-[var(--accent-soft)] p-1 text-sm font-semibold" role="tablist">
           {[
             ["commune", "Fiche d'une commune"],
             ["departement", "Ciblage d'un département"],
@@ -128,7 +130,6 @@ export default function Home() {
         </label>
         <input
           id="q"
-          autoFocus
           inputMode="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}

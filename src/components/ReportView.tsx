@@ -305,7 +305,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         const items = r.missing.filter((m) => !b.themes.length || b.themes.includes(m.theme));
         if (!items.length) return null;
         return (
-          <div key={key} className="my-4 rounded-lg border border-dashed border-[#c3c2b7] p-3 text-sm">
+          <div key={key} className="my-4 rounded-lg border border-dashed border-[var(--line)] p-3 text-sm">
             <strong>Données manquantes ou non intégrées</strong>
             <ul className="mt-1 list-disc pl-5">
               {items.map((m, i) => (
@@ -382,8 +382,8 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
     s.id === "LFI" || s.id === "CIBLAGE" ? (
       <section key={s.id} id={`part-${s.id}`} className="card fiche mb-8 scroll-mt-20 overflow-hidden">
         <div className="fiche-band">
-          <div className="fiche-kind">{s.id === "CIBLAGE" ? "Propositions de ciblage du département" : "Fiche d'action de terrain"}</div>
-          <div className="display mt-1 text-4xl font-bold">{s.id === "CIBLAGE" ? r.commune.departement.nom : r.commune.nom}</div>
+          <div className="fiche-kind">{s.id === "CIBLAGE" ? "Propositions de ciblage du département" : "Proposition de ciblage"}</div>
+          <div className="display iso-soft mt-3 text-5xl leading-none">{s.id === "CIBLAGE" ? r.commune.departement.nom : r.commune.nom}</div>
         </div>
         <div className="p-5 md:p-8">{s.blocks.map(renderBlock)}</div>
       </section>

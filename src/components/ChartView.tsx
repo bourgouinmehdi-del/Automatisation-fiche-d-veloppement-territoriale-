@@ -5,7 +5,7 @@ import type { ChartSpec } from "@/lib/types";
 import { fmtNumber, fmtValue } from "@/lib/format";
 
 /** Graphiques interactifs (survol, infobulles) ; palette catégorielle ordonnée. */
-export const SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
+export const SERIES = ["#4c0297", "#d1271c", "#9c6ee8", "#f9a89e", "#212320", "#8f120a", "#c9adff", "#85877f"];
 
 const short = (v: number) => (Math.abs(v) >= 10000 ? `${fmtNumber(v / 1000)} k` : fmtNumber(v, Math.abs(v) < 10 && !Number.isInteger(v) ? 1 : 0));
 
@@ -17,7 +17,7 @@ export default function ChartView({ chart: c }: { chart: ChartSpec }) {
     return (
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={c.data} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
-          <CartesianGrid stroke="#e7e6e2" vertical={false} />
+          <CartesianGrid stroke="#e9e3d3" vertical={false} />
           <XAxis dataKey={c.xKey} tick={{ fontSize: 11 }} />
           <YAxis tickFormatter={short} tick={{ fontSize: 11 }} domain={["auto", "auto"]} width={60} />
           <Tooltip formatter={tip} />
@@ -34,7 +34,7 @@ export default function ChartView({ chart: c }: { chart: ChartSpec }) {
     return (
       <ResponsiveContainer width="100%" height={Math.max(220, data.length * 30 + 60)}>
         <BarChart data={data} layout="vertical" stackOffset="sign" margin={{ left: 10, right: 20 }}>
-          <CartesianGrid stroke="#e7e6e2" horizontal={false} />
+          <CartesianGrid stroke="#e9e3d3" horizontal={false} />
           <XAxis type="number" tickFormatter={(v) => short(Math.abs(v))} tick={{ fontSize: 11 }} />
           <YAxis type="category" dataKey={c.xKey} width={110} tick={{ fontSize: 11 }} />
           <Tooltip formatter={(v) => (typeof v === "number" ? fmtValue(Math.abs(v), c.unit) : "n.d.")} />
@@ -52,7 +52,7 @@ export default function ChartView({ chart: c }: { chart: ChartSpec }) {
   return (
     <ResponsiveContainer width="100%" height={horizontal ? Math.max(200, c.data.length * (c.series.length > 1 ? 34 : 24) + 60) : 300}>
       <BarChart data={c.data} layout={horizontal ? "vertical" : "horizontal"} margin={{ top: 10, right: 30, left: 10, bottom: 0 }} barGap={2}>
-        <CartesianGrid stroke="#e7e6e2" vertical={horizontal} horizontal={!horizontal} />
+        <CartesianGrid stroke="#e9e3d3" vertical={horizontal} horizontal={!horizontal} />
         {horizontal ? (
           <>
             <XAxis type="number" tickFormatter={short} tick={{ fontSize: 11 }} />

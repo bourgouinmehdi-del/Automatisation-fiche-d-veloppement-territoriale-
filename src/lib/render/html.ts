@@ -192,23 +192,24 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
 export const REPORT_CSS = `
 @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
 * { box-sizing: border-box; }
-body { font-family: "Public Sans", Inter, "DejaVu Sans", Arial, sans-serif; color: #0b0b0b; font-size: 10.5pt; line-height: 1.45; margin: 0; background: #fff; }
-h1 { font-size: 26pt; margin: 0 0 6mm; color: #0d366b; }
-h2 { font-size: 16pt; color: #0d366b; border-bottom: 2px solid #2a78d6; padding-bottom: 2mm; margin: 0 0 4mm; break-after: avoid; }
+body { font-family: "Stack Sans Text Variable", "Stack Sans Text", "DejaVu Sans", Arial, sans-serif; color: #212320; font-size: 10.5pt; line-height: 1.45; margin: 0; background: #fff; }
+h1, h2, h3.fh, h3.target-t, .kv, .gl-v { font-family: "Union Gothic Condensed", "Union Gothic", "Archivo Variable", "Archivo", "Arial Narrow", sans-serif; font-stretch: 62%; }
+h1 { font-size: 30pt; font-weight: 900; margin: 0 0 6mm; color: #4c0297; }
+h2 { font-size: 18pt; font-weight: 800; color: #4c0297; border-bottom: 2px solid #4c0297; padding-bottom: 2mm; margin: 0 0 4mm; break-after: avoid; }
 h3 { font-size: 12pt; margin: 6mm 0 2mm; }
-h4 { font-size: 11pt; margin: 5mm 0 2mm; color: #1c5cab; break-after: avoid; }
+h4 { font-size: 11pt; margin: 5mm 0 2mm; color: #4c0297; break-after: avoid; }
 p { margin: 0 0 3mm; text-align: justify; }
-a { color: #1c5cab; word-break: break-all; }
+a { color: #4c0297; word-break: break-all; }
 section.part { break-before: page; }
 .cover { height: 250mm; display: flex; flex-direction: column; justify-content: space-between; }
-.cover .kicker { font-size: 11pt; letter-spacing: .08em; text-transform: uppercase; color: #52514e; }
+.cover .kicker { font-size: 12pt; font-weight: 700; color: #d1271c; }
 .cover .sub { font-size: 13pt; color: #52514e; }
 .cover .meta { font-size: 9.5pt; color: #52514e; border-top: 1px solid #e7e6e2; padding-top: 4mm; }
-.cover .warn, .warn { background: #fff7e6; border-left: 4px solid #eda100; padding: 3mm 4mm; margin: 3mm 0; font-size: 9.5pt; }
+.cover .warn, .warn { background: #fdecea; border-left: 4px solid #d1271c; padding: 3mm 4mm; margin: 3mm 0; font-size: 9.5pt; }
 .toc ol { padding-left: 5mm; } .toc li { margin: 1.5mm 0; }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin: 4mm 0; break-inside: avoid; }
 .kpi { border: 1px solid #e7e6e2; border-radius: 3mm; padding: 3mm; }
-.kv { font-size: 15pt; font-weight: 700; color: #0d366b; }
+.kv { font-size: 18pt; font-weight: 900; color: #4c0297; }
 .kl { font-size: 8.5pt; color: #0b0b0b; margin-top: 1mm; }
 .ks { font-size: 7.5pt; color: #8a8984; margin-top: 1mm; }
 figure { margin: 4mm 0 5mm; break-inside: avoid; }
@@ -216,7 +217,7 @@ figcaption { font-weight: 600; font-size: 10pt; margin-bottom: 2mm; color: #0b0b
 figure svg { max-width: 100%; height: auto; display: block; }
 figure.locator svg { max-width: 70mm; }
 table { width: 100%; border-collapse: collapse; font-size: 8.8pt; }
-th { text-align: left; background: #f3f6fb; color: #0b0b0b; font-weight: 600; padding: 1.6mm 2mm; border-bottom: 1px solid #b7d3f6; vertical-align: bottom; }
+th { text-align: left; background: #ede5ff; color: #1d003c; font-weight: 700; padding: 1.6mm 2mm; border-bottom: 1.5px solid #4c0297; vertical-align: bottom; }
 td { padding: 1.3mm 2mm; border-bottom: 1px solid #eeeeec; vertical-align: top; }
 tr { break-inside: avoid; }
 .r { text-align: right; font-variant-numeric: tabular-nums; }
@@ -234,10 +235,10 @@ sup { color: #8a8984; font-size: 6.5pt; margin-left: .5mm; }
 .muted { color: #8a8984; }
 ul.findings { list-style: none; padding: 0; margin: 0 0 3mm; }
 ul.findings li { padding: 1.6mm 0 1.6mm 0; border-bottom: 1px solid #f0efec; break-inside: avoid; }
-.tag { display: inline-block; font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: .4mm 1.6mm; border-radius: 1.5mm; margin-right: 1mm; background: #eef2f7; color: #1c5cab; }
+.tag { display: inline-block; font-size: 7.5pt; font-weight: 700; padding: .4mm 1.6mm; border-radius: 1.5mm; margin-right: 1mm; background: #ede5ff; color: #4c0297; }
 .f-atout .tag { background: #e3f5ec; color: #0b6b47; }
 .f-vigilance .tag { background: #fdecea; color: #a12a29; }
-.f-hypothese .tag { background: #f1eefc; color: #4a3aa7; }
+.f-hypothese .tag { background: #ede5ff; color: #4c0297; }
 .f-piste .tag { background: #fff3e0; color: #8a5300; }
 .f-a_verifier .tag { background: #f3f3f1; color: #52514e; }
 ul.list li { margin: 1mm 0; }
@@ -245,31 +246,31 @@ ul.list li { margin: 1mm 0; }
 .runs td { font-size: 8pt; }
 .ok { color: #0b6b47; } .ko { color: #a12a29; } .wa { color: #8a5300; }
 strong { font-weight: 700; }
-tr.hl td { font-weight: 600; background: #f7f9fc; }
+tr.hl td { font-weight: 700; background: #fdecea; }
 tr.hl td strong { font-weight: 800; }
 /* ---- Fiche d'action (modèle « Développement territorial ») ---- */
-.fiche-head { border-bottom: 2px solid #0b0b0b; padding-bottom: 3mm; margin-bottom: 5mm; }
-.fiche-k { font-size: 8.5pt; letter-spacing: .1em; text-transform: uppercase; color: #52514e; font-weight: 600; }
-.fiche-pc { font-size: 11pt; font-weight: 700; text-decoration: underline; text-underline-offset: 1.2mm; margin-top: 4mm; }
-.fiche-head h1 { font-size: 24pt; color: #0b0b0b; margin: 1mm 0 1mm; }
-.fiche-sub { font-size: 10.5pt; color: #2c2b29; }
-.fiche-meta { font-size: 8.5pt; color: #8a8984; margin-top: 1mm; }
-h3.fh { font-size: 12.5pt; font-weight: 700; color: #0b0b0b; margin: 7mm 0 3mm; padding-left: 2.5mm; border-left: 1.2mm solid #c0503a; break-after: avoid; }
-.callout { border: 1px solid #0b0b0b; padding: 3mm 4mm; margin: 3mm 0 4mm; font-size: 9.8pt; break-inside: avoid; text-align: left; }
+.fiche-head { background: #4c0297; color: #fff; padding: 5mm 6mm 9mm; margin-bottom: 6mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.fiche-k { font-size: 9.5pt; color: #c9adff; font-weight: 600; }
+.fiche-pc { font-size: 11pt; font-weight: 700; margin-top: 3mm; color: #fff; }
+.fiche-head h1 { font-size: 34pt; color: #fff; margin: 4mm 0 2mm; text-transform: uppercase; transform: skewY(-6deg); transform-origin: 0 100%; }
+.fiche-sub { font-size: 10.5pt; color: #fff; }
+.fiche-meta { font-size: 8.5pt; color: #c9adff; margin-top: 1mm; }
+h3.fh { font-size: 15pt; font-weight: 800; color: #4c0297; margin: 7mm 0 3mm; padding-bottom: 1mm; border-bottom: 1.5px solid #4c0297; break-after: avoid; }
+.callout { border: 1px solid #4c0297; border-radius: 2mm; padding: 3mm 4mm; margin: 3mm 0 4mm; font-size: 9.8pt; break-inside: avoid; text-align: left; }
 .callout.warning { border-width: 1.5px; background: #fff; }
-.callout.accent { border-color: #c0503a; background: #fdf6f3; }
-.callout.info { border-color: #b7d3f6; background: #f3f7fd; }
+.callout.accent { border-color: #c9adff; background: #f7f2ff; }
+.callout.info { border-color: #e9e3d3; background: #fffcf4; }
 .callout-t { font-weight: 700; margin-bottom: 1mm; }
 .callout.terrain { border-color: #1baf7a; background: #f1faf6; }
 .glance { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin: 4mm 0 3mm; break-inside: avoid; }
-.gl { border: 1px solid #e7e6e2; border-radius: 2mm; padding: 2.5mm 3mm; border-top: 1mm solid #c3c2b7; }
-.gl.up { border-top-color: #c0503a; } .gl.down { border-top-color: #3f6fb0; }
-.gl-v { font-size: 15pt; font-weight: 700; font-variant-numeric: tabular-nums; }
+.gl { border: 0; border-left: 1mm solid #e9e3d3; padding: .5mm 0 .5mm 3mm; }
+.gl.up { border-left-color: #d1271c; } .gl.up .gl-v { color: #d1271c; } .gl.down { border-left-color: #85877f; }
+.gl-v { font-size: 20pt; font-weight: 900; color: #4c0297; font-variant-numeric: tabular-nums; }
 .gl-l { font-size: 8.8pt; font-weight: 600; }
 .gl-d { font-size: 7.8pt; color: #52514e; }
 p.prose { text-align: left; }
 p.prose.hyp { color: #2c2b29; }
-.hyp-l { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #4a3aa7; background: #f1eefc; padding: .3mm 1.4mm; border-radius: 1.2mm; }
+.hyp-l { font-size: 7.5pt; font-weight: 700; color: #4c0297; background: #ede5ff; padding: .3mm 1.4mm; border-radius: 1.2mm; }
 .actions { margin: 2mm 0 4mm; }
 .ag { margin: 0 0 3mm; break-inside: avoid; }
 .ag-t { font-weight: 700; }
@@ -281,9 +282,9 @@ p.prose.hyp { color: #2c2b29; }
 .fiche section { break-before: auto; }
 .fiche section.fiche-src { break-before: page; }
 .fiche section.target { break-before: page; }
-.target-k { font-size: 10pt; font-weight: 700; text-decoration: underline; text-underline-offset: 1.2mm; display: flex; align-items: center; gap: 2mm; }
+.target-k { font-size: 10pt; font-weight: 700; color: #d1271c; text-decoration: underline; text-underline-offset: 1.2mm; display: flex; align-items: center; gap: 2mm; }
 .target-k .dot { width: 3.5mm; height: 3.5mm; border-radius: 50%; display: inline-block; }
-h3.target-t { font-size: 18pt; margin: 1mm 0 1mm; }
+h3.target-t { font-size: 24pt; font-weight: 900; color: #4c0297; text-transform: uppercase; margin: 1mm 0 1mm; }
 .target-f { font-style: italic; color: #2c2b29; margin-bottom: 2mm; }
 .fiche-src .biblio li { font-size: 7.8pt; }
 `;
@@ -372,8 +373,8 @@ ${r.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
     const head = style === "yonne"
       ? `<header class="y-head"><div class="y-pole">Pôle d'études électorales</div><div class="y-dt">Développement territorial</div><div class="y-dt">${esc(ciblage ? r.commune.departement.nom : `${r.commune.nom} (${r.commune.departement.nom})`)}</div></header>${ciblage ? "" : `<div class="y-pc">Proposition de ciblage</div><div class="y-nom">${esc(r.commune.nom)}</div>`}`
       : ciblage
-      ? `<header class="fiche-head"><div class="fiche-k">Développement territorial · ciblage départemental</div><h1>${esc(r.commune.departement.nom)}</h1><div class="fiche-sub">${esc(r.commune.region.nom)} · propositions de ciblage militant</div><div class="fiche-meta">Généré le ${esc(fmtDate(r.updatedAt))} · version ${r.version}</div></header>`
-      : `<header class="fiche-head"><div class="fiche-k">Développement territorial · Fiche d'action</div><div class="fiche-pc">Proposition de ciblage</div><h1>${esc(r.commune.nom)}</h1><div class="fiche-sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}) · ${esc(r.commune.region.nom)}${r.commune.epci ? ` · ${esc(r.commune.epci.nom)}` : ""}</div><div class="fiche-meta">Code INSEE ${esc(r.commune.code)} · généré le ${esc(fmtDate(r.updatedAt))} · version ${r.version}</div></header>`;
+      ? `<header class="fiche-head"><div class="fiche-k">Propositions de ciblage du département</div><h1>${esc(r.commune.departement.nom)}</h1><div class="fiche-sub">${esc(r.commune.region.nom)}</div><div class="fiche-meta">Généré le ${esc(fmtDate(r.updatedAt))}, version ${r.version}</div></header>`
+      : `<header class="fiche-head"><div class="fiche-k">Proposition de ciblage</div><h1>${esc(r.commune.nom)}</h1><div class="fiche-sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}), ${esc(r.commune.region.nom)}${r.commune.epci ? `. ${esc(r.commune.epci.nom)}` : ""}</div><div class="fiche-meta">Code INSEE ${esc(r.commune.code)}, généré le ${esc(fmtDate(r.updatedAt))}, version ${r.version}</div></header>`;
     const shortBody = sections.map((s) => `<section id="part-${s.id}">${s.id === "LFI" || s.id === "CIBLAGE" ? "" : `<h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>`}${s.blocks.map((b) => blockHtml(r, b, cit, style)).join("\n")}</section>`).join("\n");
     const biblio = `<section class="part fiche-src"><h2>Sources</h2><ol class="biblio">${cit
       .all()

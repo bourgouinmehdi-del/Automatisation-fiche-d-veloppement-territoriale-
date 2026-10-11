@@ -3,6 +3,7 @@ import { chromium } from "playwright-core";
 import { config } from "../config";
 import { fmtDate } from "../format";
 import { renderReportHtml, type FicheStyle } from "../render/html";
+import { embeddedFontsCss } from "../render/fonts";
 import type { Report } from "../types";
 
 /**
@@ -44,7 +45,8 @@ export async function reportToPdf(r: Report, opts: { sectionIds?: string[]; styl
   const browser = await chromium.launch({ executablePath, args: ["--no-sandbox", "--font-render-hinting=none"] });
   try {
     const page = await browser.newPage();
-    await page.setContent(renderReportHtml(r, { sectionIds: opts.sectionIds, style: opts.style }), { waitUntil: "load" });
+    await page.setContent(renderReportHtml(r, { sectionIds: opts.sectionIds, style: opts.style }).replace("<style>", `<style>${embeddedFontsCss()}`), { waitUntil: "load" });
+    await page.evaluate(() => document.fonts.ready);
     const yonne = opts.style === "yonne";
     const small = `font-family: Arial, sans-serif; font-size: 7.5pt; color: #52514e; width: 100%; padding: 0 ${yonne ? 25 : 16}mm;`;
     const pdf = await page.pdf({
@@ -52,7 +54,7 @@ export async function reportToPdf(r: Report, opts: { sectionIds?: string[]; styl
       printBackground: true,
       displayHeaderFooter: true,
       margin: yonne ? { top: "22mm", bottom: "22mm", left: "25mm", right: "25mm" } : { top: "18mm", bottom: "20mm", left: "16mm", right: "16mm" },
-      headerTemplate: yonne ? `<div style="${small}"></div>` : `<div style="${small} display:flex; justify-content:space-between;"><span>${opts.sectionIds?.includes("CIBLAGE") ? `Développement territorial — ${r.commune.departement.nom.replace(/</g, "")}` : `${opts.sectionIds ? "Développement territorial · fiche d'action" : "Diagnostic territorial"} — ${r.commune.nom.replace(/</g, "")} (${r.commune.code})`}</span><span>${fmtDate(r.updatedAt)}</span></div>`,
+      headerTemplate: yonne ? `<div style="${small}"></div>` : `<div style="${small} display:flex; justify-content:space-between;"><span>${opts.sectionIds?.includes("CIBLAGE") ? `Développement territorial — ${r.commune.departement.nom.replace(/</g, "")}` : `${opts.sectionIds ? "Fiche d'action" : "Diagnostic territorial"} — ${r.commune.nom.replace(/</g, "")} (${r.commune.code})`}</span><span>${fmtDate(r.updatedAt)}</span></div>`,
       footerTemplate: yonne ? `<div style="${small} text-align:right;"><span class="pageNumber"></span></div>` : `<div style="${small} display:flex; justify-content:space-between;"><span>Données publiques — voir bibliographie</span><span>Page <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,
     });
     return Buffer.from(pdf);
