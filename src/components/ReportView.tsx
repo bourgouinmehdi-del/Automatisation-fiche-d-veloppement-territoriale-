@@ -10,7 +10,7 @@ import { fmtDate, fmtValue } from "@/lib/format";
 import { cellText, Citations, inlineParts, sourceLabel } from "@/lib/render/cite";
 import ChartView from "./ChartView";
 
-const MapView = dynamic(() => import("./MapView"), { ssr: false, loading: () => <div className="h-[420px] animate-pulse rounded-lg bg-[#eeeeec]" /> });
+const MapView = dynamic(() => import("./MapView"), { ssr: false, loading: () => <div className="h-[420px] animate-pulse rounded-lg bg-[var(--line)]" /> });
 
 const LEVEL: Record<string, string> = { commune: "Commune", epci: "Intercommunalité", departement: "Département", region: "Région", france: "France" };
 const STATUS_FR: Record<string, string> = { ok: "Réussi", cache: "Cache", stale: "Cache périmé", partial: "Partiel", failed: "Échec", skipped: "Non exécuté" };
@@ -102,8 +102,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
                 <div key={t.tableId} className="target-card" style={{ borderTopColor: t.color }}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-2)]">Proposition de ciblage n°{k + 1}</div>
-                      <div className="text-2xl font-bold">{t.nom}</div>
+                      <div className="display text-2xl font-bold"><span className="target-num">{k + 1}</span>{t.nom}</div>
                       {t.focus && <div className="text-sm italic text-[var(--ink-2)]">Focus possibles : {t.focus.join(", ")}</div>}
                     </div>
                     <GenerateButton codes={t.codes} kind={t.kind} />
@@ -126,7 +125,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
           <div key={key} className="my-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
             {b.items.map((i, k) => (
               <div key={k} className={`glance glance-${i.tone ?? "neutral"}`}>
-                <div className="text-2xl font-bold tabular-nums">{i.value}</div>
+                <div className="glance-v text-2xl font-bold tabular-nums"><span>{i.value}</span></div>
                 <div className="text-sm font-semibold">{i.label}</div>
                 {i.detail && <div className="text-xs text-[var(--ink-2)]">{i.detail}</div>}
               </div>
@@ -165,7 +164,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
                 <div className="text-xl font-bold text-[var(--accent-strong)]">{fmtValue(i.value, i.unit)}</div>
                 <div className="text-xs">{i.label}</div>
                 <div className="mt-1 text-[11px] text-[var(--muted)]">
-                  {i.year} · [{cit.cite(i.source)}]{(isSmallSample(i) || i.status === "partial") && " · effectif faible"}
+                  {i.year} [{cit.cite(i.source)}]{(isSmallSample(i) || i.status === "partial") && ", effectif faible"}
                 </div>
               </div>
             ))}
@@ -285,7 +284,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
               ))}
             </div>
             <div className="mt-1 text-[11px] text-[var(--ink-2)]">
-              Sources : {srcs.map((s) => `[${cit.cite(s)}]`).join(" ")} · Fond de carte © contributeurs OpenStreetMap{ms[0].note ? ` — ${ms[0].note}` : ""}
+              Sources : {srcs.map((s) => `[${cit.cite(s)}]`).join(" ")}. Fond de carte © contributeurs OpenStreetMap{ms[0].note ? ` — ${ms[0].note}` : ""}
             </div>
           </figure>
         );
@@ -298,7 +297,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         ) : null;
       case "note":
         return (
-          <div key={key} className="my-3 rounded-lg bg-[#f6f6f4] p-3 text-sm text-[var(--ink-2)]">
+          <div key={key} className="my-3 rounded-lg bg-[var(--fiche-soft)] p-3 text-sm text-[var(--ink-2)]">
             <Rich text={b.text} />
           </div>
         );
@@ -383,15 +382,14 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
     s.id === "LFI" || s.id === "CIBLAGE" ? (
       <section key={s.id} id={`part-${s.id}`} className="card fiche mb-8 scroll-mt-20 overflow-hidden">
         <div className="fiche-band">
-          <div className="text-[11px] font-semibold uppercase tracking-[.12em] opacity-80">Développement territorial · {s.id === "CIBLAGE" ? "ciblage départemental" : "fiche d'action"}</div>
-          <div className="mt-3 inline-block border-b-2 border-white/70 pb-0.5 text-sm font-semibold">{s.id === "CIBLAGE" ? "Propositions de ciblage" : "Proposition de ciblage"}</div>
-          <div className="mt-1 text-3xl font-bold">{s.id === "CIBLAGE" ? r.commune.departement.nom : r.commune.nom}</div>
+          <div className="fiche-kind">{s.id === "CIBLAGE" ? "Propositions de ciblage du département" : "Fiche d'action de terrain"}</div>
+          <div className="display mt-1 text-4xl font-bold">{s.id === "CIBLAGE" ? r.commune.departement.nom : r.commune.nom}</div>
         </div>
         <div className="p-5 md:p-8">{s.blocks.map(renderBlock)}</div>
       </section>
     ) : (
       <section key={s.id} id={`part-${s.id}`} className="card mb-6 scroll-mt-20 p-5 md:p-7">
-        <h2 className="mb-4 border-b-2 border-[#2a78d6] pb-2 text-xl font-bold text-[var(--accent-strong)]">
+        <h2 className="section-h mb-4 pb-2 text-2xl font-bold">
           {s.letter ? `${s.letter}. ` : ""}
           {s.title}
         </h2>
@@ -404,14 +402,12 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
     <div className="mx-auto max-w-7xl px-4 py-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="text-xs uppercase tracking-wider text-[var(--ink-2)]">{hasCiblage ? "Ciblage départemental" : "Diagnostic territorial"}</div>
-          <h1 className="text-3xl font-bold text-[var(--accent-strong)]">{hasCiblage ? r.commune.departement.nom : r.commune.nom}</h1>
-          <div className="text-sm text-[var(--ink-2)]">
-            {r.commune.departement.nom} ({r.commune.departement.code}) · {r.commune.region.nom}
-            {r.commune.epci && ` · ${r.commune.epci.nom}`} · INSEE {r.commune.code}
+          <h1 className="text-4xl font-bold">{hasCiblage ? r.commune.departement.nom : r.commune.nom}</h1>
+          <div className="mt-1 text-sm text-[var(--ink-2)]">
+            {hasCiblage ? `Ciblage du département (${r.commune.departement.code}), ${r.commune.region.nom}` : `${r.commune.departement.nom} (${r.commune.departement.code}), ${r.commune.region.nom}${r.commune.epci ? `. ${r.commune.epci.nom}` : ""}. Code INSEE ${r.commune.code}`}
           </div>
           <div className="mt-1 text-xs text-[var(--muted)]">
-            Version {r.version} générée le {fmtDate(r.updatedAt)} · Fraîcheur : {freshness}
+            Version {r.version}, générée le {fmtDate(r.updatedAt)}. Fraîcheur des données : {freshness}
           </div>
         </div>
         <div className="no-print flex flex-wrap items-center gap-2">
@@ -426,7 +422,15 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
           <details className="menu">
             <summary className="btn">Autres formats ▾</summary>
             <div className="menu-list">
-              <a href={exp("docx")}>Word (DOCX)</a>
+              {(hasFiche || hasCiblage) && (
+                <>
+                  <a href={exp("pdf", "?fiche=1&style=yonne")}>Fiche au format Word de référence (PDF)</a>
+                  <a href={exp("docx", "?fiche=1")}>Fiche au format Word de référence (DOCX modifiable)</a>
+                  <a href={exp("html", "?fiche=1&style=yonne")} target="_blank" rel="noreferrer">Aperçu de la fiche format Word</a>
+                  <hr />
+                </>
+              )}
+              <a href={exp("docx")}>Diagnostic complet (DOCX)</a>
               <a href={exp("csv")}>CSV des indicateurs</a>
               <a href={exp("series")}>CSV des séries</a>
               <a href={exp("json")}>JSON complet</a>
@@ -496,7 +500,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
             {cit.all().map((s, i) => (
               <li key={i}>
                 {sourceLabel(s)} — consulté le {fmtDate(s.retrievedAt)}
-                {catalog[s.id] && <span className="text-[var(--muted)]"> · {catalog[s.id].license}</span>}
+                {catalog[s.id] && <span className="text-[var(--muted)]">, {catalog[s.id].license}</span>}
                 <br />
                 <a href={s.url} target="_blank" rel="noreferrer" className="break-all">
                   {s.url.length > 140 ? s.url.slice(0, 137) + "…" : s.url}
@@ -601,7 +605,7 @@ function MapBlock({ maps, cite, exp }: { maps: Report["maps"]; cite: (s: Report[
       </figcaption>
       <MapView key={m.id} map={m} />
       <div className="mt-1 text-[11px] text-[var(--ink-2)]">
-        Sources : {srcs.map((s) => `[${cite(s)}]`).join(" ")} · Fond de carte © contributeurs OpenStreetMap{m.note ? ` — ${m.note}` : ""}
+        Sources : {srcs.map((s) => `[${cite(s)}]`).join(" ")}. Fond de carte © contributeurs OpenStreetMap{m.note ? ` — ${m.note}` : ""}
       </div>
     </figure>
   );
@@ -633,7 +637,7 @@ function FieldNotes({ id, initial }: { id: string; initial?: Report["fieldNotes"
     <div className="callout callout-terrain">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold">Retours du terrain</span>
-        <span className="text-xs text-[var(--ink-2)]">{saved ? `Enregistré le ${fmtDate(saved)}` : "Non enregistré"} · repris dans le PDF et le Word</span>
+        <span className="text-xs text-[var(--ink-2)]">{saved ? `Enregistré le ${fmtDate(saved)}` : "Non enregistré"}. Les notes sont reprises dans le PDF et le Word.</span>
       </div>
       <textarea
         value={text}

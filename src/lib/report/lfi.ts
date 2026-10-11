@@ -1065,8 +1065,8 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
   const m22 = c22 ? score("PR22T1", c22, "lfi") : null;
   const dm22 = d22 ? score("PR22T1", d22, "lfi") : null;
   // Tonalité sur la part des exprimés (comparable entre scrutins de participation différente).
-  if (l24) glance.push({ label: "Vote LFI (européennes 2024)", value: pct(l24.pctExprimes), detail: `des exprimés · dép. ${pct(dl24?.pctExprimes)} · ${pct(l24.pctInscrits)} des inscrits`, tone: dl24 ? tone(gap(l24.pctExprimes, dl24.pctExprimes, "%").direction) : "neutral" });
-  if (m22) glance.push({ label: "Vote Mélenchon (présidentielle 2022)", value: pct(m22.pctExprimes), detail: `des exprimés · dép. ${pct(dm22?.pctExprimes)} · ${pct(m22.pctInscrits)} des inscrits`, tone: dm22 ? tone(gap(m22.pctExprimes, dm22.pctExprimes, "%").direction) : "neutral" });
+  if (l24) glance.push({ label: "Vote LFI (européennes 2024)", value: pct(l24.pctExprimes), detail: `des exprimés (dép. ${pct(dl24?.pctExprimes)}), soit ${pct(l24.pctInscrits)} des inscrits`, tone: dl24 ? tone(gap(l24.pctExprimes, dl24.pctExprimes, "%").direction) : "neutral" });
+  if (m22) glance.push({ label: "Vote Mélenchon (présidentielle 2022)", value: pct(m22.pctExprimes), detail: `des exprimés (dép. ${pct(dm22?.pctExprimes)}), soit ${pct(m22.pctInscrits)} des inscrits`, tone: dm22 ? tone(gap(m22.pctExprimes, dm22.pctExprimes, "%").direction) : "neutral" });
   if (abstMain) glance.push({ label: "Abstention (E24)", value: pct(abstMain.c), detail: `département : ${pct(abstMain.d)}`, tone: tone(abstMain.dir) });
   if (parrainsRatio) glance.push({ label: "Parrains / 100 voix LFI", value: fmtNumber(parrainsRatio.r1 * 100, 1), detail: `département : ${fmtNumber(parrainsRatio.r2 * 100, 1)}`, tone: parrainsRatio.r1 > parrainsRatio.r2 * 1.2 ? "up" : parrainsRatio.r1 < parrainsRatio.r2 * 0.8 ? "down" : "neutral" });
   if (ranked.length) glance.push({ label: "Bureaux de vote", value: String(ranked.length), detail: prio.length ? `prioritaires : ${prio.map((p) => p.bv).join(", ")}` : undefined });
