@@ -174,6 +174,8 @@ export interface BvRow {
   lfiPctExp: number;
   /** Score LFI au second scrutin de référence (si le bureau est apparié). */
   lfi2PctIns: number | null;
+  lfi2PctExp: number | null;
+  lfi2Voix: number | null;
   abst2Pct: number | null;
   potentiel: number;
   type: BvType;
@@ -207,12 +209,20 @@ export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, 
         lfiPctIns: s.pctInscrits,
         lfiPctExp: s.pctExprimes,
         lfi2PctIns: s2?.pctInscrits ?? null,
+        lfi2PctExp: s2?.pctExprimes ?? null,
+        lfi2Voix: s2?.voix ?? null,
         abst2Pct: same ? abstention(sb!).pct : null,
       };
     })
     .filter((x): x is NonNullable<typeof x> => !!x);
   if (!base.length) return [];
-  const zL = zscores(base.map((b) => b.lfiPctExp));
+  // Réservoir : part LFI des exprimés au scrutin principal, moyennée avec celle du
+  // second scrutin (Mélenchon 2022) lorsque les bureaux sont appariés.
+  const z1 = zscores(base.map((b) => b.lfiPctExp));
+  const paired = base.filter((b) => b.lfi2PctExp != null);
+  const z2all = paired.length >= Math.max(3, base.length / 2) ? zscores(paired.map((b) => b.lfi2PctExp!)) : [];
+  const z2 = new Map(paired.map((b, i) => [b.bv, z2all[i]]));
+  const zL = base.map((b, i) => (z2.get(b.bv) != null ? (z1[i] + z2.get(b.bv)!) / 2 : z1[i]));
   const zA = zscores(base.map((b) => b.abstPct));
   const mL = median(base.map((b) => b.lfiPctExp))!;
   const mA = median(base.map((b) => b.abstPct))!;

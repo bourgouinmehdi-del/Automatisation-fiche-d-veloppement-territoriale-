@@ -269,6 +269,14 @@ export function mapSvg(map: MapSpec, width = 720, height = 540): string {
   let labelsSvg = "";
   for (const l of visible) {
     if (l.kind === "polygons") {
+      // Un bureau peut compter plusieurs polygones : son numéro n'est écrit qu'une fois, sur le plus grand.
+      const labelOf = new Map<string, GeoJSON.Feature>();
+      for (const f of l.data.features) {
+        const bv = (f.properties as Record<string, unknown>)?.bv;
+        if (bv == null) continue;
+        const prev = labelOf.get(String(bv));
+        if (!prev || path.area(f) > path.area(prev)) labelOf.set(String(bv), f);
+      }
       for (const f of l.data.features) {
         const p = f.properties as Record<string, unknown>;
         // Étiquette (ex. noms des territoires ciblés) au centre du polygone.
@@ -277,7 +285,7 @@ export function mapSvg(map: MapSpec, width = 720, height = 540): string {
           if (Number.isFinite(c[0])) labelsSvg += `<text x="${c[0].toFixed(1)}" y="${(c[1] - 8).toFixed(1)}" text-anchor="middle" font-size="13" font-weight="600" fill="#111" stroke="#fff" stroke-width="3" paint-order="stroke" ${FONT}>${esc(p[l.labelProperty])}</text>`;
         }
         // Numéro de bureau de vote au centre de chaque contour.
-        if (p.bv != null && l.valueProperty) {
+        if (p.bv != null && l.valueProperty && labelOf.get(String(p.bv)) === f) {
           const c = path.centroid(f);
           if (Number.isFinite(c[0])) labelsSvg += `<text x="${c[0].toFixed(1)}" y="${(c[1] + 3.5).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#111" stroke="#fff" stroke-width="2.5" paint-order="stroke" ${FONT}>${esc(p.bv)}</text>`;
         }

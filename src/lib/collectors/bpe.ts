@@ -41,7 +41,14 @@ export interface BpeEquipement {
   lon: number | null;
   lat: number | null;
   qp: string | null;
+  adresse: string;
 }
+
+/**
+ * La BPE diffusée est « anonymisée » : le nom de certains établissements
+ * privés est masqué. On le remplace alors par le type et l'adresse.
+ */
+export const isMaskedName = (n: string) => !n.trim() || /anonym|annonim|^n\.?d\.?$|^x+$|^confidentiel/i.test(n.trim());
 
 export interface BpeResult {
   /** Équipements de la commune. */
@@ -69,7 +76,8 @@ export async function collectBpe(http: TrackedHttp, codeInsee: string, dep: stri
     if (!rows.length) throw new Error(`Aucun équipement BPE lu pour le département ${dep}`);
     const all: BpeEquipement[] = rows.map((r) => ({
       type: r.TYPEQU,
-      nom: (r.NOMRS || r.CNOMRS || BPE_TYPES[r.TYPEQU].label).trim(),
+      adresse: [r.NUMVOIE, r.INDREP, r.TYPVOIE, r.LIBVOIE].map((x) => (x ?? "").trim()).filter(Boolean).join(" ").toLowerCase().replace(/(^|\s)\S/g, (m) => m.toUpperCase()),
+      nom: isMaskedName(r.NOMRS ?? "") ? (isMaskedName(r.CNOMRS ?? "") ? "" : r.CNOMRS.trim()) : r.NOMRS.trim(),
       commune: r.DEPCOM,
       lon: num(r.LONGITUDE),
       lat: num(r.LATITUDE),

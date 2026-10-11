@@ -1,5 +1,6 @@
 import type { TrackedHttp } from "./context";
 import { clean, findResource, num, tabular } from "./datagouv";
+import { filterCsvFile } from "./elections";
 
 /**
  * Contexte municipal : résultats des élections municipales 2026 (1er et 2nd
@@ -129,34 +130,62 @@ export function majorityList(rounds: MunicipalRound[]): MunicipalList | null {
   return [...last.listes].sort((a, b) => (b.sieges ?? 0) - (a.sieges ?? 0) || b.voix - a.voix)[0];
 }
 
-async function roundRows(http: TrackedHttp, which: "t1" | "t2", filters: { col: string; value: string }[]) {
+/** Lignes d'un département extraites du fichier national (repli), mémorisées par tour. */
+const fileMemo = new Map<string, Record<string, unknown>[]>();
+
+/**
+ * Lignes « résultats par commune » d'un tour : API tabulaire si la ressource y est
+ * indexée, sinon fichier CSV national lu en flux (seules les lignes du
+ * département sont conservées). Le fichier du 1er tour 2026 n'est plus servi
+ * par l'API tabulaire (HTTP 410), d'où ce repli.
+ */
+async function roundRows(http: TrackedHttp, which: "t1" | "t2", dep: string, commune?: string): Promise<{ rows: Record<string, unknown>[]; url: string; retrievedAt: string }> {
   const cfg = MUNICIPALES[which];
   const res = await findResource(http, cfg.dataset, /^Municipales 2026 - R[ée]sultats - Communes/i, cfg.fallback);
   if (!res) throw new Error(`Résultats municipaux (${which}) introuvables`);
-  return tabular(
-    http,
-    res.id,
-    filters.map((f) => ({ col: f.col, op: "exact" as const, value: f.value })),
-    20,
-  );
+  try {
+    const t = await tabular(http, res.id, [commune ? { col: "Code commune", op: "exact" as const, value: commune } : { col: "Code département", op: "exact" as const, value: dep }], 20);
+    if (!t.rows.length && !commune && dep.startsWith("0")) {
+      const t2 = await tabular(http, res.id, [{ col: "Code département", op: "exact", value: dep.slice(1) }], 20);
+      if (t2.rows.length) return t2;
+    }
+    if (t.rows.length) return t;
+    throw new Error("aucune ligne dans l'API tabulaire");
+  } catch {
+    if (!res.url) throw new Error(`Résultats municipaux (${which}) : ressource sans URL de téléchargement`);
+    const key = `${which}|${dep}`;
+    let rows = fileMemo.get(key);
+    let retrievedAt = new Date().toISOString();
+    if (!rows) {
+      http.notes.push(`municipales ${which} : lecture du fichier national`);
+      const f = await http.file(res.url, { timeoutMs: 600000, retries: 1 });
+      retrievedAt = f.retrievedAt;
+      rows = (await filterCsvFile(f.data, dep, `municipales ${which}`)).rows;
+      fileMemo.set(key, rows);
+    }
+    const code = (r: Record<string, unknown>) => clean(r["Code commune"]).padStart(5, "0");
+    return { rows: commune ? rows.filter((r) => code(r) === commune) : rows, url: res.url, retrievedAt };
+  }
 }
 
-export async function collectMunicipales(http: TrackedHttp, codeInsee: string): Promise<MunicipalResult> {
+export async function collectMunicipales(http: TrackedHttp, codeInsee: string, dep = codeInsee.slice(0, codeInsee.startsWith("97") ? 3 : 2)): Promise<MunicipalResult> {
   const rounds: MunicipalRound[] = [];
   const urls: string[] = [];
   let retrievedAt = "";
+  const errors: string[] = [];
   for (const [which, tour] of [["t1", 1], ["t2", 2]] as const) {
     try {
-      const t = await roundRows(http, which, [{ col: "Code commune", value: codeInsee }]);
+      const t = await roundRows(http, which, dep, codeInsee);
       urls.push(t.url);
       retrievedAt ||= t.retrievedAt;
       const row = t.rows[0];
       const parsed = row ? parseMunicipalRow(row, tour) : null;
       if (parsed?.listes.length) rounds.push(parsed);
     } catch (e) {
-      if (tour === 1) throw e;
+      errors.push(`tour ${tour} : ${e instanceof Error ? e.message : e}`);
     }
   }
+  if (errors.length) http.notes.push(...errors);
   let maire: MunicipalResult["maire"] = null;
   try {
     const res = await findResource(http, MUNICIPALES.rne.dataset, /maire/i, MUNICIPALES.rne.fallback);
@@ -169,7 +198,8 @@ export async function collectMunicipales(http: TrackedHttp, codeInsee: string): 
   } catch {
     /* le maire reste inconnu */
   }
-  if (!rounds.length && !maire) throw new Error("Aucun résultat municipal 2026 pour la commune (communes de moins de 1 000 habitants : scrutin sans listes)");
+  if (!rounds.length && !maire) throw new Error(errors.length === 2 ? errors.join(" ; ") : "Aucun résultat municipal 2026 pour la commune (communes de moins de 1 000 habitants : scrutin sans listes)");
+  if (errors.length) http.partial = true;
   return { code: codeInsee, rounds, majorite: majorityList(rounds), maire, urls, retrievedAt: retrievedAt || new Date().toISOString() };
 }
 
@@ -182,8 +212,7 @@ export async function collectMunicipalesDepartement(http: TrackedHttp, dep: stri
   for (const [which, tour] of [["t1", 1], ["t2", 2]] as const) {
     let t;
     try {
-      t = await roundRows(http, which, [{ col: "Code département", value: dep }]);
-      if (!t.rows.length && dep.startsWith("0")) t = await roundRows(http, which, [{ col: "Code département", value: dep.slice(1) }]);
+      t = await roundRows(http, which, dep);
     } catch (e) {
       if (tour === 1) throw e;
       continue;

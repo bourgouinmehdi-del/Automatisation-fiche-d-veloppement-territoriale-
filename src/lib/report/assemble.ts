@@ -1067,8 +1067,9 @@ export function assemble(c: Collected): Assembled {
   if (!c.dvf) missing.push({ theme: "immobilier", label: "Prix immobiliers (DVF)", reason: "Source indisponible ou commune non couverte (Alsace-Moselle, Mayotte)", sourceId: "dvf" });
   if (!c.elections.length) missing.push({ theme: "elections", label: "Résultats électoraux", reason: "Source indisponible lors de la génération", sourceId: "elections" });
   if (!c.bureaux.length) missing.push({ theme: "elections", label: "Résultats par bureau de vote", reason: "Source indisponible lors de la génération" });
-  missing.push({ theme: "mobilite", label: "Temps d'accès routiers et horaires de transport (GTFS)", reason: "Non intégré : nécessite un calculateur d'itinéraires et l'exploitation des flux GTFS de transport.data.gouv.fr" });
-  missing.push({ theme: "demographie", label: "Données infracommunales (IRIS, quartiers prioritaires)", reason: "Non intégré dans cette version" });
+  if (!c.routes) missing.push({ theme: "mobilite", label: "Temps de trajet routiers", reason: "Calculateur d'itinéraires (OSRM) indisponible lors de la génération", sourceId: "osrm" });
+  missing.push({ theme: "mobilite", label: "Lignes de bus et de cars (GTFS régionaux)", reason: "Non intégré : seuls les horaires SNCF (trains et cars TER) sont exploités" });
+  if (!c.quartiers) missing.push({ theme: "demographie", label: "Données infracommunales (IRIS, quartiers prioritaires)", reason: "Commune sans quartier prioritaire ni découpage IRIS, ou source indisponible" });
 
   return { indicators, series, tables, charts, maps, missing: dedupeMissing(missing) };
 }
