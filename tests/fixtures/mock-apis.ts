@@ -321,9 +321,11 @@ export function mockFetch(): typeof fetch {
           ? ["UG", "RN", "ENS"]
           : ["LA FRANCE INSOUMISE - UNION POPULAIRE", "LA FRANCE REVIENT ! AVEC JORDAN BARDELLA ET MARINE LE PEN", "REVEILLER L'EUROPE"];
       const labelCol = rid.includes("presidentielle") ? "Nom candidat" : rid.includes("legislatives") ? "Nuance candidat" : "Libellé de la liste";
+      // Scrutins antérieurs (2017, 2019) : vote LFI plus faible, pour tester l'évolution.
+      const past = rid.includes("2019") ? 0.7 : rid.includes("2017") ? 0.85 : 1;
       const row = (code: string, ins: number, vot: number, lfiShare: number, bv?: string) => {
         const exp = vot - 70;
-        const v1 = Math.round(exp * lfiShare);
+        const v1 = Math.round(exp * lfiShare * past);
         const v2 = Math.round(exp * 0.35);
         return {
           "Code département": "60",

@@ -85,6 +85,7 @@ export async function buildReport(
   });
   const sections = [
     ...(lfi.section ? [lfi.section] : []),
+    ...("extra" in lfi && lfi.extra ? lfi.extra : []),
     ...buildSections({
       c,
       indicators: a.indicators,

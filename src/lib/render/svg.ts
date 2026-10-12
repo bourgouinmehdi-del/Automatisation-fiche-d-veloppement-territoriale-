@@ -47,6 +47,16 @@ export function niceTicks(min: number, max: number, count = 5): number[] {
   return out;
 }
 
+/** Libellés d'axe distincts : « 41 k » répété devient « 40,6 k », « 40,8 k »… ou le nombre entier. */
+export function tickLabels(ticks: number[]): string[] {
+  const tries = [(v: number) => shortNum(v), (v: number) => (Math.abs(v) >= 10000 ? fmtNumber(v / 1000, 1) + " k" : fmtNumber(v, 1)), (v: number) => fmtNumber(v, Number.isInteger(v) ? 0 : 2)];
+  for (const f of tries) {
+    const l = ticks.map(f);
+    if (new Set(l).size === l.length) return l;
+  }
+  return ticks.map((v) => fmtNumber(v));
+}
+
 const shortNum = (v: number) => (Math.abs(v) >= 10000 ? fmtNumber(v / 1000, 0) + " k" : fmtNumber(v, Math.abs(v) < 10 && !Number.isInteger(v) ? 1 : 0));
 
 function legend(series: { label: string }[], x: number, y: number) {
@@ -81,8 +91,10 @@ export function chartSvg(c: ChartSpec, width = 720): string {
   const y = (v: number) => m.t + H - ((v - y0) / (y1 - y0 || 1)) * H;
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${esc(c.title)}"><rect width="100%" height="100%" fill="${PALETTE.surface}"/>`;
   s += legend(c.series, m.l, 16);
-  for (const t of ticks)
-    s += `<line x1="${m.l}" x2="${width - m.r}" y1="${y(t)}" y2="${y(t)}" stroke="${PALETTE.grid}"/><text x="${m.l - 6}" y="${y(t) + 4}" text-anchor="end" font-size="10.5" fill="${PALETTE.muted}" ${FONT}>${shortNum(t)}</text>`;
+  const tl = tickLabels(ticks);
+  ticks.forEach((t, i) => {
+    s += `<line x1="${m.l}" x2="${width - m.r}" y1="${y(t)}" y2="${y(t)}" stroke="${PALETTE.grid}"/><text x="${m.l - 6}" y="${y(t) + 4}" text-anchor="end" font-size="10.5" fill="${PALETTE.muted}" ${FONT}>${tl[i]}</text>`;
+  });
   const n = rows.length;
   const labelEvery = Math.ceil(n / Math.max(1, Math.floor(W / 64)));
   if (c.type === "bar") {

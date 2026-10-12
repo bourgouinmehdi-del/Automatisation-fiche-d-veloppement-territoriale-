@@ -3,7 +3,7 @@
  * DONNÉES FICTIVES, RÉSERVÉES AUX TESTS. Les formats reprennent ceux relevés
  * sur les sources réelles en octobre 2026 ; les valeurs sont arbitraires.
  */
-import { strToU8, zipSync } from "fflate";
+import { gzipSync, strToU8, zipSync } from "fflate";
 
 const LON0 = 2.8;
 const LAT0 = 49.4;
@@ -180,6 +180,23 @@ export function mockExtra(url: URL): Response | null {
       features: IRIS.map(([code, nom, geom]) => ({ type: "Feature", geometry: geom, properties: { code_insee: "60159", code_iris: code, nom_iris: nom, type_iris: "H" } })),
     });
   if (h === "eu.ftp.opendatasoft.com") return bin(gtfsZip());
+  if (h === "adresse.data.gouv.fr" && p.includes("adresses-60")) return bin(banGz());
   if (h === "router.project-osrm.org") return json({ code: "Ok", routes: [{ duration: url.pathname.includes("2.35") ? 5400 : 1500, distance: 60000 }] });
   return null;
 }
+
+/** Base adresse nationale (CSV « ; » compressé) : adresses fictives autour des bureaux simulés. */
+function banGz() {
+  const head = "id;id_fantoir;numero;rep;nom_voie;code_postal;code_insee;nom_commune;code_insee_ancienne_commune;nom_ancienne_commune;x;y;lon;lat;type_position;alias;nom_ld;libelle_acheminement;nom_afnor;source_position;source_nom_voie;certification_commune;cad_parcelles";
+  const lines = [head];
+  for (let i = 0; i < 6; i++)
+    for (let k = 0; k < 5; k++)
+      for (let n = 1; n <= 4; n++) {
+        const lon = LON0 + 0.005 + (i % 3) * 0.012 + (k % 2) * 0.006 + n * 0.0002;
+        const lat = LAT0 + 0.005 + Math.floor(i / 3) * 0.015 + Math.floor(k / 2) * 0.005 + n * 0.0001;
+        lines.push(`60159_x_${i}${k}${n};;${n + k * 2};;Rue Fictive ${String.fromCharCode(65 + i)}${k % 2};60200;60159;Compiègne;;;0;0;${lon.toFixed(6)};${lat.toFixed(6)};entrée;;;COMPIEGNE;;commune;commune;1;`);
+      }
+  lines.push("60382_x;;1;;Rue Ailleurs;60280;60382;Margny-lès-Compiègne;;;0;0;2.82;49.43;entrée;;;MARGNY;;commune;commune;1;");
+  return gzipSync(strToU8(lines.join("\n") + "\n"));
+}
+

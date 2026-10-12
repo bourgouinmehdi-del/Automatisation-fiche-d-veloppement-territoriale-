@@ -245,6 +245,22 @@ describe("chaîne de génération (API simulées)", () => {
     await fs.writeFile(path.join(os.tmpdir(), "fiche-test-mock.json"), JSON.stringify(report));
   }, 60000);
 
+  it("feuilles de porte-à-porte et évolution du vote par bureau", async () => {
+    const porte = report.sections.find((s) => s.id === "PORTE");
+    expect(porte).toBeTruthy();
+    const rues = report.tables.filter((t) => t.id.startsWith("porte_rues_"));
+    expect(rues.length).toBeGreaterThan(0);
+    expect(rues[0].rows.length).toBeGreaterThan(0);
+    expect(String(rues[0].rows[0].numeros)).toMatch(/impairs|pairs/);
+    // Aucune adresse d'une autre commune.
+    expect(rues.flatMap((t) => t.rows.map((r) => String(r.voie)))).not.toContain("Rue Ailleurs");
+    const evo = report.tables.find((t) => t.id === "lfi_evolution");
+    expect(evo?.columns.map((c) => c.key)).toEqual(expect.arrayContaining(["lfi19", "evoE", "mel17", "evoP", "nfp"]));
+    expect(report.findings.some((f) => /LFI passe de/.test(f.text))).toBe(true);
+    const { renderReportHtml } = await import("@/lib/render/html");
+    expect(renderReportHtml(report, { sectionIds: ["PORTE"] })).toContain("Porte-à-porte : BV");
+  });
+
   it("fiche au format du document de référence (HTML et Word)", async () => {
     const { renderReportHtml } = await import("@/lib/render/html");
     const { reportToDocx } = await import("@/lib/export/docx");

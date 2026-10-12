@@ -238,6 +238,8 @@ export type Block =
   | { type: "missing"; themes: ThemeId[] }
   /** Notes de terrain saisies dans l'application (lues dans `Report.fieldNotes` au moment du rendu). */
   | { type: "fieldNotes" }
+  /** Lieux d'action signalés par les militants (lus dans `Report.fieldPlaces` au moment du rendu). */
+  | { type: "fieldPlaces" }
   /** Propositions de ciblage (mode département) : une carte par territoire, avec son tableau. */
   | {
       type: "targets";
@@ -337,6 +339,21 @@ export interface Report {
   warnings: string[];
   /** Retours du terrain saisis par les militants (conservés d'une régénération à l'autre). */
   fieldNotes?: { text: string; updatedAt: string };
+  /** Lieux d'action signalés par les militants (marchés, associations…), conservés d'une régénération à l'autre. */
+  fieldPlaces?: { items: FieldPlace[]; updatedAt: string };
+}
+
+export interface FieldPlace {
+  type: string;
+  nom: string;
+  /** Jours et horaires (texte libre). */
+  horaires: string;
+  adresse: string;
+  /** Bureau de vote du lieu (calculé à l'enregistrement à partir de l'adresse). */
+  bv?: string | null;
+  prioritaire?: boolean;
+  lon?: number | null;
+  lat?: number | null;
 }
 
 export interface ProgressEvent {

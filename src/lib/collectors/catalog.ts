@@ -119,6 +119,15 @@ export const SOURCES: Record<string, SourceInfo> = {
     access: "API tabulaire de data.gouv.fr ; ou GeoJSON déposé dans data/interne/.",
     limits: "Enveloppes calculées à partir des adresses : contours approximatifs, pouvant se chevaucher. Découpage susceptible d'avoir changé depuis le scrutin.",
   },
+  ban: {
+    id: "ban",
+    name: "Base adresse nationale (BAN)",
+    producer: "IGN, DINUM, communes (adresse.data.gouv.fr)",
+    homepage: "https://adresse.data.gouv.fr/donnees-nationales",
+    license: "Licence Ouverte 2.0",
+    access: "Fichier départemental CSV compressé, lu en flux.",
+    limits: "Adresses (numéros) et non logements : un immeuble compte pour une adresse. Rattachement au bureau de vote par la position de l'adresse dans les contours, approximatif en limite de bureau.",
+  },
   qpv: {
     id: "qpv",
     name: "Quartiers prioritaires de la politique de la ville 2024 (liste et contours)",

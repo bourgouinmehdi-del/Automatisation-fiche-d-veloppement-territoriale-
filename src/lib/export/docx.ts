@@ -105,7 +105,7 @@ function table(headers: string[], rows: string[][], rightCols: number[] = [], hi
 function dataTable(t: DataTable, cit: Citations) {
   const right = t.columns.map((c, i) => (c.align === "right" ? i : -1)).filter((i) => i >= 0);
   const rows = t.rows.map((r) => t.columns.map((c) => cellText(r[c.key], c.unit ?? (c.key !== "indicateur" && c.key !== "annee" ? (r.unite as string | undefined) : undefined))));
-  return [caption(t.title), table(t.columns.map((c) => c.label), rows, right, t.highlight ?? []), small(`Sources : ${t.sources.map((s) => `[${cit.cite(s)}]`).join(" ")}${t.note ? ` — ${t.note}` : ""}`)];
+  return [caption(t.title), table(t.columns.map((c) => c.label), rows, right, t.highlight ?? []), small(`Sources : ${[...new Set(t.sources.map((s) => `[${cit.cite(s)}]`))].join(" ")}${t.note ? ` — ${t.note}` : ""}`)];
 }
 
 function indicatorFor(r: Report, id: string) {
@@ -145,13 +145,13 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
     case "chart": {
       const c = r.charts.find((x) => x.id === b.chartId);
       if (!c) return [];
-      return [caption(c.title), image(chartSvg(c)), small(`Sources : ${c.sources.map((s) => `[${cit.cite(s)}]`).join(" ")}${c.note ? ` — ${c.note}` : ""}`)];
+      return [caption(c.title), image(chartSvg(c)), small(`Sources : ${[...new Set(c.sources.map((s) => `[${cit.cite(s)}]`))].join(" ")}${c.note ? ` — ${c.note}` : ""}`)];
     }
     case "map": {
       const m = r.maps.find((x) => x.id === b.mapId);
       if (!m) return [];
       const srcs = [...new Map(m.layers.map((l) => [l.source.id + l.source.url, l.source])).values()];
-      return [caption(m.title), image(mapSvg(m), 560), small(`Sources : ${srcs.map((s) => `[${cit.cite(s)}]`).join(" ")} · Fond : contours ADMIN EXPRESS (IGN) via geo.api.gouv.fr${m.note ? ` — ${m.note}` : ""}`)];
+      return [caption(m.title), image(mapSvg(m), 560), small(`Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")} · Fond : contours ADMIN EXPRESS (IGN) via geo.api.gouv.fr${m.note ? ` — ${m.note}` : ""}`)];
     }
     case "locator": {
       if (!hasLocator(r.commune.departement.code)) return [];
@@ -201,6 +201,21 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
           ...(tb ? dataTable(tb, cit) : []),
         ];
       });
+    case "fieldPlaces": {
+      const items = r.fieldPlaces?.items ?? [];
+      if (!items.length) return [];
+      const rows = [...items].sort((a, b) => Number(!!b.prioritaire) - Number(!!a.prioritaire) || a.type.localeCompare(b.type));
+      return [
+        caption(`Lieux d'action signalés par les militants (${fmtDate(r.fieldPlaces!.updatedAt)})`),
+        table(
+          ["Type", "Lieu", "Jours et horaires", "Adresse", "Bureau"],
+          rows.map((p) => [p.type, p.nom, p.horaires, p.adresse, p.bv ? `BV ${p.bv}${p.prioritaire ? " (prioritaire)" : ""}` : ""]),
+          [],
+          rows.map((p, i) => (p.prioritaire ? i : -1)).filter((i) => i >= 0),
+        ),
+        new Paragraph({ spacing: { after: 160 }, children: [] }),
+      ];
+    }
     case "fieldNotes": {
       if (!r.fieldNotes?.text.trim()) return [];
       const side = { style: BorderStyle.SINGLE, size: 8, color: "1BAF7A", space: 6 };
@@ -240,7 +255,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       return [
         caption(b.title ?? ms.map((m) => m.title).join(" / ")),
         new Paragraph({ children: pngs.flatMap((png, i) => [...(i ? [new TextRun({ text: "  " })] : []), new ImageRun({ type: "png", data: png.data, transformation: { width: w, height: Math.round((png.h / png.w) * w) } })]) }),
-        small(`${ms.map((m) => m.period ?? m.title).join(" (à gauche) / ")} (à droite). Sources : ${srcs.map((s) => `[${cit.cite(s)}]`).join(" ")}${ms[0].note ? ` — ${ms[0].note}` : ""}`),
+        small(`${ms.map((m) => m.period ?? m.title).join(" (à gauche) / ")} (à droite). Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")}${ms[0].note ? ` — ${ms[0].note}` : ""}`),
       ];
     }
     case "missing": {

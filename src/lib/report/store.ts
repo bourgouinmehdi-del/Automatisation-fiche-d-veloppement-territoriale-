@@ -1,7 +1,8 @@
+import { booleanPointInPolygon } from "@turf/turf";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { reportsDir } from "../config";
-import type { ProgressEvent, Report, ReportQuery } from "../types";
+import type { FieldPlace, ProgressEvent, Report, ReportQuery } from "../types";
 import { buildReport, reportId } from "./build";
 
 /**
@@ -32,6 +33,7 @@ export async function saveReport(r: Report) {
     r.createdAt = prev.createdAt;
     // Les retours du terrain survivent à la régénération.
     r.fieldNotes ??= prev.fieldNotes;
+    r.fieldPlaces ??= prev.fieldPlaces;
   }
   await fs.writeFile(file(r.id), JSON.stringify(r));
 }
@@ -225,4 +227,53 @@ export async function getStoredJob(
   } catch {
     return null;
   }
+}
+
+/**
+ * Enregistre les lieux d'action signalés par les militants : chaque adresse est
+ * géolocalisée (Base adresse nationale) puis rattachée à son bureau de vote à
+ * partir des contours de la fiche.
+ */
+export async function saveFieldPlaces(id: string, items: FieldPlace[]) {
+  const r = await getReport(id);
+  if (!r) return null;
+  const bvMap = r.maps.find((m) => m.id === "lfi_map_bv");
+  const polys = (bvMap?.layers.flatMap((l) => l.data.features) ?? []).filter((f) => f.geometry && /Polygon/.test(f.geometry.type) && f.properties?.bv != null);
+  const prio = new Set(
+    (r.tables.find((t) => t.id === "lfi_bureaux")?.rows ?? []).filter((row) => row.priorite === 1).map((row) => String(row.bv)),
+  );
+  const prev = new Map((r.fieldPlaces?.items ?? []).map((p) => [`${p.adresse}|${p.nom}`, p]));
+  const out: FieldPlace[] = [];
+  for (const raw of items.slice(0, 60)) {
+    const p: FieldPlace = {
+      type: String(raw.type ?? "Autre").slice(0, 40),
+      nom: String(raw.nom ?? "").slice(0, 120),
+      horaires: String(raw.horaires ?? "").slice(0, 160),
+      adresse: String(raw.adresse ?? "").slice(0, 200),
+    };
+    if (!p.nom.trim() && !p.adresse.trim()) continue;
+    const old = prev.get(`${p.adresse}|${p.nom}`);
+    if (old?.lon != null && old.lat != null) {
+      p.lon = old.lon;
+      p.lat = old.lat;
+    } else if (p.adresse.trim()) {
+      try {
+        const res = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(p.adresse)}&citycode=${r.commune.code}&limit=1`, { signal: AbortSignal.timeout(8000) });
+        const g = (await res.json()) as { features?: GeoJSON.Feature<GeoJSON.Point>[] };
+        const pt = g.features?.[0]?.geometry.coordinates;
+        if (pt) [p.lon, p.lat] = pt as [number, number];
+      } catch {
+        /* adresse non trouvée : le lieu reste sans bureau */
+      }
+    }
+    if (p.lon != null && p.lat != null) {
+      const hit = polys.find((f) => booleanPointInPolygon([p.lon!, p.lat!], f as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>));
+      p.bv = hit ? String(hit.properties!.bv) : null;
+      p.prioritaire = p.bv ? prio.has(p.bv) : false;
+    }
+    out.push(p);
+  }
+  r.fieldPlaces = { items: out, updatedAt: new Date().toISOString() };
+  await fs.writeFile(file(r.id), JSON.stringify(r));
+  return r.fieldPlaces;
 }

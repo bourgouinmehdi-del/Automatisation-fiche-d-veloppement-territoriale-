@@ -57,6 +57,29 @@ export const ELECTIONS: ElectionConfig[] = [
   },
 ];
 
+/**
+ * Scrutins antérieurs, lus seulement par bureau de vote : ils servent à mesurer
+ * l'évolution du vote (européennes 2019 → 2024, présidentielle 2017 → 2022).
+ */
+export const HISTORICAL_ELECTIONS: ElectionConfig[] = [
+  {
+    id: "EU19",
+    label: "Européennes 2019",
+    date: "2019-05-26",
+    dataset: "resultats-des-elections-europeennes-2019",
+    search: "élections européennes 2019 résultats définitifs",
+    titleRe: /europ[ée]ennes.*2019/i,
+  },
+  {
+    id: "PR17T1",
+    label: "Présidentielle 2017 — 1er tour",
+    date: "2017-04-23",
+    dataset: "election-presidentielle-des-23-avril-et-7-mai-2017-resultats-definitifs-du-1er-tour-par-bureaux-de-vote",
+    search: "élection présidentielle 2017 résultats définitifs premier tour bureaux de vote",
+    titleRe: /pr[ée]sidentielle.*2017.*(1er|premier) tour/i,
+  },
+];
+
 const DATAGOUV = "https://www.data.gouv.fr/api/1";
 const TABULAR = "https://tabular-api.data.gouv.fr/api/resources";
 
@@ -120,14 +143,14 @@ export function aggregateRows(rows: Record<string, unknown>[]) {
   const tot = { inscrits: 0, votants: 0, abstentions: 0, blancs: 0, nuls: 0, exprimes: 0 };
   let hasBlancs = !!cBla;
   const cand = new Map<string, number>();
+  // Format « long » (une ligne par candidat et par bureau, ex. présidentielle 2017) :
+  // les totaux du bureau sont répétés sur chaque ligne et ne sont comptés qu'une fois.
+  const keyCols = cols.filter((c) => /^code/i.test(c));
+  const seen = new Set<string>();
   for (const r of rows) {
-    tot.inscrits += n(r[cIns]) ?? 0;
-    tot.exprimes += n(r[cExp]) ?? 0;
-    if (cVot) tot.votants += n(r[cVot]) ?? 0;
-    if (cAbs) tot.abstentions += n(r[cAbs]) ?? 0;
-    if (cBla) tot.blancs += n(r[cBla]) ?? 0;
-    else hasBlancs = false;
-    if (cNul) tot.nuls += n(r[cNul]) ?? 0;
+    const key = keyCols.length ? keyCols.map((c) => String(r[c] ?? "")).join("|") : null;
+    const first = key == null || !seen.has(key);
+    if (key != null) seen.add(key);
     for (const vc of voixCols) {
       const lc = labelFor(suffix(vc));
       const label = lc ? String(r[lc] ?? "").trim() : "";
@@ -135,6 +158,14 @@ export function aggregateRows(rows: Record<string, unknown>[]) {
       if (!label || v == null) continue;
       cand.set(label, (cand.get(label) ?? 0) + v);
     }
+    if (!first) continue;
+    tot.inscrits += n(r[cIns]) ?? 0;
+    tot.exprimes += n(r[cExp]) ?? 0;
+    if (cVot) tot.votants += n(r[cVot]) ?? 0;
+    if (cAbs) tot.abstentions += n(r[cAbs]) ?? 0;
+    if (cBla) tot.blancs += n(r[cBla]) ?? 0;
+    else hasBlancs = false;
+    if (cNul) tot.nuls += n(r[cNul]) ?? 0;
   }
   if (!cVot) tot.votants = tot.inscrits - tot.abstentions;
   if (!cAbs) tot.abstentions = tot.inscrits - tot.votants;

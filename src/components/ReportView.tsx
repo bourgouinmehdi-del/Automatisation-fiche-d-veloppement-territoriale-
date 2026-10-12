@@ -93,6 +93,8 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         );
       case "fieldNotes":
         return <FieldNotes key={key} id={r.id} initial={r.fieldNotes} />;
+      case "fieldPlaces":
+        return <FieldPlaces key={key} id={r.id} initial={r.fieldPlaces} />;
       case "targets":
         return (
           <div key={key} className="my-6 space-y-5">
@@ -284,7 +286,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
               ))}
             </div>
             <div className="mt-1 text-[11px] text-[var(--ink-2)]">
-              Sources : {srcs.map((s) => `[${cit.cite(s)}]`).join(" ")}. Fond de carte © contributeurs OpenStreetMap{ms[0].note ? ` — ${ms[0].note}` : ""}
+              Sources : {[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")}. Fond de carte © contributeurs OpenStreetMap{ms[0].note ? ` — ${ms[0].note}` : ""}
             </div>
           </figure>
         );
@@ -414,6 +416,11 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
           {(hasFiche || hasCiblage) && (
             <a className="btn btn-primary" href={exp("pdf", "?fiche=1")}>
               {hasCiblage ? "PDF ciblage" : "PDF fiche d'action"}
+            </a>
+          )}
+          {r.sections.some((s) => s.id === "PORTE") && (
+            <a className="btn" href={exp("pdf", "?porte=1")}>
+              PDF porte-à-porte
             </a>
           )}
           <a className={`btn ${hasFiche || hasCiblage ? "" : "btn-primary"}`} href={exp("pdf")}>
@@ -605,7 +612,7 @@ function MapBlock({ maps, cite, exp }: { maps: Report["maps"]; cite: (s: Report[
       </figcaption>
       <MapView key={m.id} map={m} />
       <div className="mt-1 text-[11px] text-[var(--ink-2)]">
-        Sources : {srcs.map((s) => `[${cite(s)}]`).join(" ")}. Fond de carte © contributeurs OpenStreetMap{m.note ? ` — ${m.note}` : ""}
+        Sources : {[...new Set(srcs.map((s) => `[${cite(s)}]`))].join(" ")}. Fond de carte © contributeurs OpenStreetMap{m.note ? ` — ${m.note}` : ""}
       </div>
     </figure>
   );
@@ -652,6 +659,81 @@ function FieldNotes({ id, initial }: { id: string; initial?: Report["fieldNotes"
           {state === "saving" ? "Enregistrement…" : "Enregistrer"}
         </button>
         {state === "error" && <span className="text-sm text-[#a12a29]">Échec de l&apos;enregistrement</span>}
+      </div>
+    </div>
+  );
+}
+
+const PLACE_TYPES = ["Marché", "Association", "Lieu de passage", "Commerce", "Équipement", "Autre"];
+
+/**
+ * Lieux d'action signalés par les militants (marchés, associations…) : les
+ * données publiques en recensent mal les jours et horaires. Chaque adresse est
+ * géolocalisée et rattachée à son bureau de vote à l'enregistrement.
+ */
+function FieldPlaces({ id, initial }: { id: string; initial?: Report["fieldPlaces"] }) {
+  type P = NonNullable<Report["fieldPlaces"]>["items"][number];
+  const empty = (): P => ({ type: "Marché", nom: "", horaires: "", adresse: "" });
+  const [items, setItems] = useState<P[]>(initial?.items ?? []);
+  const [saved, setSaved] = useState(initial?.updatedAt ?? null);
+  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const [dirty, setDirty] = useState(false);
+  const [open, setOpen] = useState(!!initial?.items.length);
+  const set = (i: number, k: keyof P, v: string) => {
+    setItems((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+    setDirty(true);
+  };
+  async function save() {
+    setState("saving");
+    const res = await fetch(`/api/reports/${id}/lieux`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
+    if (!res.ok) return setState("error");
+    const d = (await res.json()) as NonNullable<Report["fieldPlaces"]>;
+    setItems(d.items);
+    setSaved(d.updatedAt);
+    setDirty(false);
+    setState("idle");
+  }
+  if (!open)
+    return (
+      <button className="no-print my-3 text-sm font-semibold text-[var(--accent)] underline" onClick={() => (setOpen(true), setItems((x) => (x.length ? x : [empty()])))}>
+        + Ajouter des lieux d&apos;action (marchés, associations, lieux de passage)
+      </button>
+    );
+  return (
+    <div className="callout callout-accent">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="font-semibold">Lieux d&apos;action signalés par les militants</span>
+        <span className="text-xs text-[var(--ink-2)]">{saved ? `Enregistré le ${fmtDate(saved)}` : "Non enregistré"}. Repris dans le PDF et le Word.</span>
+      </div>
+      <div className="space-y-2">
+        {items.map((p, i) => (
+          <div key={i} className="grid gap-2 rounded-md border border-[var(--line)] bg-white p-2 text-sm md:grid-cols-[8rem_1fr_1fr_1.4fr_auto]">
+            <select aria-label="Type" value={p.type} onChange={(e) => set(i, "type", e.target.value)} className="rounded border border-[var(--line)] p-1">
+              {PLACE_TYPES.map((t) => (
+                <option key={t}>{t}</option>
+              ))}
+            </select>
+            <input aria-label="Nom" placeholder="Nom (ex. marché du samedi)" value={p.nom} onChange={(e) => set(i, "nom", e.target.value)} className="rounded border border-[var(--line)] p-1" />
+            <input aria-label="Jours et horaires" placeholder="Jours et horaires" value={p.horaires} onChange={(e) => set(i, "horaires", e.target.value)} className="rounded border border-[var(--line)] p-1" />
+            <input aria-label="Adresse" placeholder="Adresse ou place" value={p.adresse} onChange={(e) => set(i, "adresse", e.target.value)} className="rounded border border-[var(--line)] p-1" />
+            <span className="flex items-center gap-2">
+              {p.bv && <span className="whitespace-nowrap text-xs font-semibold">BV {p.bv}{p.prioritaire ? " ★" : ""}</span>}
+              <button aria-label="Supprimer ce lieu" className="text-[var(--danger)]" onClick={() => (setItems((xs) => xs.filter((_, j) => j !== i)), setDirty(true))}>
+                ✕
+              </button>
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="no-print mt-2 flex flex-wrap items-center gap-3">
+        <button className="btn" onClick={() => (setItems((x) => [...x, empty()]), setDirty(true))}>
+          Ajouter un lieu
+        </button>
+        <button className="btn btn-primary" onClick={save} disabled={!dirty || state === "saving"}>
+          {state === "saving" ? "Enregistrement…" : "Enregistrer"}
+        </button>
+        {state === "error" && <span className="text-sm text-[var(--danger)]">Échec de l&apos;enregistrement</span>}
+        <span className="text-xs text-[var(--ink-2)]">★ : bureau prioritaire. Le bureau est retrouvé à partir de l&apos;adresse.</span>
       </div>
     </div>
   );
