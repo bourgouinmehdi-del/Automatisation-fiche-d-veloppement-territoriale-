@@ -1320,7 +1320,7 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
     if (maj) {
       const fam = nuanceFamily(maj.nuance);
       parts.push(
-        `${B(`La commune est dirigée par ${m.maire ? `${m.maire.prenom} ${m.maire.nom}` : maj.tete}`)}${maj.nuance ? ` (${nu(maj.nuance)}${fam === "gauche" ? ", mairie de gauche" : ""})` : ""} : sa liste « ${maj.libelle} » a obtenu ${majT1 ? `${pct(majT1.pctExprimes, 0)} des exprimés au 1er tour des municipales 2026${t2 ? "" : " (élection dès le 1er tour)"}` : "la majorité aux municipales 2026"}${majT2 && majT1 ? ` et ${pct(majT2.pctExprimes, 0)} au 2nd tour` : majT2 ? ` : ${pct(majT2.pctExprimes, 0)} des exprimés au 2nd tour` : ""}.`,
+        `${m.ville ? `${B(`À l'échelle de la ville de ${m.ville}`)} (résultats de l'arrondissement non publiés séparément) : ` : ""}${B(`${m.ville ? "la ville" : "La commune"} est dirigée par ${m.maire ? `${m.maire.prenom} ${m.maire.nom}` : maj.tete}`)}${maj.nuance ? ` (${nu(maj.nuance)}${fam === "gauche" ? ", mairie de gauche" : ""})` : ""} : sa liste « ${maj.libelle} » a obtenu ${majT1 ? `${pct(majT1.pctExprimes, 0)} des exprimés au 1er tour des municipales 2026${t2 ? "" : " (élection dès le 1er tour)"}` : "la majorité aux municipales 2026"}${majT2 && majT1 ? ` et ${pct(majT2.pctExprimes, 0)} au 2nd tour` : majT2 ? ` : ${pct(majT2.pctExprimes, 0)} des exprimés au 2nd tour` : ""}.`,
       );
       const last = t2 ?? t1;
       const left = last?.listes.filter((l) => !sameList(l, maj) && nuanceFamily(l.nuance) === "gauche") ?? [];

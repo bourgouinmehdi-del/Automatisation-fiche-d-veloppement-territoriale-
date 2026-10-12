@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { plmInfo } from "./plm";
 import { HttpError } from "../http";
 import type { TrackedHttp } from "./context";
 
@@ -44,13 +45,17 @@ export interface MelodiDataset {
 
 type GeoKind = "COM" | "EPCI" | "DEP" | "REG" | "FRANCE";
 
-const preferredFormat = new Map<GeoKind, number>();
+/** Syntaxe de code géographique qui a fonctionné, par type de territoire (les arrondissements à part). */
+const preferredFormat = new Map<string, number>();
+const fmtKey = (kind: GeoKind, code: string) => (kind === "COM" && plmInfo(code) ? "ARM" : kind);
 
 export function geoCandidates(kind: GeoKind, code: string): string[] {
   // Le code « France » de Melodi n'est pas documenté de façon stable : plusieurs
   // syntaxes sont essayées (« FRANCE-F » est refusé avec un HTTP 400 en 2026).
   if (kind === "FRANCE") return ["FRANCE-1", "FRANCE-FE", "FRANCE-FM", "FRANCE-F", "FE-1", "PAYS-FRA", "FRA-1", "FR-1"];
   const years = ["2025", "2024", "2026", "2023"];
+  // Arrondissements municipaux (Paris, Lyon, Marseille) : niveau « ARM » dans Melodi.
+  if (kind === "COM" && plmInfo(code)) return ["ARM", "COM"].flatMap((k) => [`${k}-${code}`, ...years.map((y) => `${y}-${k}-${code}`)]);
   return [`${kind}-${code}`, ...years.map((y) => `${y}-${kind}-${code}`)];
 }
 
@@ -81,7 +86,7 @@ export async function loadDataset(
   code: string,
 ): Promise<MelodiDataset | null> {
   const all = geoCandidates(kind, code);
-  const pref = preferredFormat.get(kind);
+  const pref = preferredFormat.get(fmtKey(kind, code));
   // Lorsqu'une syntaxe a déjà fonctionné pour ce type de territoire, seule celle-ci est essayée.
   // -1 : aucune syntaxe ne fonctionne pour ce type de territoire (inutile de réessayer).
   if (pref === -1) return null;
@@ -112,7 +117,7 @@ export async function loadDataset(
       url = next && !r.data?.paging?.isLast ? (next.startsWith("http") ? next : MELODI + next) : null;
     }
     if (obs.length === 0) continue;
-    preferredFormat.set(kind, all.indexOf(geo));
+    preferredFormat.set(fmtKey(kind, code), all.indexOf(geo));
     const dimValues = new Map<string, Set<string>>();
     for (const o of obs)
       for (const [k, v] of Object.entries(o.dims)) {
@@ -124,7 +129,7 @@ export async function loadDataset(
   }
   // Aucune syntaxe n'a fonctionné. Pour la France, on mémorise l'échec : le code
   // est en cause, pas le jeu de données (évite de multiplier les requêtes).
-  if (kind === "FRANCE" && pref == null && refused === candidates.length) preferredFormat.set(kind, -1);
+  if (kind === "FRANCE" && pref == null && refused === candidates.length) preferredFormat.set(fmtKey(kind, code), -1);
   return null;
 }
 

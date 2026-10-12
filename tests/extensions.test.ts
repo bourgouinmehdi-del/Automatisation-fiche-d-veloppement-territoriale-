@@ -180,3 +180,26 @@ describe("résultats électoraux au format long", () => {
   });
 });
 
+
+describe("arrondissements de Paris, Lyon et Marseille", () => {
+  it("relie l'arrondissement à la ville et à ses bureaux", async () => {
+    const { plmInfo, plmBvKey } = await import("@/lib/collectors/plm");
+    expect(plmInfo("75112")).toEqual({ parent: "75056", arr: 12, ville: "Paris" });
+    expect(plmInfo("69383")?.parent).toBe("69123");
+    expect(plmInfo("13201")?.arr).toBe(1);
+    expect(plmInfo("75056")).toBeNull();
+    expect(plmInfo("60159")).toBeNull();
+    // Numérotations rencontrées : « 1201 », « 75056_1201 », « 12-01 », locale « 01 ».
+    expect(plmBvKey("1201", 12, true)).toBe("1201");
+    expect(plmBvKey("75056_1215", 12, true)).toBe("1215");
+    expect(plmBvKey("12-03", 12, true)).toBe("1203");
+    expect(plmBvKey("1101", 12, true)).toBeNull();
+    expect(plmBvKey("01", 12, true)).toBeNull();
+    expect(plmBvKey("01", 12)).toBe("1201");
+  });
+  it("interroge l'INSEE au niveau « ARM »", async () => {
+    const { geoCandidates } = await import("@/lib/collectors/insee");
+    expect(geoCandidates("COM", "75112")[0]).toBe("ARM-75112");
+    expect(geoCandidates("COM", "60159")[0]).toBe("COM-60159");
+  });
+});

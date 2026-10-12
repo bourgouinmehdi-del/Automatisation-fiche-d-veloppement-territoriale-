@@ -7,6 +7,7 @@ import { findCol, normBv } from "./elections";
 import { extractTopoJsonFile } from "./topojson-extract";
 import { fileHead, geoJsonFeatures, scanFile, scanText } from "./json-stream";
 import { cachedExtract, heavyLane } from "../runtime";
+import { plmBvKey, plmInfo } from "./plm";
 
 /**
  * Noms et géométries des bureaux de vote d'une commune.
@@ -276,13 +277,46 @@ async function tabularCommune(http: TrackedHttp, rid: string, codeInsee: string,
   return { rows, url: first, retrievedAt };
 }
 
+/** Garde les bureaux d'un arrondissement PLM et les renumérote « AABB » (comme les résultats). */
+function rekeyPlm(g: BureauGeo | null, arr: number, strict: boolean): BureauGeo | null {
+  if (!g) return null;
+  const key = (v: unknown) => plmBvKey(v, arr, strict);
+  const features = g.features.flatMap((f) => {
+    const k = key(f.properties?.bv);
+    return k ? [{ ...f, properties: { ...f.properties, bv: k } }] : [];
+  });
+  const points = g.points.flatMap((f) => {
+    const k = key(f.properties?.bv);
+    return k ? [{ ...f, properties: { ...f.properties, bv: k } }] : [];
+  });
+  const labels = new Map<string, string>();
+  for (const [bv, l] of g.labels) {
+    const k = key(bv);
+    if (k) labels.set(k, l);
+  }
+  if (!features.length && !points.length && !labels.size) return null;
+  return { ...g, features, points, labels };
+}
+
 export async function collectBureauxGeo(http: TrackedHttp, codeInsee: string): Promise<BureauGeo | null> {
+  const plm = plmInfo(codeInsee);
   const user = await fromUserFile(codeInsee);
   let contours: BureauGeo | null = null;
   if (!user) {
     try {
       // Contours : 30 jours sur disque par commune (le fichier national n'est relu qu'en cas d'absence).
-      contours = await cachedExtract(`bvgeo|contours|${codeInsee}`, 24 * 30, () => heavyLane.run(() => fromContours(http, codeInsee)), (v) => !!v);
+      contours = await cachedExtract(
+        `bvgeo|contours|${codeInsee}`,
+        24 * 30,
+        () =>
+          heavyLane.run(async () => {
+            // Arrondissement de Paris, Lyon ou Marseille : contours publiés au code de la ville.
+            if (!plm) return fromContours(http, codeInsee);
+            // Fichier au code de l'arrondissement (numérotation locale possible), sinon au code de la ville.
+            return rekeyPlm(await fromContours(http, codeInsee), plm.arr, false) ?? rekeyPlm(await fromContours(http, plm.parent), plm.arr, true);
+          }),
+        (v) => !!v,
+      );
     } catch {
       http.notes.push("Contours de bureaux de vote indisponibles");
     }
@@ -290,7 +324,16 @@ export async function collectBureauxGeo(http: TrackedHttp, codeInsee: string): P
   // Libellés et lieux de vote : complètent les contours (ou s'y substituent).
   let reu: BureauGeo | null = null;
   try {
-    reu = await cachedExtract(`bvgeo|reu|${codeInsee}`, 24 * 7, () => fromReu(http, codeInsee), (v) => !!v);
+    reu = await cachedExtract(
+      `bvgeo|reu|${codeInsee}`,
+      24 * 7,
+      async () => {
+        if (!plm) return fromReu(http, codeInsee);
+        const own = rekeyPlm(await fromReu(http, codeInsee), plm.arr, false);
+        return own ?? rekeyPlm(await fromReu(http, plm.parent), plm.arr, true);
+      },
+      (v) => !!v,
+    );
   } catch {
     http.notes.push("Table des bureaux (REU) indisponible");
   }
