@@ -1,3 +1,4 @@
+import { plmInfo } from "./plm";
 import type { TrackedHttp } from "./context";
 import { cachedExtract, heavyLane } from "../runtime";
 import { clean, findResource, num, tabular } from "./datagouv";
@@ -86,6 +87,8 @@ export interface MunicipalResult {
   /** Liste majoritaire au conseil municipal (tour décisif). */
   majorite: MunicipalList | null;
   maire: { nom: string; prenom: string; debutFonction: string | null } | null;
+  /** Arrondissement de Paris, Lyon ou Marseille : résultats de la ville entière (nom de la ville). */
+  ville?: string;
   urls: string[];
   retrievedAt: string;
 }
@@ -200,6 +203,19 @@ async function roundRows(http: TrackedHttp, which: "t1" | "t2", dep: string, com
 }
 
 export async function collectMunicipales(http: TrackedHttp, codeInsee: string, dep = codeInsee.slice(0, codeInsee.startsWith("97") ? 3 : 2)): Promise<MunicipalResult> {
+  const plm = plmInfo(codeInsee);
+  if (!plm) return collectMunicipalesCommune(http, codeInsee, dep);
+  // Arrondissement : résultats propres s'ils sont publiés, sinon ceux de la ville.
+  try {
+    return await collectMunicipalesCommune(http, codeInsee, dep);
+  } catch {
+    const v = await collectMunicipalesCommune(http, plm.parent, dep);
+    http.notes.push(`Résultats municipaux de l'arrondissement non publiés dans le fichier : résultats de ${plm.ville}`);
+    return { ...v, ville: plm.ville };
+  }
+}
+
+async function collectMunicipalesCommune(http: TrackedHttp, codeInsee: string, dep: string): Promise<MunicipalResult> {
   const rounds: MunicipalRound[] = [];
   const urls: string[] = [];
   let retrievedAt = "";

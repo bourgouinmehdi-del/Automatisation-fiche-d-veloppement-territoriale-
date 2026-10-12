@@ -1,3 +1,4 @@
+import { plmBvKey, plmInfo } from "./plm";
 import { createReadStream, promises as fsp } from "node:fs";
 import { cachedExtract, heavyLane } from "../runtime";
 import Papa from "papaparse";
@@ -444,7 +445,14 @@ async function departmentRowsFresh(http: TrackedHttp, e: ElectionConfig, dep: st
 /** Résultats de la commune et du département (avec le détail par commune). */
 export async function collectElection(http: TrackedHttp, e: ElectionConfig, codeInsee: string, dep: string): Promise<ElectionResult[]> {
   const d = await departmentRows(http, e, dep, "commune");
-  const comRows = d.rows.filter((r) => rowCode(r, d.c, dep) === codeInsee);
+  let comRows = d.rows.filter((r) => rowCode(r, d.c, dep) === codeInsee);
+  // Arrondissement de Paris, Lyon ou Marseille absent du fichier par commune :
+  // résultats reconstitués à partir des bureaux de la ville situés dans l'arrondissement.
+  const plm = plmInfo(codeInsee);
+  if (!comRows.length && plm) {
+    const b = await departmentRows(http, e, dep, "bureau");
+    if (b.c.cBv) comRows = b.rows.filter((r) => rowCode(r, b.c, dep) === plm.parent && plmBvKey(r[b.c.cBv!], plm.arr, true) != null);
+  }
   const agg = aggregateRows(comRows);
   if (!agg) throw new Error(`Aucun résultat pour la commune (${e.label})`);
   const out: ElectionResult[] = [{ election: e, level: "commune", code: codeInsee, ...agg, sourceUrl: d.url, retrievedAt: d.retrievedAt }];
@@ -484,9 +492,20 @@ export async function collectBureaux(http: TrackedHttp, e: ElectionConfig, codeI
   const d = await departmentRows(http, e, dep, "bureau");
   if (!d.c.cBv) throw new Error(`Colonne « bureau de vote » introuvable (${e.label})`);
   const groups = new Map<string, Record<string, unknown>[]>();
+  // Arrondissement PLM : bureaux publiés au code de la ville, numérotés « AABB ».
+  const plm = plmInfo(codeInsee);
+  const own = d.rows.some((r) => rowCode(r, d.c, dep) === codeInsee);
   for (const r of d.rows) {
-    if (rowCode(r, d.c, dep) !== codeInsee) continue;
-    const k = normBv(r[d.c.cBv]);
+    let k: string;
+    if (plm && !own) {
+      if (rowCode(r, d.c, dep) !== plm.parent) continue;
+      const pk = plmBvKey(r[d.c.cBv], plm.arr, true);
+      if (pk == null) continue;
+      k = pk;
+    } else {
+      if (rowCode(r, d.c, dep) !== codeInsee) continue;
+      k = normBv(r[d.c.cBv]);
+    }
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k)!.push(r);
   }
@@ -495,6 +514,12 @@ export async function collectBureaux(http: TrackedHttp, e: ElectionConfig, codeI
     const a = aggregateRows(rows);
     if (a) out.push({ election: e, bv, ...a, sourceUrl: d.url, retrievedAt: d.retrievedAt });
   }
-  if (!out.length) throw new Error(`Aucun bureau de vote trouvé pour la commune (${e.label})`);
+  if (!out.length) {
+    if (plm && !own) {
+      const sample = d.rows.filter((r) => rowCode(r, d.c, dep) === plm.parent).slice(0, 3).map((r) => String(r[d.c.cBv!]));
+      throw new Error(`Aucun bureau du ${plm.arr}e arrondissement reconnu dans les résultats de ${plm.ville} (${e.label}) : ${sample.length ? `numéros de bureau du fichier, ex. ${sample.join(", ")}` : `aucune ligne au code ${plm.parent}`}`);
+    }
+    throw new Error(`Aucun bureau de vote trouvé pour la commune (${e.label})`);
+  }
   return out.sort((x, y) => Number(x.bv) - Number(y.bv) || x.bv.localeCompare(y.bv));
 }
