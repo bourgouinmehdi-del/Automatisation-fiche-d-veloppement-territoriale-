@@ -1,6 +1,7 @@
 import type { TrackedHttp } from "./context";
 import { num } from "./datagouv";
 import { zipCsvRows } from "./zip";
+import { cachedExtract, heavyLane } from "../runtime";
 
 /**
  * Base permanente des équipements (INSEE, BPE 2025) : services de santé,
@@ -61,11 +62,15 @@ export interface BpeResult {
   retrievedAt: string;
 }
 
-const memo = new Map<string, Omit<BpeResult, "commune"> & { all: BpeEquipement[] }>();
+type BpeDep = Omit<BpeResult, "commune"> & { all: BpeEquipement[] };
 
 export async function collectBpe(http: TrackedHttp, codeInsee: string, dep: string): Promise<BpeResult> {
-  let d = memo.get(dep);
-  if (!d) {
+  const d = await cachedExtract<BpeDep>(`bpe|${BPE_VINTAGE}|${dep}`, 24 * 30, () => heavyLane.run(() => bpeDepartement(http, dep)));
+  return { commune: d.all.filter((e) => e.commune === codeInsee), countsByCommune: d.countsByCommune, countsDep: d.countsDep, url: d.url, retrievedAt: d.retrievedAt };
+}
+
+async function bpeDepartement(http: TrackedHttp, dep: string): Promise<BpeDep> {
+  {
     const f = await http.file(BPE_URL, { timeoutMs: 1800000, retries: 1 });
     const { rows } = await zipCsvRows(
       f.data,
@@ -91,8 +96,6 @@ export async function collectBpe(http: TrackedHttp, codeInsee: string, dep: stri
       c[e.type] = (c[e.type] ?? 0) + 1;
       countsDep[e.type] = (countsDep[e.type] ?? 0) + 1;
     }
-    d = { all, countsByCommune, countsDep, url: BPE_URL, retrievedAt: f.retrievedAt };
-    memo.set(dep, d);
+    return { all, countsByCommune, countsDep, url: BPE_URL, retrievedAt: f.retrievedAt };
   }
-  return { commune: d.all.filter((e) => e.commune === codeInsee), countsByCommune: d.countsByCommune, countsDep: d.countsDep, url: d.url, retrievedAt: d.retrievedAt };
 }

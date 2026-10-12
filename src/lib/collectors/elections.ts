@@ -1,4 +1,5 @@
 import { createReadStream, promises as fsp } from "node:fs";
+import { cachedExtract, heavyLane } from "../runtime";
 import Papa from "papaparse";
 import type { TrackedHttp } from "./context";
 
@@ -369,17 +370,17 @@ export function normBv(v: unknown): string {
   return digits || s;
 }
 
-/** Extractions départementales déjà lues pendant ce processus. */
-const extractMemo = new Map<string, { rows: Record<string, unknown>[]; c: Columns; url: string; retrievedAt: string }>();
 
 /**
  * Lignes d'un département pour un scrutin et un niveau (commune ou bureau de vote).
  * Ordre : extraction en mémoire → API tabulaire → fichier national lu en flux.
  */
 async function departmentRows(http: TrackedHttp, e: ElectionConfig, dep: string, level: ResultLevel) {
-  const memoKey = `${e.id}|${level}|${dep}`;
-  const memo = extractMemo.get(memoKey);
-  if (memo) return memo;
+  // Résultats d'élections passées : extraction départementale gardée 30 jours sur disque.
+  return cachedExtract(`elections|${e.id}|${level}|${dep}`, 24 * 30, () => heavyLane.run(() => departmentRowsFresh(http, e, dep, level)));
+}
+
+async function departmentRowsFresh(http: TrackedHttp, e: ElectionConfig, dep: string, level: ResultLevel) {
   const res = await resolveResource(http, e, level);
   if (!res) throw new Error(`Ressource « résultats par ${level === "bureau" ? "bureau de vote" : "commune"} » introuvable pour ${e.label}`);
   let out: { rows: Record<string, unknown>[]; c: Columns; url: string; retrievedAt: string } | null = null;
@@ -406,7 +407,6 @@ async function departmentRows(http: TrackedHttp, e: ElectionConfig, dep: string,
     if (!rows.length) throw new Error(`Aucune ligne pour le département ${dep} (${e.label})`);
     out = { rows, c: detectColumns(Object.keys(rows[0]), rows[0], e.label), url: res.url, retrievedAt: f.retrievedAt };
   }
-  extractMemo.set(memoKey, out);
   return out;
 }
 

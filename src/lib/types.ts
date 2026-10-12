@@ -346,5 +346,7 @@ export interface ProgressEvent {
   total: number;
   status: "running" | "done" | "error";
   message?: string;
+  /** Mémoire utilisée par le serveur (Mo) au moment de l'événement. */
+  mem?: number;
   at: string;
 }

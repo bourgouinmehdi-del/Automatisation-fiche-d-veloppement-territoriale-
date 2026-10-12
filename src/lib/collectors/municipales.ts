@@ -1,4 +1,5 @@
 import type { TrackedHttp } from "./context";
+import { cachedExtract, heavyLane } from "../runtime";
 import { clean, findResource, num, tabular } from "./datagouv";
 import { filterCsvFile } from "./elections";
 
@@ -163,7 +164,6 @@ export function majorityList(rounds: MunicipalRound[]): MunicipalList | null {
 }
 
 /** Lignes d'un département extraites du fichier national (repli), mémorisées par tour. */
-const fileMemo = new Map<string, Record<string, unknown>[]>();
 
 /**
  * Lignes « résultats par commune » d'un tour : API tabulaire si la ressource y est
@@ -185,17 +185,15 @@ async function roundRows(http: TrackedHttp, which: "t1" | "t2", dep: string, com
     throw new Error("aucune ligne dans l'API tabulaire");
   } catch {
     if (!res.url) throw new Error(`Résultats municipaux (${which}) : ressource sans URL de téléchargement`);
-    const key = `${which}|${dep}`;
-    let rows = fileMemo.get(key);
-    let retrievedAt = new Date().toISOString();
-    if (!rows) {
-      http.notes.push(`municipales ${which} : lecture du fichier national`);
-      const f = await http.file(res.url, { timeoutMs: 600000, retries: 1 });
-      retrievedAt = f.retrievedAt;
-      const x = await filterCsvFile(f.data, dep, `municipales ${which}`);
-      rows = expandListBlocks(x.rows, x.fields);
-      fileMemo.set(key, rows);
-    }
+    const url = res.url;
+    const { rows, retrievedAt } = await cachedExtract(`municipales|${which}|${dep}`, 24 * 7, () =>
+      heavyLane.run(async () => {
+        http.notes.push(`municipales ${which} : lecture du fichier national`);
+        const f = await http.file(url, { timeoutMs: 600000, retries: 1 });
+        const x = await filterCsvFile(f.data, dep, `municipales ${which}`);
+        return { rows: expandListBlocks(x.rows, x.fields), retrievedAt: f.retrievedAt };
+      }),
+    );
     const code = (r: Record<string, unknown>) => clean(r["Code commune"]).padStart(5, "0");
     return { rows: commune ? rows.filter((r) => code(r) === commune) : rows, url: res.url, retrievedAt };
   }
