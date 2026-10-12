@@ -21,7 +21,8 @@ interface Job {
 const g = globalThis as unknown as { __jobs?: Map<string, Job> };
 const jobs = (g.__jobs ??= new Map<string, Job>());
 
-const file = (id: string) => path.join(reportsDir(), `${id.replace(/[^\w-]/g, "")}.json`);
+const file = (id: string) =>
+  path.join(reportsDir(), `${id.replace(/[^\w-]/g, "")}.json`);
 
 export async function saveReport(r: Report) {
   await fs.mkdir(reportsDir(), { recursive: true });
@@ -39,7 +40,10 @@ export async function saveReport(r: Report) {
 export async function saveFieldNotes(id: string, text: string) {
   const r = await getReport(id);
   if (!r) return null;
-  r.fieldNotes = { text: text.slice(0, 20000), updatedAt: new Date().toISOString() };
+  r.fieldNotes = {
+    text: text.slice(0, 20000),
+    updatedAt: new Date().toISOString(),
+  };
   await fs.writeFile(file(r.id), JSON.stringify(r));
   return r.fieldNotes;
 }
@@ -54,11 +58,25 @@ export async function getReport(id: string): Promise<Report | null> {
 
 export async function listReports() {
   try {
-    const files = (await fs.readdir(reportsDir())).filter((f) => f.endsWith(".json"));
+    const files = (await fs.readdir(reportsDir())).filter((f) =>
+      f.endsWith(".json"),
+    );
     const out = [];
     for (const f of files) {
-      const r = JSON.parse(await fs.readFile(path.join(reportsDir(), f), "utf8")) as Report;
-      out.push({ id: r.id, nom: r.query.scope === "departement" ? `Ciblage ${r.commune.departement.nom}` : r.commune.nom, departement: r.commune.departement.nom, scope: r.query.scope, updatedAt: r.updatedAt, version: r.version });
+      const r = JSON.parse(
+        await fs.readFile(path.join(reportsDir(), f), "utf8"),
+      ) as Report;
+      out.push({
+        id: r.id,
+        nom:
+          r.query.scope === "departement"
+            ? `Ciblage ${r.commune.departement.nom}`
+            : r.commune.nom,
+        departement: r.commune.departement.nom,
+        scope: r.query.scope,
+        updatedAt: r.updatedAt,
+        version: r.version,
+      });
     }
     return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   } catch {
@@ -67,7 +85,8 @@ export async function listReports() {
 }
 
 const jobsDir = () => path.join(path.dirname(reportsDir()), "jobs");
-const jobFile = (id: string) => path.join(jobsDir(), `${id.replace(/[^\w-]/g, "")}.json`);
+const jobFile = (id: string) =>
+  path.join(jobsDir(), `${id.replace(/[^\w-]/g, "")}.json`);
 
 /**
  * L'état de chaque génération est aussi écrit sur disque : si le serveur
@@ -76,7 +95,12 @@ const jobFile = (id: string) => path.join(jobsDir(), `${id.replace(/[^\w-]/g, ""
  */
 let writing: Promise<void> = Promise.resolve();
 function persistJob(job: Job) {
-  const snapshot = JSON.stringify({ ...job, pid: process.pid, bootId: BOOT_ID, updatedAt: new Date().toISOString() });
+  const snapshot = JSON.stringify({
+    ...job,
+    pid: process.pid,
+    bootId: BOOT_ID,
+    updatedAt: new Date().toISOString(),
+  });
   writing = writing
     .then(async () => {
       await fs.mkdir(jobsDir(), { recursive: true });
@@ -88,6 +112,31 @@ function persistJob(job: Job) {
 }
 const BOOT_ID = `${process.pid}-${Date.now()}`;
 
+/**
+ * File d'attente : les générations s'exécutent une par une (réglable par
+ * GENERATION_CONCURRENCY). Deux générations simultanées doublent la mémoire
+ * utilisée et font redémarrer les petits hébergements.
+ */
+const MAX_CONCURRENT = Math.max(
+  1,
+  Number(process.env.GENERATION_CONCURRENCY ?? 1) || 1,
+);
+let active = 0;
+const waiting: (() => void)[] = [];
+async function acquireSlot(onWait: () => void) {
+  if (active < MAX_CONCURRENT) {
+    active++;
+    return;
+  }
+  onWait();
+  await new Promise<void>((resolve) => waiting.push(resolve));
+  active++;
+}
+function releaseSlot() {
+  active--;
+  waiting.shift()?.();
+}
+
 /** Lance (ou relance) la génération en tâche de fond et renvoie l'identifiant. */
 export function startJob(query: ReportQuery): string {
   const id = reportId(query);
@@ -97,20 +146,40 @@ export function startJob(query: ReportQuery): string {
   jobs.set(id, job);
   persistJob(job);
   let last = 0;
-  buildReport(
-    query,
-    (e) => {
-      job.events.push(e);
-      // Écriture limitée à une toutes les 2 s environ.
-      if (Date.now() - last > 2000) {
-        last = Date.now();
-        persistJob(job);
-      }
-    },
-    id,
-  )
+  acquireSlot(() => {
+    job.events.push({
+      step: "attente",
+      label: "En attente : une autre génération est en cours sur le serveur",
+      done: 0,
+      total: 1,
+      status: "running",
+      at: new Date().toISOString(),
+    });
+    persistJob(job);
+  })
+    .then(() =>
+      buildReport(
+        query,
+        (e) => {
+          job.events.push(e);
+          // Écriture limitée à une toutes les 2 s environ.
+          if (Date.now() - last > 2000) {
+            last = Date.now();
+            persistJob(job);
+          }
+        },
+        id,
+      ),
+    )
     .then(async (r) => {
-      job.events.push({ step: "enregistrement", label: "Enregistrement de la fiche", done: 1, total: 1, status: "done", at: new Date().toISOString() });
+      job.events.push({
+        step: "enregistrement",
+        label: "Enregistrement de la fiche",
+        done: 1,
+        total: 1,
+        status: "done",
+        at: new Date().toISOString(),
+      });
       await saveReport(r);
       job.status = "done";
       persistJob(job);
@@ -118,9 +187,17 @@ export function startJob(query: ReportQuery): string {
     .catch((e) => {
       job.status = "error";
       job.error = e instanceof Error ? e.message : String(e);
-      job.events.push({ step: "erreur", label: job.error, done: 0, total: 1, status: "error", at: new Date().toISOString() });
+      job.events.push({
+        step: "erreur",
+        label: job.error,
+        done: 0,
+        total: 1,
+        status: "error",
+        at: new Date().toISOString(),
+      });
       persistJob(job);
-    });
+    })
+    .finally(releaseSlot);
   return id;
 }
 
@@ -132,9 +209,14 @@ export function getJob(id: string) {
  * Génération connue sur disque mais absente de la mémoire de ce processus :
  * le serveur a redémarré pendant qu'elle tournait (statut « interrupted »).
  */
-export async function getStoredJob(id: string): Promise<(Job & { updatedAt?: string }) | null> {
+export async function getStoredJob(
+  id: string,
+): Promise<(Job & { updatedAt?: string }) | null> {
   try {
-    const j = JSON.parse(await fs.readFile(jobFile(id), "utf8")) as Job & { bootId?: string; updatedAt?: string };
+    const j = JSON.parse(await fs.readFile(jobFile(id), "utf8")) as Job & {
+      bootId?: string;
+      updatedAt?: string;
+    };
     if (j.status === "running" && j.bootId !== BOOT_ID) {
       j.status = "error";
       j.error = "interrupted";

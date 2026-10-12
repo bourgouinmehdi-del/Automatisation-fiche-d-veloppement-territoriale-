@@ -1,4 +1,5 @@
 import proj4 from "proj4";
+import { scanFile, scanText, type CaptureTest } from "./json-stream";
 
 /**
  * Extraction ciblée d'entités dans un fichier TopoJSON national volumineux
@@ -35,73 +36,6 @@ export function jsonEnd(text: string, start: number): number {
   return -1;
 }
 
-interface Located {
-  arcsStart: number;
-  arcsEnd: number;
-  /** Position de début de chaque arc dans le texte. */
-  offsets: number[];
-  transform: { scale: [number, number]; translate: [number, number] } | null;
-}
-
-function locate(text: string): Located | null {
-  const m = /"arcs"\s*:\s*\[/.exec(text);
-  if (!m) return null;
-  const arcsStart = m.index + m[0].length - 1;
-  const offsets: number[] = [];
-  let depth = 0;
-  let i = arcsStart;
-  for (; i < text.length; i++) {
-    const ch = text.charCodeAt(i);
-    if (ch === 91) {
-      depth++;
-      if (depth === 2) offsets.push(i);
-    } else if (ch === 93) {
-      depth--;
-      if (depth === 0) break;
-    }
-  }
-  const arcsEnd = i + 1;
-  // La clé « transform » ne peut pas figurer dans le tableau d'arcs (que des nombres) :
-  // une recherche sur tout le texte est donc sûre.
-  let transform: Located["transform"] = null;
-  const t = /"transform"\s*:\s*\{/.exec(text);
-  if (t) {
-    const s0 = t.index + t[0].length - 1;
-    try {
-      transform = JSON.parse(text.slice(s0, jsonEnd(text, s0)));
-    } catch {
-      transform = null;
-    }
-  }
-  return { arcsStart, arcsEnd, offsets, transform };
-}
-
-function decodeArc(text: string, loc: Located, idx: number): [number, number][] {
-  const start = loc.offsets[idx];
-  const raw = JSON.parse(text.slice(start, jsonEnd(text, start))) as [number, number][];
-  if (!loc.transform) return raw;
-  const { scale, translate } = loc.transform;
-  let x = 0;
-  let y = 0;
-  return raw.map(([dx, dy]) => {
-    x += dx;
-    y += dy;
-    return [x * scale[0] + translate[0], y * scale[1] + translate[1]];
-  });
-}
-
-function ringFromArcs(text: string, loc: Located, arcs: number[], cache: Map<number, [number, number][]>): [number, number][] {
-  const ring: [number, number][] = [];
-  for (const a of arcs) {
-    const idx = a < 0 ? ~a : a;
-    if (!cache.has(idx)) cache.set(idx, decodeArc(text, loc, idx));
-    let pts = cache.get(idx)!;
-    if (a < 0) pts = [...pts].reverse();
-    ring.push(...(ring.length ? pts.slice(1) : pts));
-  }
-  return ring;
-}
-
 /** Détecte le système de coordonnées et renvoie un convertisseur vers WGS84. */
 export function toWgs84(sample: [number, number]): ((p: [number, number]) => [number, number]) | null {
   const [x, y] = sample;
@@ -111,41 +45,101 @@ export function toWgs84(sample: [number, number]): ((p: [number, number]) => [nu
   return null;
 }
 
+type Scan = (test: CaptureTest, onValue: (text: string) => void) => Promise<void> | void;
+type Transform = { scale: [number, number]; translate: [number, number] } | null;
+
 /**
- * Renvoie les entités dont les propriétés mentionnent `code`, converties en
- * GeoJSON (WGS84). `diag` reçoit des informations utiles au diagnostic.
+ * Extraction en deux passes, sans jamais garder le fichier entier :
+ *  1. géométries des objets (`objects.*.geometries[i]`) qui mentionnent le code,
+ *     et transformation de quantification ;
+ *  2. lecture des seuls arcs utilisés par ces géométries.
  */
-export function extractTopoJson(text: string, code: string, diag: string[] = []): GeoJSON.FeatureCollection {
+async function extractWith(scan: Scan, code: string, diag: string[]): Promise<GeoJSON.FeatureCollection> {
   const out: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
-  const loc = locate(text);
-  if (!loc) {
-    diag.push("tableau « arcs » introuvable");
+  type Geom = { type: string; arcs: number[][] | number[][][]; properties?: Record<string, unknown>; id?: unknown };
+  const geoms: Geom[] = [];
+  let transform: Transform = null;
+  let nGeoms = 0;
+  let kind: "geom" | "transform" = "geom";
+  await scan(
+    (o, d, k) => {
+      if (o !== "{") return false;
+      if (d === 1 && k[1] === "transform") return ((kind = "transform"), true);
+      if (d === 4 && k[1] === "objects" && k[3] === "geometries") return ((kind = "geom"), true);
+      return false;
+    },
+    (text) => {
+      if (kind === "transform") {
+        try {
+          transform = JSON.parse(text);
+        } catch {
+          /* ignoré */
+        }
+        return;
+      }
+      nGeoms++;
+      if (!text.includes(code) || !/"arcs"/.test(text)) return;
+      try {
+        const g = JSON.parse(text) as Geom;
+        if (g.type === "Polygon" || g.type === "MultiPolygon") geoms.push(g);
+      } catch {
+        /* entité illisible */
+      }
+    },
+  );
+  diag.push(`${nGeoms} géométrie(s) parcourue(s) ; transformation : ${transform ? JSON.stringify(transform) : "aucune"}`);
+  if (!geoms.length) {
+    diag.push(`0 entité pour ${code}`);
     return out;
   }
-  diag.push(`${loc.offsets.length} arcs ; transformation : ${loc.transform ? JSON.stringify(loc.transform) : "aucune"}`);
-  const objects = text.slice(loc.arcsEnd);
-  const re = /\{\s*"(?:type|arcs|properties|id)"\s*:/g;
-  let m: RegExpExecArray | null;
-  const cache = new Map<number, [number, number][]>();
-  let convert: ((p: [number, number]) => [number, number]) | null = null;
-  let lastEnd = 0;
-  while ((m = re.exec(objects))) {
-    if (m.index < lastEnd) continue;
-    const end = jsonEnd(objects, m.index);
-    if (end < 0) break;
-    const chunk = objects.slice(m.index, end);
-    // On ne retient que les géométries élémentaires (pas les collections) contenant le code.
-    if (!chunk.includes(code) || !/"arcs"/.test(chunk) || /"geometries"/.test(chunk)) continue;
-    lastEnd = end;
-    re.lastIndex = end;
-    let g: { type: string; arcs: number[][] | number[][][]; properties?: Record<string, unknown>; id?: unknown };
-    try {
-      g = JSON.parse(chunk);
-    } catch {
-      continue;
+  const needed = new Set<number>();
+  const polysOf = (g: Geom) => (g.type === "Polygon" ? [g.arcs as number[][]] : (g.arcs as number[][][]));
+  for (const g of geoms) for (const rings of polysOf(g)) for (const r of rings) for (const a of r) needed.add(a < 0 ? ~a : a);
+
+  const arcs = new Map<number, [number, number][]>();
+  let idx = -1;
+  let current = -1;
+  await scan(
+    (o, d, k) => {
+      if (o !== "[" || d !== 2 || k[1] !== "arcs") return false;
+      idx++;
+      if (!needed.has(idx)) return false;
+      current = idx;
+      return true;
+    },
+    (text) => {
+      const raw = JSON.parse(text) as [number, number][];
+      const t = transform as Transform;
+      if (!t) {
+        arcs.set(current, raw);
+        return;
+      }
+      let x = 0;
+      let y = 0;
+      arcs.set(
+        current,
+        raw.map(([dx, dy]) => {
+          x += dx;
+          y += dy;
+          return [x * t.scale[0] + t.translate[0], y * t.scale[1] + t.translate[1]] as [number, number];
+        }),
+      );
+    },
+  );
+  diag.push(`${idx + 1} arcs ; ${arcs.size} arc(s) utile(s) lu(s)`);
+
+  const ring = (refs: number[]) => {
+    const pts: [number, number][] = [];
+    for (const a of refs) {
+      let p = arcs.get(a < 0 ? ~a : a) ?? [];
+      if (a < 0) p = [...p].reverse();
+      pts.push(...(pts.length ? p.slice(1) : p));
     }
-    if (g.type !== "Polygon" && g.type !== "MultiPolygon") continue;
-    const polys = (g.type === "Polygon" ? [g.arcs as number[][]] : (g.arcs as number[][][])).map((rings) => rings.map((r) => ringFromArcs(text, loc, r, cache)));
+    return pts;
+  };
+  let convert: ((p: [number, number]) => [number, number]) | null = null;
+  for (const g of geoms) {
+    const polys = polysOf(g).map((rings) => rings.map(ring));
     if (!convert) {
       const sample = polys[0]?.[0]?.[0];
       convert = sample ? toWgs84(sample) : null;
@@ -161,4 +155,14 @@ export function extractTopoJson(text: string, code: string, diag: string[] = [])
   }
   diag.push(`${out.features.length} entité(s) pour ${code}${out.features[0] ? ` ; propriétés : ${JSON.stringify(out.features[0].properties).slice(0, 200)}` : ""}`);
   return out;
+}
+
+/** Entités d'un TopoJSON lu sur disque, en flux (mémoire bornée). */
+export function extractTopoJsonFile(file: string, code: string, diag: string[] = []) {
+  return extractWith((t, v) => scanFile(file, t, v), code, diag);
+}
+
+/** Variante sur un texte en mémoire (petits fichiers, tests). */
+export async function extractTopoJson(text: string, code: string, diag: string[] = []): Promise<GeoJSON.FeatureCollection> {
+  return extractWith((t, v) => scanText(text, t, v), code, diag);
 }

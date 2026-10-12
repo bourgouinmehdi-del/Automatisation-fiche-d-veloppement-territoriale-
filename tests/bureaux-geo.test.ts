@@ -36,7 +36,7 @@ describe("géographie des bureaux de vote", () => {
   });
 });
 
-import { extractTopoJson, toWgs84 } from "@/lib/collectors/topojson-extract";
+import { extractTopoJson, extractTopoJsonFile, toWgs84 } from "@/lib/collectors/topojson-extract";
 
 describe("TopoJSON national (structure du fichier INSEE)", () => {
   // Deux bureaux de 60159 partageant une frontière, un bureau d'une autre commune.
@@ -62,9 +62,9 @@ describe("TopoJSON national (structure du fichier INSEE)", () => {
       },
     },
   };
-  it("décode les seules géométries de la commune, en WGS84", () => {
+  it("décode les seules géométries de la commune, en WGS84", async () => {
     const diag: string[] = [];
-    const fc = extractTopoJson(JSON.stringify(topo), "60159", diag);
+    const fc = await extractTopoJson(JSON.stringify(topo), "60159", diag);
     expect(fc.features).toHaveLength(2);
     const ring = (fc.features[0].geometry as GeoJSON.Polygon).coordinates[0];
     expect(ring.length).toBe(5);
@@ -80,6 +80,25 @@ describe("TopoJSON national (structure du fichier INSEE)", () => {
     expect(r2[r2.length - 1][0]).toBeCloseTo(r2[0][0], 9);
     const n = normalizeBvFeatures(fc, "60159");
     expect(n.features.map((f) => f.properties?.bv)).toEqual(["1", "2"]);
+  });
+  it("lit un fichier en flux, quel que soit l'ordre des clés et le découpage", async () => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const fsp = await import("node:fs/promises");
+    // « objects » avant « arcs » et « transform » à la fin, comme d'autres exports.
+    const reordered = { type: "Topology", objects: topo.objects, arcs: topo.arcs, transform: T };
+    const file = path.join(os.tmpdir(), `topo-${process.pid}.json`);
+    await fsp.writeFile(file, JSON.stringify(reordered, null, 1));
+    const fc = await extractTopoJsonFile(file, "60159");
+    expect(fc.features).toHaveLength(2);
+    // Découpage arbitraire du flux : même résultat.
+    const { JsonScanner, geoJsonFeatures } = await import("@/lib/collectors/json-stream");
+    const gj = JSON.stringify({ type: "FeatureCollection", features: [{ type: "Feature", properties: { c: "60159", s: "a\\\"}" }, geometry: null }, { type: "Feature", properties: { c: "60382" }, geometry: null }] });
+    const got: string[] = [];
+    const sc = new JsonScanner(geoJsonFeatures, (t) => got.push(t));
+    for (let i = 0; i < gj.length; i += 3) sc.feed(gj.slice(i, i + 3));
+    expect(got.map((t) => JSON.parse(t).properties.c)).toEqual(["60159", "60382"]);
+    await fsp.rm(file);
   });
   it("reconnaît les systèmes de coordonnées", () => {
     expect(toWgs84([2.8, 49.4])!([2.8, 49.4])).toEqual([2.8, 49.4]);
