@@ -4,7 +4,8 @@ import * as turf from "@turf/turf";
 import { config } from "../config";
 import type { TrackedHttp } from "./context";
 import { findCol, normBv } from "./elections";
-import { extractTopoJson } from "./topojson-extract";
+import { extractTopoJsonFile } from "./topojson-extract";
+import { fileHead, geoJsonFeatures, scanFile, scanText } from "./json-stream";
 
 /**
  * Noms et géométries des bureaux de vote d'une commune.
@@ -91,48 +92,34 @@ export function normalizeBvFeatures(fc: GeoJSON.FeatureCollection, codeInsee?: s
   return { features: out, labels };
 }
 
-/** Fin de l'objet JSON commençant à `start` (accolades équilibrées, chaînes ignorées). */
-function balancedEnd(text: string, start: number): number {
-  let depth = 0;
-  let inStr = false;
-  for (let i = start; i < text.length; i++) {
-    const ch = text.charCodeAt(i);
-    if (inStr) {
-      if (ch === 92) i++; // antislash
-      else if (ch === 34) inStr = false;
-      continue;
-    }
-    if (ch === 34) inStr = true;
-    else if (ch === 123) depth++;
-    else if (ch === 125 && --depth === 0) return i + 1;
-  }
-  return -1;
-}
-
 /**
- * Extrait d'un GeoJSON national les seules entités mentionnant la commune,
- * sans décoder tout le fichier (évite plusieurs Go de mémoire).
+ * Entités d'un GeoJSON national mentionnant la commune, lues en flux (le
+ * fichier n'est jamais chargé entier en mémoire).
  */
-export function extractFeaturesByText(text: string, codeInsee: string): GeoJSON.FeatureCollection {
+export async function extractFeaturesFromFile(file: string, codeInsee: string): Promise<GeoJSON.FeatureCollection> {
   const features: GeoJSON.Feature[] = [];
-  const re = /\{\s*"type"\s*:\s*"Feature"/g;
-  let m: RegExpExecArray | null;
-  let lastEnd = 0;
-  while ((m = re.exec(text))) {
-    if (m.index < lastEnd) continue;
-    const end = balancedEnd(text, m.index);
-    if (end < 0) break;
-    lastEnd = end;
-    re.lastIndex = end;
-    // Test rapide sur les propriétés avant décodage.
-    const chunk = text.slice(m.index, end);
-    if (!chunk.includes(codeInsee)) continue;
+  await scanFile(file, geoJsonFeatures, (t) => {
+    if (!t.includes(codeInsee)) return;
     try {
-      features.push(JSON.parse(chunk));
+      features.push(JSON.parse(t));
     } catch {
       /* entité illisible */
     }
-  }
+  });
+  return { type: "FeatureCollection", features };
+}
+
+/** Variante sur un texte en mémoire (petits fichiers, tests). */
+export function extractFeaturesByText(text: string, codeInsee: string): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  scanText(text, geoJsonFeatures, (t) => {
+    if (!t.includes(codeInsee)) return;
+    try {
+      features.push(JSON.parse(t));
+    } catch {
+      /* entité illisible */
+    }
+  });
   return { type: "FeatureCollection", features };
 }
 
@@ -162,14 +149,14 @@ async function fromContours(http: TrackedHttp, codeInsee: string): Promise<Burea
       .filter((r) => (/json/i.test(r.format ?? "") || /\.(geo)?json$/i.test(r.url ?? "")) && r.url && (!r.filesize || r.filesize <= maxBytes))
       .sort((x, y) => (x.filesize ?? 0) - (y.filesize ?? 0))[0];
     if (!res?.url) continue;
-    // Téléchargé sur disque d'abord (pas de double copie en mémoire), puis lu une fois.
+    // Téléchargé sur disque, puis lu en flux : seules les entités de la commune
+    // sont gardées en mémoire (le fichier national dépasse 100 Mo).
     const f = await http.file(res.url, { timeoutMs: 900000, retries: 1 });
-    const r = { data: await fs.readFile(f.data, "utf8"), retrievedAt: f.retrievedAt };
     // Le fichier INSEE est un TopoJSON (frontières partagées) ; d'autres sont du GeoJSON.
-    const isTopo = /^\s*\{\s*"type"\s*:\s*"Topology"/.test(r.data.slice(0, 200));
-    const n = normalizeBvFeatures(isTopo ? extractTopoJson(r.data, codeInsee) : extractFeaturesByText(r.data, codeInsee), codeInsee);
+    const isTopo = /"type"\s*:\s*"Topology"/.test(await fileHead(f.data));
+    const n = normalizeBvFeatures(isTopo ? await extractTopoJsonFile(f.data, codeInsee) : await extractFeaturesFromFile(f.data, codeInsee), codeInsee);
     if (n.features.length)
-      return { ...n, points: [], method: "contours", sourceName: `${d.title} (data.gouv.fr)`, url: res.url, retrievedAt: r.retrievedAt };
+      return { ...n, points: [], method: "contours", sourceName: `${d.title} (data.gouv.fr)`, url: res.url, retrievedAt: f.retrievedAt };
   }
   return null;
 }
@@ -344,17 +331,16 @@ export async function diagnoseBureauxGeo(http: TrackedHttp, codeInsee: string): 
     const res = (d.resources ?? []).find((r) => /json/i.test(r.format ?? "") && r.filesize && r.filesize < 250e6);
     if (!res?.url) continue;
     try {
-      const r = await http.text(res.url, { timeoutMs: 900000, retries: 1 });
+      const f = await http.file(res.url, { timeoutMs: 900000, retries: 1 });
+      const head = await fileHead(f.data);
       const diag: string[] = [];
-      const isTopo = /"type"\s*:\s*"Topology"/.test(r.data.slice(0, 200));
-      const fc = isTopo ? extractTopoJson(r.data, codeInsee, diag) : extractFeaturesByText(r.data, codeInsee);
-      lines.push(`contours « ${res.title} » (${isTopo ? "TopoJSON" : "GeoJSON"}) : début du fichier = ${r.data.slice(0, 120).replace(/\s+/g, " ")}`);
+      const isTopo = /"type"\s*:\s*"Topology"/.test(head);
+      const fc = isTopo ? await extractTopoJsonFile(f.data, codeInsee, diag) : await extractFeaturesFromFile(f.data, codeInsee);
+      lines.push(`contours « ${res.title} » (${isTopo ? "TopoJSON" : "GeoJSON"}) : début du fichier = ${head.slice(0, 120).replace(/\s+/g, " ")}`);
       for (const d2 of diag) lines.push(`  ${d2}`);
       const n = normalizeBvFeatures(fc, codeInsee);
       lines.push(`  après filtrage sur la commune : ${n.features.length} bureau(x) — ${[...n.labels.keys()].slice(0, 10).join(", ")}`);
       lines.push(`  entités mentionnant ${codeInsee} : ${fc.features.length} ; propriétés de la 1re : ${JSON.stringify(fc.features[0]?.properties ?? {}).slice(0, 300)}`);
-      const idx = r.data.indexOf(codeInsee);
-      if (idx >= 0) lines.push(`  contexte de la 1re occurrence : …${r.data.slice(Math.max(0, idx - 150), idx + 100).replace(/\s+/g, " ")}…`);
     } catch (e) {
       lines.push(`contours « ${res.title} » : ${e instanceof Error ? e.message : e}`);
     }

@@ -97,14 +97,14 @@ export default function Generation({ params }: { params: Promise<{ id: string }>
           <span className="font-semibold">{last?.label ?? "Démarrage…"}</span>
           <span>{pct} %</span>
         </div>
-        <div className="h-2 overflow-hidden rounded bg-[#e7e6e2]" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className="h-2 overflow-hidden rounded bg-[var(--line)]" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
           <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${pct}%` }} />
         </div>
         <ol className="mt-5 space-y-1 text-sm">
           {events.map((e, i) => (
             <li key={i} className="flex justify-between gap-4">
               <span className={i === events.length - 1 && status === "running" ? "font-semibold" : "text-[var(--ink-2)]"}>
-                {i < events.length - 1 || status !== "running" ? "✓ " : "… "}
+                {i < events.length - 1 || status === "done" ? "✓ " : status === "running" ? "… " : "✗ "}
                 {e.label}
               </span>
               <span className="tabular-nums text-[var(--muted)]">{((new Date(e.at).getTime() - start) / 1000).toFixed(0)} s</span>
@@ -112,13 +112,14 @@ export default function Generation({ params }: { params: Promise<{ id: string }>
           ))}
         </ol>
         {(status === "interrupted" || status === "unknown") && (
-          <div className="mt-4 rounded bg-[#fff4e0] p-3 text-sm text-[#7a4b00]">
+          <div className="mt-4 rounded border border-[var(--mark)] bg-[var(--mark-soft)] p-3 text-sm text-[var(--danger)]">
             <p className="mb-2 font-semibold">
-              {status === "interrupted" ? "La génération a été interrompue : le serveur a redémarré en cours de route." : "Cette génération n'est plus suivie par le serveur (redémarrage probable)."}
+              {status === "interrupted" ? "La génération a été interrompue : le serveur a redémarré" : "Cette génération n'est plus suivie par le serveur (redémarrage probable)"}
+              {last ? ` pendant l'étape « ${last.label} ».` : "."}
             </p>
             <p className="mb-3">
-              Cause la plus fréquente : mémoire insuffisante sur l&apos;hébergement (prévoir au moins 1 à 2 Go). Les données déjà téléchargées sont
-              conservées en cache si un volume persistant est monté : une relance va plus vite.
+              Cause la plus fréquente : mémoire insuffisante sur l&apos;hébergement. Les données déjà téléchargées sont conservées en cache si un
+              volume persistant est monté : une relance va plus vite. Si le problème se répète à la même étape, signalez-la.
             </p>
             <button type="button" className="btn" onClick={relaunch} disabled={relaunching}>
               {relaunching ? "Relance…" : "Relancer la génération"}

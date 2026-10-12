@@ -1,7 +1,8 @@
 import proj4 from "proj4";
 import type { TrackedHttp } from "./context";
 import { clean, findResource, num, tabular } from "./datagouv";
-import { zipCsvRows, zipText } from "./zip";
+import { JsonScanner, geoJsonFeatures } from "./json-stream";
+import { zipCsvRows, zipLines } from "./zip";
 
 /**
  * Quartiers infracommunaux : quartiers prioritaires de la politique de la
@@ -128,21 +129,27 @@ export async function qpvContours(http: TrackedHttp, codes: string[]): Promise<{
   const res = await findResource(http, QUARTIERS_SOURCES.qpvDataset, /2024.*geojson/i, QUARTIERS_SOURCES.qpvGeojsonFallback);
   if (!res?.url) throw new Error("Contours des QPV 2024 introuvables");
   const f = await http.file(res.url, { timeoutMs: 300000 });
-  const files = await zipText(f.data, (n) => /\.(geo)?json$/i.test(n));
   const want = new Set(codes);
   const geoms = new Map<string, GeoJSON.Geometry>();
-  for (const { text } of files) {
-    let fc: GeoJSON.FeatureCollection;
-    try {
-      fc = JSON.parse(text);
-    } catch {
-      continue;
-    }
-    for (const ft of fc.features ?? []) {
-      const code = Object.values(ft.properties ?? {}).find((v) => typeof v === "string" && want.has(v)) as string | undefined;
-      if (code && ft.geometry && !geoms.has(code)) geoms.set(code, toWgs84(ft.geometry));
-    }
-  }
+  // Lecture en flux de l'archive : seules les entités des QPV demandés sont décodées.
+  const scanners = new Map<string, JsonScanner>();
+  await zipLines(f.data, (n) => /\.(geo)?json$/i.test(n), (name, line) => {
+    if (!scanners.has(name))
+      scanners.set(
+        name,
+        new JsonScanner(geoJsonFeatures, (t) => {
+          if (!codes.some((c) => t.includes(c))) return;
+          try {
+            const ft = JSON.parse(t) as GeoJSON.Feature;
+            const code = Object.values(ft.properties ?? {}).find((v) => typeof v === "string" && want.has(v)) as string | undefined;
+            if (code && ft.geometry && !geoms.has(code)) geoms.set(code, toWgs84(ft.geometry));
+          } catch {
+            /* entité illisible */
+          }
+        }),
+      );
+    scanners.get(name)!.feed(line + "\n");
+  });
   return { geoms, url: res.url, retrievedAt: f.retrievedAt };
 }
 

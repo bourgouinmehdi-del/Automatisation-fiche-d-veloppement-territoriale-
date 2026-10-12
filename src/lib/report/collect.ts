@@ -111,6 +111,7 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
     "risques",
     "elections",
     "bureaux",
+    "bureaux_geo",
     "quartiers",
     "municipales",
     "services",
@@ -446,6 +447,7 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
       { theme: "elections", label: `Résultats par bureau de vote — ${e.label}` },
     );
   }
+  if (c.bureaux.length) step("bureaux_geo", "Contours et libellés des bureaux de vote");
   if (c.bureaux.length)
     await ctx.step(
       "bureaux_geo",
