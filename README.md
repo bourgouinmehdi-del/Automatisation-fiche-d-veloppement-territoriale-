@@ -82,6 +82,10 @@ Produit `<id>.pdf`, `.docx`, `.html`, `.json`, `-indicateurs.csv`, `-series.csv`
 | `INSEE_MIN_INTERVAL_MS` | `2100` | espacement des requêtes INSEE (limite 30/min) |
 | `OVERPASS_URL` | overpass-api.de | instance Overpass |
 | `CHROMIUM_PATH` | auto | exécutable pour l'export PDF |
+| `GENERATION_CONCURRENCY` | 1 | générations simultanées (les suivantes attendent leur tour) |
+| `HEAVY_CONCURRENCY` | 2 | fichiers nationaux traités en même temps ; attente automatique au-delà de 60 % de la mémoire |
+| `DOWNLOAD_STALL_MS` | 120000 | abandon puis nouvel essai d'un téléchargement bloqué |
+| `MEMORY_LIMIT_MB` | auto | limite mémoire, si elle n'est pas lue dans le conteneur |
 | `LLM_PROVIDER` | `none` | `anthropic` pour la reformulation assistée (facultatif) |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | — | clé et modèle si `LLM_PROVIDER=anthropic` |
 
@@ -99,6 +103,8 @@ Chaque rapport commence par une **fiche d'action** rédigée sur le modèle des 
 5. **Actions recommandées**, regroupées comme dans les fiches de référence : porte-à-porte (bureaux prioritaires, adresse du lieu de vote), abstentionnistes et inscription, marchés (horaires OpenStreetMap), gares (fréquentation SNCF), supermarchés, sorties de collèges et lycées, implantation ; encadré d'accessibilité et tableau des lieux d'action avec le bureau le plus proche.
 
 Les textes acceptent une mise en évidence minimale (`**gras**`), rendue dans l'interface, le PDF et le DOCX, et retirée des exports CSV.
+
+**Vitesse et mémoire** : les sources indépendantes sont interrogées en parallèle ; l'INSEE reste séquentiel (limite de débit). Les fichiers nationaux (contours des bureaux de vote, BPE, GTFS, IRIS, résultats électoraux) sont lus en flux et leurs extraits départementaux ou communaux sont gardés sur disque (`data/cache/extracts/`, 1 à 30 jours selon la source) : la fiche suivante dans le même département les réutilise sans relire le fichier national. Un extrait incomplet (sous-source en panne) n'est pas mis en cache. Sur Railway, monter un **volume persistant** sur `/data` pour que ce cache survive aux redéploiements. La page de progression et les journaux du serveur indiquent la mémoire utilisée à chaque étape.
 
 **Export court** : bouton « PDF fiche d'action » (ou `…/export/pdf?fiche=1`, et `<id>-fiche-action.pdf` en ligne de commande) — la fiche d'action seule, quelques pages, comme le document de référence.
 

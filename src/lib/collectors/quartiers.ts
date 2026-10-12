@@ -2,6 +2,7 @@ import proj4 from "proj4";
 import type { TrackedHttp } from "./context";
 import { clean, findResource, num, tabular } from "./datagouv";
 import { JsonScanner, geoJsonFeatures } from "./json-stream";
+import { cachedExtract, heavyLane } from "../runtime";
 import { zipCsvRows, zipLines } from "./zip";
 
 /**
@@ -215,7 +216,14 @@ export async function qpvStats(http: TrackedHttp, codes: string[], notes: string
   return { stats, urls };
 }
 
-export async function collectQpv(http: TrackedHttp, codeInsee: string): Promise<QuartiersResult> {
+const complete = (r: QuartiersResult) => !r.notes.some((n) => /indisponible/i.test(n));
+
+/** QPV d'une commune : 30 jours sur disque (sauf si une sous-source était en panne). */
+export function collectQpv(http: TrackedHttp, codeInsee: string): Promise<QuartiersResult> {
+  return cachedExtract(`qpv|${codeInsee}`, 24 * 30, () => heavyLane.run(() => collectQpvFresh(http, codeInsee)), complete);
+}
+
+async function collectQpvFresh(http: TrackedHttp, codeInsee: string): Promise<QuartiersResult> {
   const notes: string[] = [];
   const l = await listQpv(http, codeInsee);
   if (!l.list.length) return { quartiers: [], urls: [l.url], retrievedAt: l.retrievedAt, notes };
@@ -298,7 +306,12 @@ export async function irisStats(http: TrackedHttp, codeInsee: string, notes: str
   return { stats, urls };
 }
 
-export async function collectIris(http: TrackedHttp, codeInsee: string): Promise<QuartiersResult> {
+/** IRIS d'une commune : 30 jours sur disque (sauf si une sous-source était en panne). */
+export function collectIris(http: TrackedHttp, codeInsee: string): Promise<QuartiersResult> {
+  return cachedExtract(`iris|${codeInsee}`, 24 * 30, () => heavyLane.run(() => collectIrisFresh(http, codeInsee)), complete);
+}
+
+async function collectIrisFresh(http: TrackedHttp, codeInsee: string): Promise<QuartiersResult> {
   const notes: string[] = [];
   const c = await irisContours(http, codeInsee);
   // Commune non découpée en IRIS : un seul « IRIS » égal à la commune.

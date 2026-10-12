@@ -9,7 +9,38 @@ interface Ev {
   done: number;
   total: number;
   status: string;
+  mem?: number;
   at: string;
+}
+
+/** Étapes séquentielles : terminées dès qu'un événement plus récent arrive. */
+const SEQUENTIAL = new Set(["identite", "attente", "collecte", "assemblage", "analyse", "redaction"]);
+
+interface Row {
+  step: string;
+  label: string;
+  start: number;
+  end: number | null;
+}
+
+/** Regroupe les événements par étape (les étapes de collecte tournent en parallèle). */
+function rows(events: Ev[], jobDone: boolean): Row[] {
+  const out = new Map<string, Row>();
+  events.forEach((e, i) => {
+    const t = new Date(e.at).getTime();
+    const r = out.get(e.step) ?? { step: e.step, label: e.label, start: t, end: null };
+    if (e.status === "done") r.end = t;
+    out.set(e.step, r);
+    // Une étape séquentielle se termine quand l'événement suivant arrive.
+    const prev = events[i - 1];
+    if (prev && SEQUENTIAL.has(prev.step) && prev.step !== e.step) {
+      const pr = out.get(prev.step);
+      if (pr && pr.end == null) pr.end = t;
+    }
+  });
+  const list = [...out.values()].filter((r) => r.step !== "termine");
+  if (jobDone) list.forEach((r) => (r.end ??= r.start));
+  return list;
 }
 
 export default function Generation({ params }: { params: Promise<{ id: string }> }) {
@@ -82,8 +113,13 @@ export default function Generation({ params }: { params: Promise<{ id: string }>
   };
 
   const last = events[events.length - 1];
-  const pct = last ? Math.round((100 * last.done) / last.total) : 0;
+  const pct = events.length ? Math.round((100 * Math.max(...events.map((e) => e.done))) / last.total) : 0;
   const start = events[0] ? new Date(events[0].at).getTime() : 0;
+  const list = rows(events, status === "done");
+  const running = list.filter((r) => r.end == null);
+  const memNow = [...events].reverse().find((e) => e.mem != null)?.mem;
+  const memMax = Math.max(0, ...events.map((e) => e.mem ?? 0));
+  const failed = status === "interrupted" || status === "unknown" || status === "error";
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
@@ -94,28 +130,37 @@ export default function Generation({ params }: { params: Promise<{ id: string }>
       </p>
       <div className="card p-5">
         <div className="mb-2 flex justify-between text-sm">
-          <span className="font-semibold">{last?.label ?? "Démarrage…"}</span>
+          <span className="font-semibold">
+            {!last ? "Démarrage…" : running.length > 1 ? `${running.length} étapes en cours` : (running[0]?.label ?? last.label)}
+          </span>
           <span>{pct} %</span>
         </div>
         <div className="h-2 overflow-hidden rounded bg-[var(--line)]" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
           <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${pct}%` }} />
         </div>
         <ol className="mt-5 space-y-1 text-sm">
-          {events.map((e, i) => (
-            <li key={i} className="flex justify-between gap-4">
-              <span className={i === events.length - 1 && status === "running" ? "font-semibold" : "text-[var(--ink-2)]"}>
-                {i < events.length - 1 || status === "done" ? "✓ " : status === "running" ? "… " : "✗ "}
-                {e.label}
+          {list.map((r) => (
+            <li key={r.step} className="flex justify-between gap-4">
+              <span className={r.end == null ? "font-semibold" : "text-[var(--ink-2)]"}>
+                {r.end != null ? "✓ " : failed ? "✗ " : "… "}
+                {r.label}
               </span>
-              <span className="tabular-nums text-[var(--muted)]">{((new Date(e.at).getTime() - start) / 1000).toFixed(0)} s</span>
+              <span className="tabular-nums text-[var(--muted)]">
+                {r.end != null ? `${Math.max(0, (r.end - r.start) / 1000).toFixed(0)} s` : `depuis ${((r.start - start) / 1000).toFixed(0)} s`}
+              </span>
             </li>
           ))}
         </ol>
+        {memNow != null && (
+          <p className="mt-3 text-xs text-[var(--muted)]">
+            Mémoire du serveur : {memNow} Mo (maximum pendant la génération : {memMax} Mo)
+          </p>
+        )}
         {(status === "interrupted" || status === "unknown") && (
           <div className="mt-4 rounded border border-[var(--mark)] bg-[var(--mark-soft)] p-3 text-sm text-[var(--danger)]">
             <p className="mb-2 font-semibold">
               {status === "interrupted" ? "La génération a été interrompue : le serveur a redémarré" : "Cette génération n'est plus suivie par le serveur (redémarrage probable)"}
-              {last ? ` pendant l'étape « ${last.label} ».` : "."}
+              {running.length ? ` pendant : ${running.map((r) => `« ${r.label} »`).join(", ")}.` : "."}
             </p>
             <p className="mb-3">
               Cause la plus fréquente : mémoire insuffisante sur l&apos;hébergement. Les données déjà téléchargées sont conservées en cache si un

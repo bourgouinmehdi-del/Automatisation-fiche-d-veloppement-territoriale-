@@ -1,5 +1,6 @@
 import type { TrackedHttp } from "./context";
 import { splitCsvLine, zipLines } from "./zip";
+import { cachedExtract, heavyLane } from "../runtime";
 
 /**
  * Horaires théoriques SNCF (TER, Intercités, TGV) au format GTFS, publiés par
@@ -61,7 +62,21 @@ async function eachRow(file: string, entry: string, fn: (v: string[], col: (n: s
 
 const ymd = (d: Date) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
 
-export async function collectTimetables(http: TrackedHttp, stations: StationInput[], now = new Date()): Promise<{ stations: StationTimetable[]; url: string; retrievedAt: string }> {
+type Timetables = { stations: StationTimetable[]; url: string; retrievedAt: string };
+
+/** Horaires des gares : 24 h sur disque (le GTFS national change chaque semaine). */
+export function collectTimetables(http: TrackedHttp, stations: StationInput[], now = new Date()): Promise<Timetables> {
+  const key = `gtfs|${now.toISOString().slice(0, 10)}|${stations.map((s) => JSON.stringify(s)).join("|")}`;
+  return cachedExtract(key.length > 160 ? `gtfs|${now.toISOString().slice(0, 10)}|${hash(key)}` : key, 24, () => heavyLane.run(() => collectTimetablesFresh(http, stations, now)));
+}
+
+const hash = (s: string) => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+};
+
+async function collectTimetablesFresh(http: TrackedHttp, stations: StationInput[], now: Date): Promise<Timetables> {
   if (!stations.length) return { stations: [], url: GTFS_URL, retrievedAt: new Date().toISOString() };
   const f = await http.file(GTFS_URL, { timeoutMs: 1800000, retries: 1 });
   const file = f.data;

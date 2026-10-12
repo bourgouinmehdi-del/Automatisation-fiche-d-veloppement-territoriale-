@@ -6,6 +6,7 @@ import type { TrackedHttp } from "./context";
 import { findCol, normBv } from "./elections";
 import { extractTopoJsonFile } from "./topojson-extract";
 import { fileHead, geoJsonFeatures, scanFile, scanText } from "./json-stream";
+import { cachedExtract, heavyLane } from "../runtime";
 
 /**
  * Noms et géométries des bureaux de vote d'une commune.
@@ -280,7 +281,8 @@ export async function collectBureauxGeo(http: TrackedHttp, codeInsee: string): P
   let contours: BureauGeo | null = null;
   if (!user) {
     try {
-      contours = await fromContours(http, codeInsee);
+      // Contours : 30 jours sur disque par commune (le fichier national n'est relu qu'en cas d'absence).
+      contours = await cachedExtract(`bvgeo|contours|${codeInsee}`, 24 * 30, () => heavyLane.run(() => fromContours(http, codeInsee)), (v) => !!v);
     } catch {
       http.notes.push("Contours de bureaux de vote indisponibles");
     }
@@ -288,12 +290,13 @@ export async function collectBureauxGeo(http: TrackedHttp, codeInsee: string): P
   // Libellés et lieux de vote : complètent les contours (ou s'y substituent).
   let reu: BureauGeo | null = null;
   try {
-    reu = await fromReu(http, codeInsee);
+    reu = await cachedExtract(`bvgeo|reu|${codeInsee}`, 24 * 7, () => fromReu(http, codeInsee), (v) => !!v);
   } catch {
     http.notes.push("Table des bureaux (REU) indisponible");
   }
-  const base = user ?? contours;
-  if (!base) return reu;
+  // Copie : les objets en cache ne doivent pas être modifiés d'une fiche à l'autre.
+  const base = user ?? (contours ? structuredClone(contours) : null);
+  if (!base) return reu ? structuredClone(reu) : null;
   if (reu) {
     for (const [bv, l] of reu.labels) base.labels.set(bv, l);
     for (const f of base.features) if (reu.labels.has(String(f.properties?.bv))) f.properties = { ...f.properties, label: reu.labels.get(String(f.properties?.bv)) };

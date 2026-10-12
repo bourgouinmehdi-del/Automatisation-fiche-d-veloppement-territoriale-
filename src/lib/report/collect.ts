@@ -15,20 +15,52 @@ import {
 } from "../collectors/admin";
 import { CollectContext } from "../collectors/context";
 import { collectDvf, DvfStat } from "../collectors/dvf";
-import { BureauResult, collectBureaux, collectElection, ELECTIONS, ElectionConfig, ElectionResult } from "../collectors/elections";
+import {
+  BureauResult,
+  collectBureaux,
+  collectElection,
+  ELECTIONS,
+  ElectionConfig,
+  ElectionResult,
+} from "../collectors/elections";
 import { BureauGeo, collectBureauxGeo } from "../collectors/bureaux-geo";
 import { InternalData, loadInternalData } from "../collectors/interne";
 import { collectIris, collectQpv, Quartier } from "../collectors/quartiers";
-import { collectMunicipales, collectMunicipalesDepartement, MunicipalResult } from "../collectors/municipales";
+import {
+  collectMunicipales,
+  collectMunicipalesDepartement,
+  MunicipalResult,
+} from "../collectors/municipales";
 import { BpeResult, BPE_VINTAGE, collectBpe } from "../collectors/bpe";
 import { collectTimetables, StationTimetable } from "../collectors/gtfs";
 import { collectRoutes, Route } from "../collectors/routes";
 import { config } from "../config";
+import { rssMb } from "../runtime";
 import { collectInsee, InseeResult } from "../collectors/insee-indicators";
-import { collectCycleways, collectEquipments, collectNearest } from "../collectors/osm";
-import { collectEntreprises, collectRisques, collectSchools, collectStations, Employer, RisquesResult, School, Station } from "../collectors/public-apis";
+import {
+  collectCycleways,
+  collectEquipments,
+  collectNearest,
+} from "../collectors/osm";
+import {
+  collectEntreprises,
+  collectRisques,
+  collectSchools,
+  collectStations,
+  Employer,
+  RisquesResult,
+  School,
+  Station,
+} from "../collectors/public-apis";
 import { comparableCommunes, density, haversineKm } from "../analysis/stats";
-import type { CommuneInfo, Focus, GeoRef, ProgressEvent, ReportQuery, SourceRef } from "../types";
+import type {
+  CommuneInfo,
+  Focus,
+  GeoRef,
+  ProgressEvent,
+  ReportQuery,
+  SourceRef,
+} from "../types";
 
 /**
  * Collecte brute : orchestre les connecteurs et rassemble leurs résultats
@@ -49,40 +81,83 @@ export interface Collected {
   commune: CommuneInfo;
   focus: Focus;
   geos: GeoSet;
-  perimeter: { label: string; communes: { code: string; nom: string; population: number | null }[] };
+  perimeter: {
+    label: string;
+    communes: { code: string; nom: string; population: number | null }[];
+  };
   /** Populations (référentiel embarqué) des territoires de référence. */
   populations: { geo: GeoRef; value: number; communes: number }[];
   popSource: SourceRef;
   geoSource?: SourceRef;
   depFeatures?: GeoJSON.FeatureCollection;
   depContour?: GeoJSON.Feature | null;
-  neighbours: { code: string; nom: string; population: number | null; surfaceKm2: number | null }[];
-  poles: { code: string; nom: string; population: number; distanceKm: number }[];
+  neighbours: {
+    code: string;
+    nom: string;
+    population: number | null;
+    surfaceKm2: number | null;
+  }[];
+  poles: {
+    code: string;
+    nom: string;
+    population: number;
+    distanceKm: number;
+  }[];
   /** Distance à vol d'oiseau à Paris (km). */
   parisKm?: number | null;
   polesSource?: SourceRef;
   insee: { geo: GeoRef; result: InseeResult }[];
   perimeterInsee: { code: string; nom: string; result: InseeResult }[];
-  comparables: { code: string; nom: string; population: number | null; densite: number | null; departement: string; result?: InseeResult }[];
+  comparables: {
+    code: string;
+    nom: string;
+    population: number | null;
+    densite: number | null;
+    departement: string;
+    result?: InseeResult;
+  }[];
   dvf?: { stats: DvfStat[]; nSales: number; source: SourceRef };
-  equipments?: { features: GeoJSON.Feature<GeoJSON.Point>[]; source: SourceRef };
-  cycleways?: { lines: GeoJSON.Feature<GeoJSON.LineString>[]; source: SourceRef };
-  nearest?: { label: string; name: string; distanceKm: number; lon: number; lat: number }[];
+  equipments?: {
+    features: GeoJSON.Feature<GeoJSON.Point>[];
+    source: SourceRef;
+  };
+  cycleways?: {
+    lines: GeoJSON.Feature<GeoJSON.LineString>[];
+    source: SourceRef;
+  };
+  nearest?: {
+    label: string;
+    name: string;
+    distanceKm: number;
+    lon: number;
+    lat: number;
+  }[];
   nearestSource?: SourceRef;
   schools?: { schools: School[]; source: SourceRef };
   stations?: { stations: Station[]; source: SourceRef };
-  entreprises?: { bySection: { section: string; label: string; count: number }[]; employers: Employer[]; source: SourceRef };
+  entreprises?: {
+    bySection: { section: string; label: string; count: number }[];
+    employers: Employer[];
+    source: SourceRef;
+  };
   risques?: { data: RisquesResult; source: SourceRef };
   elections: { results: ElectionResult[]; source: SourceRef }[];
   /** Résultats par bureau de vote, par scrutin. */
-  bureaux: { election: ElectionConfig; results: BureauResult[]; source: SourceRef }[];
+  bureaux: {
+    election: ElectionConfig;
+    results: BureauResult[];
+    source: SourceRef;
+  }[];
   bvGeo?: BureauGeo & { source: SourceRef };
   interne: InternalData;
   /** Quartiers prioritaires et IRIS de la commune. */
   quartiers?: { qpv: Quartier[]; iris: Quartier[]; sources: SourceRef[] };
   /** Municipales 2026 (commune) et nuance de la majorité municipale (communes du département). */
   municipal?: MunicipalResult & { source: SourceRef };
-  municipalDep?: { byCommune: Map<string, { nuance: string; tete: string; pct: number }>; source: SourceRef };
+  municipalDep?: {
+    byCommune: Map<string, { nuance: string; tete: string; pct: number }>;
+    source: SourceRef;
+  };
   bpe?: BpeResult & { source: SourceRef };
   timetables?: { stations: StationTimetable[]; source: SourceRef };
   routes?: { routes: Route[]; source: SourceRef };
@@ -94,79 +169,182 @@ export interface Collected {
 
 type Progress = (e: Omit<ProgressEvent, "at">) => void;
 
-export async function collect(query: ReportQuery, progress: Progress = () => {}): Promise<Collected> {
+/** Ordre canonique des étapes (progression et journal de collecte). */
+const STEP_ORDER = [
+  "identite",
+  "geographie",
+  "insee",
+  "perimetre",
+  "comparables",
+  "immobilier",
+  "equipements",
+  "education",
+  "transports",
+  "gtfs",
+  "entreprises",
+  "risques",
+  "elections",
+  "bureaux",
+  "bureaux_geo",
+  "quartiers",
+  "municipales",
+  "bpe",
+  "services",
+  "acces",
+];
+
+/** Nombre d'étapes suivies (identité, géographie, 17 étapes parallèles) + 3 étapes d'analyse. */
+export const PROGRESS_TOTAL = 2 + 17 + 3;
+
+export async function collect(
+  query: ReportQuery,
+  progress: Progress = () => {},
+): Promise<Collected> {
   const ctx = new CollectContext();
   const now = new Date().toISOString();
-  const steps = [
-    "identite",
-    "geographie",
-    "insee",
-    "perimetre",
-    "comparables",
-    "immobilier",
-    "equipements",
-    "education",
-    "transports",
-    "entreprises",
-    "risques",
-    "elections",
-    "bureaux",
-    "bureaux_geo",
-    "quartiers",
-    "municipales",
-    "services",
-    "acces",
-  ];
+  const log = (m: string) =>
+    console.log(`[génération ${query.codeInsee}] ${m}`);
   let done = 0;
-  const step = (id: string, label: string) => progress({ step: id, label, done: done++, total: steps.length + 3, status: "running" });
+  const total = PROGRESS_TOTAL;
+  const mem = () => rssMb();
+  const step = (id: string, label: string) => {
+    log(`début ${id} (mémoire ${mem()} Mo)`);
+    progress({ step: id, label, done, total, status: "running", mem: mem() });
+  };
+  /** Étape suivie : événement de début, puis de fin (les étapes tournent en parallèle). */
+  const track = async (id: string, label: string, fn: () => Promise<void>) => {
+    step(id, label);
+    const t0 = Date.now();
+    try {
+      await fn();
+    } finally {
+      done++;
+      log(
+        `fin ${id} en ${((Date.now() - t0) / 1000).toFixed(1)} s (mémoire ${mem()} Mo)`,
+      );
+      progress({ step: id, label, done, total, status: "done", mem: mem() });
+    }
+  };
 
   /* 1. Identité (référentiel embarqué, sans réseau) */
-  step("identite", "Identification de la commune et de ses périmètres administratifs");
+  step(
+    "identite",
+    "Identification de la commune et de ses périmètres administratifs",
+  );
   const commune = communeFromReferentiel(query.codeInsee);
   if (!commune) throw new Error(`Code INSEE inconnu : ${query.codeInsee}`);
-  const popSource = ctx.ref("cog", "https://github.com/etalab/decoupage-administratif", now, { vintage: POPULATION_VINTAGE });
-  ctx.runs.push({ sourceId: "cog", name: "Découpage administratif (référentiel embarqué)", step: "identite", status: "ok", durationMs: 0, requests: 0, fromCache: 0, retrievedAt: now });
+  const popSource = ctx.ref(
+    "cog",
+    "https://github.com/etalab/decoupage-administratif",
+    now,
+    { vintage: POPULATION_VINTAGE },
+  );
+  ctx.runs.push({
+    sourceId: "cog",
+    name: "Découpage administratif (référentiel embarqué)",
+    step: "identite",
+    status: "ok",
+    durationMs: 0,
+    requests: 0,
+    fromCache: 0,
+    retrievedAt: now,
+  });
 
   const geos: GeoSet = {
     commune: { level: "commune", code: commune.code, name: commune.nom },
-    epci: commune.epci ? { level: "epci", code: commune.epci.code, name: commune.epci.nom } : null,
-    departement: { level: "departement", code: commune.departement.code, name: commune.departement.nom },
-    region: { level: "region", code: commune.region.code, name: commune.region.nom },
+    epci: commune.epci
+      ? { level: "epci", code: commune.epci.code, name: commune.epci.nom }
+      : null,
+    departement: {
+      level: "departement",
+      code: commune.departement.code,
+      name: commune.departement.nom,
+    },
+    region: {
+      level: "region",
+      code: commune.region.code,
+      name: commune.region.nom,
+    },
     france: { level: "france", code: "FR", name: "France" },
   };
 
   // Périmètre d'analyse
-  let focus: Focus = { level: "commune", code: commune.code, name: commune.nom };
-  let perimeter = { label: commune.nom, communes: [{ code: commune.code, nom: commune.nom, population: commune.population }] };
+  let focus: Focus = {
+    level: "commune",
+    code: commune.code,
+    name: commune.nom,
+  };
+  let perimeter = {
+    label: commune.nom,
+    communes: [
+      { code: commune.code, nom: commune.nom, population: commune.population },
+    ],
+  };
   if (query.scope === "epci" && commune.epci) {
     focus = { level: "epci", code: commune.epci.code, name: commune.epci.nom };
-    perimeter = { label: commune.epci.nom, communes: epciMembers(commune.epci.code) };
+    perimeter = {
+      label: commune.epci.nom,
+      communes: epciMembers(commune.epci.code),
+    };
   } else if (query.scope === "departement") {
-    focus = { level: "departement", code: commune.departement.code, name: commune.departement.nom };
-    perimeter = { label: commune.departement.nom, communes: departementCommunes(commune.departement.code) };
+    focus = {
+      level: "departement",
+      code: commune.departement.code,
+      name: commune.departement.nom,
+    };
+    perimeter = {
+      label: commune.departement.nom,
+      communes: departementCommunes(commune.departement.code),
+    };
   } else if (query.scope === "custom" && query.customCommunes?.length) {
     const list = [...new Set([commune.code, ...query.customCommunes])]
       .map((c) => communeFromReferentiel(c))
       .filter((c): c is CommuneInfo => !!c)
       .map((c) => ({ code: c.code, nom: c.nom, population: c.population }));
-    perimeter = { label: `Territoire personnalisé (${list.length} communes)`, communes: list };
+    perimeter = {
+      label: `Territoire personnalisé (${list.length} communes)`,
+      communes: list,
+    };
   }
 
-  const sum = (arr: { population: number | null }[]) => arr.reduce((s, c) => s + (c.population ?? 0), 0);
+  const sum = (arr: { population: number | null }[]) =>
+    arr.reduce((s, c) => s + (c.population ?? 0), 0);
   const populations: Collected["populations"] = [];
-  populations.push({ geo: geos.commune, value: commune.population ?? NaN, communes: 1 });
+  populations.push({
+    geo: geos.commune,
+    value: commune.population ?? NaN,
+    communes: 1,
+  });
   if (commune.epci && geos.epci) {
     const m = epciMembers(commune.epci.code);
-    populations.push({ geo: geos.epci, value: epciInfo(commune.epci.code)?.populationMunicipale ?? sum(m), communes: m.length });
+    populations.push({
+      geo: geos.epci,
+      value: epciInfo(commune.epci.code)?.populationMunicipale ?? sum(m),
+      communes: m.length,
+    });
   }
   const depC = departementCommunes(commune.departement.code);
-  populations.push({ geo: geos.departement, value: sum(depC), communes: depC.length });
+  populations.push({
+    geo: geos.departement,
+    value: sum(depC),
+    communes: depC.length,
+  });
   const regC = regionCommunes(commune.region.code);
-  populations.push({ geo: geos.region, value: sum(regC), communes: regC.length });
-  const frC = franceCommunes().filter((c) => !/^(975|977|978|986|987|988)/.test(c.code));
+  populations.push({
+    geo: geos.region,
+    value: sum(regC),
+    communes: regC.length,
+  });
+  const frC = franceCommunes().filter(
+    (c) => !/^(975|977|978|986|987|988)/.test(c.code),
+  );
   populations.push({ geo: geos.france, value: sum(frC), communes: frC.length });
   if (query.scope === "custom" && perimeter.communes.length > 1)
-    populations.push({ geo: { level: "commune", code: "CUSTOM", name: perimeter.label }, value: sum(perimeter.communes), communes: perimeter.communes.length });
+    populations.push({
+      geo: { level: "commune", code: "CUSTOM", name: perimeter.label },
+      value: sum(perimeter.communes),
+      communes: perimeter.communes.length,
+    });
 
   const c: Collected = {
     query,
@@ -203,19 +381,38 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
       c.geoSource = ctx.ref("geoapi", e.url, e.retrievedAt);
       const dep = await departementGeo(http, commune.departement.code);
       c.depFeatures = dep.fc ?? undefined;
-      const contour = await departementContour(http, commune.departement.code).catch(() => null);
+      const contour = await departementContour(
+        http,
+        commune.departement.code,
+      ).catch(() => null);
       c.depContour = contour?.feature ?? null;
       if (commune.contour && c.depFeatures) {
         const target = turf.feature(commune.contour as GeoJSON.Polygon);
         const bb = turf.bbox(target);
         for (const f of c.depFeatures.features) {
-          const p = f.properties as { code: string; nom: string; population?: number; surface?: number };
+          const p = f.properties as {
+            code: string;
+            nom: string;
+            population?: number;
+            surface?: number;
+          };
           if (p.code === commune.code || !f.geometry) continue;
           const fb = turf.bbox(f);
-          if (fb[0] > bb[2] || fb[2] < bb[0] || fb[1] > bb[3] || fb[3] < bb[1]) continue;
+          if (fb[0] > bb[2] || fb[2] < bb[0] || fb[1] > bb[3] || fb[3] < bb[1])
+            continue;
           try {
-            if (turf.booleanIntersects(target, f as GeoJSON.Feature<GeoJSON.Polygon>))
-              c.neighbours.push({ code: p.code, nom: p.nom, population: p.population ?? null, surfaceKm2: p.surface != null ? p.surface / 100 : null });
+            if (
+              turf.booleanIntersects(
+                target,
+                f as GeoJSON.Feature<GeoJSON.Polygon>,
+              )
+            )
+              c.neighbours.push({
+                code: p.code,
+                nom: p.nom,
+                population: p.population ?? null,
+                surfaceKm2: p.surface != null ? p.surface / 100 : null,
+              });
           } catch {
             /* géométrie invalide : ignorée */
           }
@@ -227,348 +424,729 @@ export async function collect(query: ReportQuery, progress: Progress = () => {})
       c.polesSource = ctx.ref("geoapi", fc.url, fc.retrievedAt);
       if (commune.centre) {
         c.poles = fc.communes
-          .filter((x) => x.code !== commune.code && (x.population ?? 0) >= 20000 && x.centre)
-          .map((x) => ({ code: x.code, nom: x.nom, population: x.population!, distanceKm: haversineKm(commune.centre!, x.centre!.coordinates) }))
+          .filter(
+            (x) =>
+              x.code !== commune.code &&
+              (x.population ?? 0) >= 20000 &&
+              x.centre,
+          )
+          .map((x) => ({
+            code: x.code,
+            nom: x.nom,
+            population: x.population!,
+            distanceKm: haversineKm(commune.centre!, x.centre!.coordinates),
+          }))
           .filter((x) => x.distanceKm <= 80)
           .sort((a, b) => a.distanceKm - b.distanceKm)
           .slice(0, 10);
       }
       const paris = fc.communes.find((x) => x.code === "75056");
-      if (paris?.centre && commune.centre && commune.code !== "75056") c.parisKm = haversineKm(commune.centre, paris.centre.coordinates);
-      c.parisCentre = (paris?.centre?.coordinates as [number, number] | undefined) ?? null;
+      if (paris?.centre && commune.centre && commune.code !== "75056")
+        c.parisKm = haversineKm(commune.centre, paris.centre.coordinates);
+      c.parisCentre =
+        (paris?.centre?.coordinates as [number, number] | undefined) ?? null;
       // Densités des communes de France (sélection de communes comparables).
       densityByCode = new Map(
-        fc.communes.map((x) => [x.code, density(x.population ?? null, x.surface != null ? x.surface / 100 : null)] as const),
+        fc.communes.map(
+          (x) =>
+            [
+              x.code,
+              density(
+                x.population ?? null,
+                x.surface != null ? x.surface / 100 : null,
+              ),
+            ] as const,
+        ),
       );
     },
     { theme: "identite", label: "Contours, surface, densité et voisinage" },
   );
+  done += 2;
+  progress({
+    step: "geographie",
+    label: "Contours, surfaces et voisinage (geo.api.gouv.fr)",
+    done,
+    total,
+    status: "done",
+    mem: mem(),
+  });
+
+  const enabled = (id: string) => !config.disabledSources.has(id);
 
   /* 3. INSEE */
-  step("insee", "Statistiques INSEE (recensement, revenus) pour le territoire et ses références");
-  const kinds: [GeoRef | null, "COM" | "EPCI" | "DEP" | "REG" | "FRANCE"][] = [
-    [geos.commune, "COM"],
-    [geos.epci, "EPCI"],
-    [geos.departement, "DEP"],
-    [geos.region, "REG"],
-    [geos.france, "FRANCE"],
-  ];
-  for (const [g, kind] of kinds) {
-    if (!g) continue;
-    const res = await ctx.step("insee_melodi", `insee:${g.level}`, (http) => collectInsee(ctx, http, kind, g.code, g), {
-      theme: "demographie",
-      label: `Statistiques INSEE — ${g.name}`,
-    });
-    if (res) c.insee.push({ geo: g, result: res });
-  }
+  const run_insee = async () => {
+    const kinds: [GeoRef | null, "COM" | "EPCI" | "DEP" | "REG" | "FRANCE"][] =
+      [
+        [geos.commune, "COM"],
+        [geos.epci, "EPCI"],
+        [geos.departement, "DEP"],
+        [geos.region, "REG"],
+        [geos.france, "FRANCE"],
+      ];
+    for (const [g, kind] of kinds) {
+      if (!g) continue;
+      const res = await ctx.step(
+        "insee_melodi",
+        `insee:${g.level}`,
+        (http) => collectInsee(ctx, http, kind, g.code, g),
+        {
+          theme: "demographie",
+          label: `Statistiques INSEE — ${g.name}`,
+        },
+      );
+      if (res) c.insee.push({ geo: g, result: res });
+    }
+  };
 
   /* 4. Communes du périmètre (EPCI de la commune ou périmètre personnalisé) */
-  step("perimetre", "Indicateurs des communes du périmètre intercommunal");
-  const perimeterList =
-    query.scope === "custom" ? perimeter.communes : commune.epci ? epciMembers(commune.epci.code) : [];
-  if (perimeterList.length > 1 && perimeterList.length <= 40) {
-    await ctx.step("insee_melodi", "insee:perimetre", async (http) => {
-      for (const m of perimeterList) {
-        const g: GeoRef = { level: "commune", code: m.code, name: m.nom };
-        try {
-          const r = m.code === commune.code ? c.insee.find((x) => x.geo.code === m.code)?.result : await collectInsee(ctx, http, "COM", m.code, g, { datasets: ["DS_FILOSOFI_CC", "DS_RP_LOGEMENT_PRINC"] });
-          if (r) c.perimeterInsee.push({ code: m.code, nom: m.nom, result: r });
-        } catch (e) {
-          http.partial = true;
-          http.notes.push(e instanceof Error ? e.message : String(e));
+  const run_perimetre = async () => {
+    const perimeterList =
+      query.scope === "custom"
+        ? perimeter.communes
+        : commune.epci
+          ? epciMembers(commune.epci.code)
+          : [];
+    if (perimeterList.length > 1 && perimeterList.length <= 40) {
+      await ctx.step("insee_melodi", "insee:perimetre", async (http) => {
+        for (const m of perimeterList) {
+          const g: GeoRef = { level: "commune", code: m.code, name: m.nom };
+          try {
+            const r =
+              m.code === commune.code
+                ? c.insee.find((x) => x.geo.code === m.code)?.result
+                : await collectInsee(ctx, http, "COM", m.code, g, {
+                    datasets: ["DS_FILOSOFI_CC", "DS_RP_LOGEMENT_PRINC"],
+                  });
+            if (r)
+              c.perimeterInsee.push({ code: m.code, nom: m.nom, result: r });
+          } catch (e) {
+            http.partial = true;
+            http.notes.push(e instanceof Error ? e.message : String(e));
+          }
         }
-      }
-      if (!c.perimeterInsee.length) throw new Error(http.notes[0] ?? "Aucune donnée communale obtenue");
-    });
-  } else if (perimeterList.length > 40) {
-    ctx.skip("insee_melodi", "insee:perimetre", "Périmètre de plus de 40 communes : indicateurs communaux non collectés (limite de débit INSEE)");
-  }
+        if (!c.perimeterInsee.length)
+          throw new Error(http.notes[0] ?? "Aucune donnée communale obtenue");
+      });
+    } else if (perimeterList.length > 40) {
+      ctx.skip(
+        "insee_melodi",
+        "insee:perimetre",
+        "Périmètre de plus de 40 communes : indicateurs communaux non collectés (limite de débit INSEE)",
+      );
+    }
+  };
 
   /* 5. Communes comparables */
-  step("comparables", "Sélection et profil de communes comparables");
-  const candidates = franceCommunes()
-    .filter((x) => x.region === commune.region.code)
-    .map((x) => ({ ...x, densite: densityByCode.get(x.code) ?? null }));
-  const targetDens = densityByCode.get(commune.code) ?? null;
-  let comps = comparableCommunes(candidates, commune, 0.3, 40);
-  if (targetDens != null) comps = comps.filter((x) => x.densite == null || (x.densite >= targetDens * 0.5 && x.densite <= targetDens * 2));
-  if (comps.length < 5) {
-    const nat = franceCommunes().map((x) => ({ ...x, densite: densityByCode.get(x.code) ?? null }));
-    comps = comparableCommunes(nat, commune, 0.2, 40).filter((x) => targetDens == null || x.densite == null || (x.densite >= targetDens * 0.5 && x.densite <= targetDens * 2));
-  }
-  c.comparables = comps.slice(0, 8).map((x) => ({ code: x.code, nom: x.nom, population: x.population, densite: x.densite, departement: x.departement }));
-  if (c.comparables.length) {
-    await ctx.step("insee_melodi", "insee:comparables", async (http) => {
-      for (const cp of c.comparables) {
-        try {
-          cp.result = await collectInsee(ctx, http, "COM", cp.code, { level: "commune", code: cp.code, name: cp.nom }, {
-            datasets: ["DS_FILOSOFI_CC", "DS_RP_EMPLOI_LR_PRINC", "DS_RP_LOGEMENT_PRINC"],
-          });
-        } catch (e) {
-          http.partial = true;
-          http.notes.push(e instanceof Error ? e.message : String(e));
+  const run_comparables = async () => {
+    const candidates = franceCommunes()
+      .filter((x) => x.region === commune.region.code)
+      .map((x) => ({ ...x, densite: densityByCode.get(x.code) ?? null }));
+    const targetDens = densityByCode.get(commune.code) ?? null;
+    let comps = comparableCommunes(candidates, commune, 0.3, 40);
+    if (targetDens != null)
+      comps = comps.filter(
+        (x) =>
+          x.densite == null ||
+          (x.densite >= targetDens * 0.5 && x.densite <= targetDens * 2),
+      );
+    if (comps.length < 5) {
+      const nat = franceCommunes().map((x) => ({
+        ...x,
+        densite: densityByCode.get(x.code) ?? null,
+      }));
+      comps = comparableCommunes(nat, commune, 0.2, 40).filter(
+        (x) =>
+          targetDens == null ||
+          x.densite == null ||
+          (x.densite >= targetDens * 0.5 && x.densite <= targetDens * 2),
+      );
+    }
+    c.comparables = comps
+      .slice(0, 8)
+      .map((x) => ({
+        code: x.code,
+        nom: x.nom,
+        population: x.population,
+        densite: x.densite,
+        departement: x.departement,
+      }));
+    if (c.comparables.length) {
+      await ctx.step("insee_melodi", "insee:comparables", async (http) => {
+        for (const cp of c.comparables) {
+          try {
+            cp.result = await collectInsee(
+              ctx,
+              http,
+              "COM",
+              cp.code,
+              { level: "commune", code: cp.code, name: cp.nom },
+              {
+                datasets: [
+                  "DS_FILOSOFI_CC",
+                  "DS_RP_EMPLOI_LR_PRINC",
+                  "DS_RP_LOGEMENT_PRINC",
+                ],
+              },
+            );
+          } catch (e) {
+            http.partial = true;
+            http.notes.push(e instanceof Error ? e.message : String(e));
+          }
         }
-      }
-      if (!c.comparables.some((x) => x.result)) throw new Error(http.notes[0] ?? "Aucune donnée obtenue pour les communes comparables");
-    });
-  }
+        if (!c.comparables.some((x) => x.result))
+          throw new Error(
+            http.notes[0] ??
+              "Aucune donnée obtenue pour les communes comparables",
+          );
+      });
+    }
+  };
 
   /* 6. Marché immobilier */
-  step("immobilier", "Transactions immobilières (DVF)");
-  await ctx.step(
-    "dvf",
-    "immobilier",
-    async (http) => {
-      const d = await collectDvf(http, commune.code, commune.departement.code);
-      c.dvf = { stats: d.stats, nSales: d.nSales, source: ctx.ref("dvf", d.urls[0], d.retrievedAt, { vintage: d.stats.length ? `${d.stats[0].year}-${d.stats[d.stats.length - 1].year}` : undefined }) };
-    },
-    { theme: "immobilier", label: "Prix immobiliers (DVF)" },
-  );
+  const run_immobilier = async () => {
+    await ctx.step(
+      "dvf",
+      "immobilier",
+      async (http) => {
+        const d = await collectDvf(
+          http,
+          commune.code,
+          commune.departement.code,
+        );
+        c.dvf = {
+          stats: d.stats,
+          nSales: d.nSales,
+          source: ctx.ref("dvf", d.urls[0], d.retrievedAt, {
+            vintage: d.stats.length
+              ? `${d.stats[0].year}-${d.stats[d.stats.length - 1].year}`
+              : undefined,
+          }),
+        };
+      },
+      { theme: "immobilier", label: "Prix immobiliers (DVF)" },
+    );
+  };
 
   /* 7. Équipements */
-  step("equipements", "Équipements et services (OpenStreetMap)");
-  await ctx.step(
-    "osm",
-    "equipements",
-    async (http) => {
-      const e = await collectEquipments(http, commune.code);
-      c.equipments = { features: e.features, source: ctx.ref("osm", e.url, e.retrievedAt) };
-      try {
-        const cw = await collectCycleways(http, commune.code);
-        c.cycleways = { lines: cw.lines, source: ctx.ref("osm", cw.url, cw.retrievedAt) };
-      } catch {
-        http.partial = true;
-        http.notes.push("Aménagements cyclables indisponibles");
-      }
-      if (commune.centre) {
+  const run_equipements = async () => {
+    await ctx.step(
+      "osm",
+      "equipements",
+      async (http) => {
+        const e = await collectEquipments(http, commune.code);
+        c.equipments = {
+          features: e.features,
+          source: ctx.ref("osm", e.url, e.retrievedAt),
+        };
         try {
-          const n = await collectNearest(http, commune.centre[0], commune.centre[1]);
-          c.nearestSource = ctx.ref("osm", n.url, n.retrievedAt);
-          const groups: [string, (t: Record<string, string>) => boolean][] = [
-            ["Service d'urgences hospitalières", (t) => t.amenity === "hospital" && t.emergency === "yes"],
-            ["Hôpital ou clinique", (t) => t.amenity === "hospital"],
-            ["Gare ferroviaire", (t) => t.railway === "station"],
-            ["Lycée", (t) => t.amenity === "school" && /3/.test(t["isced:level"] ?? "")],
-            ["Établissement d'enseignement supérieur", (t) => t.amenity === "university"],
-          ];
-          c.nearest = [];
-          for (const [label, pred] of groups) {
-            let best: { name: string; d: number; lon: number; lat: number } | null = null;
-            for (const el of n.elements) {
-              const lat = el.lat ?? el.center?.lat;
-              const lon = el.lon ?? el.center?.lon;
-              if (lat == null || lon == null || !el.tags || !pred(el.tags)) continue;
-              const d = haversineKm(commune.centre!, [lon, lat]);
-              if (!best || d < best.d) best = { name: el.tags.name ?? label, d, lon, lat };
-            }
-            if (best) c.nearest.push({ label, name: best.name, distanceKm: best.d, lon: best.lon, lat: best.lat });
-          }
+          const cw = await collectCycleways(http, commune.code);
+          c.cycleways = {
+            lines: cw.lines,
+            source: ctx.ref("osm", cw.url, cw.retrievedAt),
+          };
         } catch {
           http.partial = true;
-          http.notes.push("Équipements structurants proches indisponibles");
+          http.notes.push("Aménagements cyclables indisponibles");
         }
-      }
-    },
-    { theme: "equipements", label: "Équipements et services (OpenStreetMap)" },
-  );
+        if (commune.centre) {
+          try {
+            const n = await collectNearest(
+              http,
+              commune.centre[0],
+              commune.centre[1],
+            );
+            c.nearestSource = ctx.ref("osm", n.url, n.retrievedAt);
+            const groups: [string, (t: Record<string, string>) => boolean][] = [
+              [
+                "Service d'urgences hospitalières",
+                (t) => t.amenity === "hospital" && t.emergency === "yes",
+              ],
+              ["Hôpital ou clinique", (t) => t.amenity === "hospital"],
+              ["Gare ferroviaire", (t) => t.railway === "station"],
+              [
+                "Lycée",
+                (t) =>
+                  t.amenity === "school" && /3/.test(t["isced:level"] ?? ""),
+              ],
+              [
+                "Établissement d'enseignement supérieur",
+                (t) => t.amenity === "university",
+              ],
+            ];
+            c.nearest = [];
+            for (const [label, pred] of groups) {
+              let best: {
+                name: string;
+                d: number;
+                lon: number;
+                lat: number;
+              } | null = null;
+              for (const el of n.elements) {
+                const lat = el.lat ?? el.center?.lat;
+                const lon = el.lon ?? el.center?.lon;
+                if (lat == null || lon == null || !el.tags || !pred(el.tags))
+                  continue;
+                const d = haversineKm(commune.centre!, [lon, lat]);
+                if (!best || d < best.d)
+                  best = { name: el.tags.name ?? label, d, lon, lat };
+              }
+              if (best)
+                c.nearest.push({
+                  label,
+                  name: best.name,
+                  distanceKm: best.d,
+                  lon: best.lon,
+                  lat: best.lat,
+                });
+            }
+          } catch {
+            http.partial = true;
+            http.notes.push("Équipements structurants proches indisponibles");
+          }
+        }
+      },
+      {
+        theme: "equipements",
+        label: "Équipements et services (OpenStreetMap)",
+      },
+    );
+  };
 
   /* 8. Éducation */
-  step("education", "Établissements scolaires (Annuaire de l'éducation)");
-  await ctx.step(
-    "education",
-    "education",
-    async (http) => {
-      const s = await collectSchools(http, commune.code);
-      c.schools = { schools: s.schools, source: ctx.ref("education", s.url, s.retrievedAt) };
-    },
-    { theme: "education", label: "Établissements scolaires" },
-  );
+  const run_education = async () => {
+    await ctx.step(
+      "education",
+      "education",
+      async (http) => {
+        const s = await collectSchools(http, commune.code);
+        c.schools = {
+          schools: s.schools,
+          source: ctx.ref("education", s.url, s.retrievedAt),
+        };
+      },
+      { theme: "education", label: "Établissements scolaires" },
+    );
+  };
 
   /* 9. Transports */
-  step("transports", "Gares et fréquentation (SNCF Open Data)");
-  await ctx.step(
-    "sncf",
-    "transports",
-    async (http) => {
-      const s = await collectStations(http, commune.code, commune.codesPostaux);
-      c.stations = { stations: s.stations, source: ctx.ref("sncf", s.urls[0], s.retrievedAt) };
-    },
-    { theme: "mobilite", label: "Gares et fréquentation" },
-  );
+  const run_transports = async () => {
+    await ctx.step(
+      "sncf",
+      "transports",
+      async (http) => {
+        const s = await collectStations(
+          http,
+          commune.code,
+          commune.codesPostaux,
+        );
+        c.stations = {
+          stations: s.stations,
+          source: ctx.ref("sncf", s.urls[0], s.retrievedAt),
+        };
+      },
+      { theme: "mobilite", label: "Gares et fréquentation" },
+    );
+  };
 
   /* 10. Entreprises */
-  step("entreprises", "Tissu économique et principaux employeurs (SIRENE)");
-  await ctx.step(
-    "entreprises",
-    "entreprises",
-    async (http) => {
-      const e = await collectEntreprises(http, commune.code);
-      c.entreprises = { bySection: e.bySection, employers: e.employers, source: ctx.ref("entreprises", e.urls[0], e.retrievedAt) };
-    },
-    { theme: "economie", label: "Établissements et employeurs (SIRENE)" },
-  );
+  const run_entreprises = async () => {
+    await ctx.step(
+      "entreprises",
+      "entreprises",
+      async (http) => {
+        const e = await collectEntreprises(http, commune.code);
+        c.entreprises = {
+          bySection: e.bySection,
+          employers: e.employers,
+          source: ctx.ref("entreprises", e.urls[0], e.retrievedAt),
+        };
+      },
+      { theme: "economie", label: "Établissements et employeurs (SIRENE)" },
+    );
+  };
 
   /* 11. Risques */
-  step("risques", "Risques naturels et technologiques (Géorisques)");
-  await ctx.step(
-    "georisques",
-    "risques",
-    async (http) => {
-      const r = await collectRisques(http, commune.code);
-      c.risques = { data: r, source: ctx.ref("georisques", r.urls[0], r.retrievedAt) };
-    },
-    { theme: "risques", label: "Risques naturels et technologiques" },
-  );
-
-  /* 12. Élections */
-  step("elections", "Résultats électoraux officiels (agrégés)");
-  for (const e of ELECTIONS) {
+  const run_risques = async () => {
     await ctx.step(
-      "elections",
-      `elections:${e.id}`,
+      "georisques",
+      "risques",
       async (http) => {
-        const res = await collectElection(http, e, commune.code, commune.departement.code);
-        c.elections.push({ results: res, source: ctx.ref("elections", res[0].sourceUrl, res[0].retrievedAt, { vintage: e.date.slice(0, 4), dataset: e.dataset }) });
+        const r = await collectRisques(http, commune.code);
+        c.risques = {
+          data: r,
+          source: ctx.ref("georisques", r.urls[0], r.retrievedAt),
+        };
       },
-      { theme: "elections", label: `Résultats — ${e.label}` },
+      { theme: "risques", label: "Risques naturels et technologiques" },
     );
-  }
+  };
 
-  /* 13. Bureaux de vote */
-  step("bureaux", "Résultats par bureau de vote et géographie des bureaux");
-  for (const e of ELECTIONS) {
-    await ctx.step(
-      "elections",
-      `bureaux:${e.id}`,
-      async (http) => {
-        const res = await collectBureaux(http, e, commune.code, commune.departement.code);
-        c.bureaux.push({ election: e, results: res, source: ctx.ref("elections", res[0].sourceUrl, res[0].retrievedAt, { vintage: e.date.slice(0, 4), dataset: e.dataset }) });
-      },
-      { theme: "elections", label: `Résultats par bureau de vote — ${e.label}` },
+  /* 14. Quartiers : QPV et IRIS */
+  const run_quartiers = async () => {
+    const quartiers: NonNullable<Collected["quartiers"]> = {
+      qpv: [],
+      iris: [],
+      sources: [],
+    };
+    if (enabled("qpv"))
+      await ctx.step(
+        "qpv",
+        "quartiers:qpv",
+        async (http) => {
+          const q = await collectQpv(http, commune.code);
+          quartiers.qpv = q.quartiers;
+          http.notes.push(...q.notes);
+          if (q.quartiers.length) {
+            quartiers.sources.push(
+              ctx.ref("qpv", q.urls[0], q.retrievedAt, { vintage: "2024" }),
+            );
+            if (q.urls.length > 2)
+              quartiers.sources.push(
+                ctx.ref("insee_qpv", q.urls[q.urls.length - 1], q.retrievedAt, {
+                  vintage: "2021-2022",
+                }),
+              );
+          } else http.notes.push("Aucun quartier prioritaire dans la commune");
+        },
+        { theme: "strategie", label: "Quartiers prioritaires (QPV)" },
+      );
+    if (enabled("iris") && (commune.population ?? 0) >= 5000)
+      await ctx.step(
+        "iris",
+        "quartiers:iris",
+        async (http) => {
+          const q = await collectIris(http, commune.code);
+          quartiers.iris = q.quartiers;
+          http.notes.push(...q.notes);
+          if (q.quartiers.length)
+            quartiers.sources.push(
+              ctx.ref("iris", q.urls[0], q.retrievedAt, { vintage: "2021" }),
+            );
+          else http.notes.push("Commune non découpée en IRIS");
+        },
+        { theme: "strategie", label: "Quartiers IRIS" },
+      );
+    if (quartiers.qpv.length || quartiers.iris.length) c.quartiers = quartiers;
+  };
+
+  /* 15. Contexte municipal */
+  const run_municipales = async () => {
+    if (enabled("municipales")) {
+      await ctx.step(
+        "municipales",
+        "municipales",
+        async (http) => {
+          const m = await collectMunicipales(
+            http,
+            commune.code,
+            commune.departement.code,
+          );
+          c.municipal = {
+            ...m,
+            source: ctx.ref("municipales", m.urls[0], m.retrievedAt, {
+              vintage: "2026",
+            }),
+          };
+        },
+        { theme: "elections", label: "Municipales 2026 et maire" },
+      );
+      if (query.scope === "departement")
+        await ctx.step(
+          "municipales",
+          "municipales:departement",
+          async (http) => {
+            const m = await collectMunicipalesDepartement(
+              http,
+              commune.departement.code,
+            );
+            c.municipalDep = {
+              byCommune: m.byCommune,
+              source: ctx.ref("municipales", m.url, m.retrievedAt, {
+                vintage: "2026",
+              }),
+            };
+          },
+        );
+    }
+  };
+
+  /* 17. Temps de trajet routiers */
+  const run_acces = async () => {
+    if (enabled("osrm") && commune.centre) {
+      await ctx.step("osrm", "acces:routes", async (http) => {
+        const fc = await franceCentres(http);
+        const centre = (code: string) =>
+          fc.communes.find((x) => x.code === code)?.centre?.coordinates as
+            [number, number] | undefined;
+        const targets: { label: string; nom: string; to: [number, number] }[] =
+          [];
+        const add = (label: string, code: string, nom: string) => {
+          const to = centre(code);
+          if (
+            to &&
+            code !== commune.code &&
+            !targets.some((t) => t.nom === nom)
+          )
+            targets.push({ label, nom, to });
+        };
+        // Pôle urbain le plus proche, grande ville la plus proche (100 000 hab. et plus), préfecture.
+        const pole = c.poles[0];
+        if (pole) add("Pôle urbain le plus proche", pole.code, pole.nom);
+        const big = c.poles.find((p) => p.population >= 100000);
+        if (big) add("Grande ville la plus proche", big.code, big.nom);
+        const prefCode = referentiel().departements.get(
+          commune.departement.code,
+        )?.chefLieu;
+        const pref = prefCode ? referentiel().byCode.get(prefCode) : null;
+        if (pref) add("Préfecture", pref.code, pref.nom);
+        // Paris seulement s'il reste à portée (moins de 250 km à vol d'oiseau).
+        if (
+          c.parisCentre &&
+          c.parisKm != null &&
+          c.parisKm <= 250 &&
+          commune.code !== "75056"
+        )
+          targets.push({ label: "Paris", nom: "Paris", to: c.parisCentre });
+        if (!targets.length) throw new Error("Aucune destination");
+        const r = await collectRoutes(http, commune.centre!, targets);
+        c.routes = {
+          routes: r.routes,
+          source: ctx.ref("osrm", r.url, r.retrievedAt),
+        };
+      });
+    }
+  };
+
+  /* 12-13. Élections : scrutins en parallèle (fichiers lourds bornés par la file mémoire), ordre conservé. */
+  const run_elections = async () => {
+    const res = await Promise.all(
+      ELECTIONS.map((e) =>
+        ctx.step(
+          "elections",
+          `elections:${e.id}`,
+          async (http) => {
+            const r = await collectElection(
+              http,
+              e,
+              commune.code,
+              commune.departement.code,
+            );
+            return {
+              results: r,
+              source: ctx.ref("elections", r[0].sourceUrl, r[0].retrievedAt, {
+                vintage: e.date.slice(0, 4),
+                dataset: e.dataset,
+              }),
+            };
+          },
+          { theme: "elections", label: `Résultats — ${e.label}` },
+        ),
+      ),
     );
-  }
-  if (c.bureaux.length) step("bureaux_geo", "Contours et libellés des bureaux de vote");
-  if (c.bureaux.length)
+    for (const r of res) if (r) c.elections.push(r);
+  };
+  const run_bureaux = async () => {
+    const res = await Promise.all(
+      ELECTIONS.map((e) =>
+        ctx.step(
+          "elections",
+          `bureaux:${e.id}`,
+          async (http) => {
+            const r = await collectBureaux(
+              http,
+              e,
+              commune.code,
+              commune.departement.code,
+            );
+            return {
+              election: e,
+              results: r,
+              source: ctx.ref("elections", r[0].sourceUrl, r[0].retrievedAt, {
+                vintage: e.date.slice(0, 4),
+                dataset: e.dataset,
+              }),
+            };
+          },
+          {
+            theme: "elections",
+            label: `Résultats par bureau de vote — ${e.label}`,
+          },
+        ),
+      ),
+    );
+    for (const r of res) if (r) c.bureaux.push(r);
+  };
+  const run_bureaux_geo = async () => {
+    if (!c.bureaux.length) return;
     await ctx.step(
       "bureaux_geo",
       "bureaux:geo",
       async (http) => {
         const g = await collectBureauxGeo(http, commune.code);
-        if (!g) throw new Error("Aucune géographie des bureaux de vote disponible (fournir data/interne/bv-<code>.geojson)");
-        c.bvGeo = { ...g, source: { id: "bureaux_geo", name: g.sourceName, url: g.url, retrievedAt: g.retrievedAt || new Date().toISOString() } };
+        if (!g)
+          throw new Error(
+            "Aucune géographie des bureaux de vote disponible (fournir data/interne/bv-<code>.geojson)",
+          );
+        c.bvGeo = {
+          ...g,
+          source: {
+            id: "bureaux_geo",
+            name: g.sourceName,
+            url: g.url,
+            retrievedAt: g.retrievedAt || new Date().toISOString(),
+          },
+        };
       },
       { theme: "elections", label: "Contours / libellés des bureaux de vote" },
     );
+  };
 
-  const enabled = (id: string) => !config.disabledSources.has(id);
-
-  /* 14. Quartiers : QPV et IRIS */
-  step("quartiers", "Quartiers prioritaires et IRIS (ANCT, INSEE, IGN)");
-  const quartiers: NonNullable<Collected["quartiers"]> = { qpv: [], iris: [], sources: [] };
-  if (enabled("qpv"))
-    await ctx.step(
-      "qpv",
-      "quartiers:qpv",
-      async (http) => {
-        const q = await collectQpv(http, commune.code);
-        quartiers.qpv = q.quartiers;
-        http.notes.push(...q.notes);
-        if (q.quartiers.length) {
-          quartiers.sources.push(ctx.ref("qpv", q.urls[0], q.retrievedAt, { vintage: "2024" }));
-          if (q.urls.length > 2) quartiers.sources.push(ctx.ref("insee_qpv", q.urls[q.urls.length - 1], q.retrievedAt, { vintage: "2021-2022" }));
-        } else http.notes.push("Aucun quartier prioritaire dans la commune");
-      },
-      { theme: "strategie", label: "Quartiers prioritaires (QPV)" },
-    );
-  if (enabled("iris") && (commune.population ?? 0) >= 5000)
-    await ctx.step(
-      "iris",
-      "quartiers:iris",
-      async (http) => {
-        const q = await collectIris(http, commune.code);
-        quartiers.iris = q.quartiers;
-        http.notes.push(...q.notes);
-        if (q.quartiers.length) quartiers.sources.push(ctx.ref("iris", q.urls[0], q.retrievedAt, { vintage: "2021" }));
-        else http.notes.push("Commune non découpée en IRIS");
-      },
-      { theme: "strategie", label: "Quartiers IRIS" },
-    );
-  if (quartiers.qpv.length || quartiers.iris.length) c.quartiers = quartiers;
-
-  /* 15. Contexte municipal */
-  step("municipales", "Élections municipales 2026 et maire (ministère de l'Intérieur)");
-  if (enabled("municipales")) {
-    await ctx.step(
-      "municipales",
-      "municipales",
-      async (http) => {
-        const m = await collectMunicipales(http, commune.code, commune.departement.code);
-        c.municipal = { ...m, source: ctx.ref("municipales", m.urls[0], m.retrievedAt, { vintage: "2026" }) };
-      },
-      { theme: "elections", label: "Municipales 2026 et maire" },
-    );
-    if (query.scope === "departement")
-      await ctx.step("municipales", "municipales:departement", async (http) => {
-        const m = await collectMunicipalesDepartement(http, commune.departement.code);
-        c.municipalDep = { byCommune: m.byCommune, source: ctx.ref("municipales", m.url, m.retrievedAt, { vintage: "2026" }) };
-      });
-  }
-
-  /* 16. Services (BPE) et horaires de train (GTFS) */
-  step("services", "Équipements (BPE) et horaires SNCF (GTFS)");
-  if (enabled("bpe"))
+  /* 16. Services (BPE) et horaires de train (GTFS, après les gares) */
+  const run_bpe = async () => {
+    if (!enabled("bpe")) return;
     await ctx.step(
       "bpe",
       "services:bpe",
       async (http) => {
-        const b = await collectBpe(http, commune.code, commune.departement.code);
-        c.bpe = { ...b, source: ctx.ref("bpe", b.url, b.retrievedAt, { vintage: BPE_VINTAGE }) };
+        const b = await collectBpe(
+          http,
+          commune.code,
+          commune.departement.code,
+        );
+        c.bpe = {
+          ...b,
+          source: ctx.ref("bpe", b.url, b.retrievedAt, {
+            vintage: BPE_VINTAGE,
+          }),
+        };
       },
       { theme: "equipements", label: "Base permanente des équipements" },
     );
-  if (enabled("gtfs") && c.stations?.stations.length)
+  };
+  const run_gtfs = async () => {
+    if (!enabled("gtfs") || !c.stations?.stations.length) return;
     await ctx.step(
       "gtfs",
       "services:gtfs",
       async (http) => {
         const t = await collectTimetables(http, c.stations!.stations);
-        c.timetables = { stations: t.stations, source: ctx.ref("gtfs", t.url, t.retrievedAt) };
+        c.timetables = {
+          stations: t.stations,
+          source: ctx.ref("gtfs", t.url, t.retrievedAt),
+        };
       },
       { theme: "mobilite", label: "Horaires des trains (GTFS SNCF)" },
     );
+  };
 
-  /* 17. Temps de trajet routiers */
-  step("acces", "Temps de trajet routiers (OSRM)");
-  if (enabled("osrm") && commune.centre) {
-    await ctx.step("osrm", "acces:routes", async (http) => {
-      const fc = await franceCentres(http);
-      const centre = (code: string) => fc.communes.find((x) => x.code === code)?.centre?.coordinates as [number, number] | undefined;
-      const targets: { label: string; nom: string; to: [number, number] }[] = [];
-      const add = (label: string, code: string, nom: string) => {
-        const to = centre(code);
-        if (to && code !== commune.code && !targets.some((t) => t.nom === nom)) targets.push({ label, nom, to });
-      };
-      // Pôle urbain le plus proche, grande ville la plus proche (100 000 hab. et plus), préfecture.
-      const pole = c.poles[0];
-      if (pole) add("Pôle urbain le plus proche", pole.code, pole.nom);
-      const big = c.poles.find((p) => p.population >= 100000);
-      if (big) add("Grande ville la plus proche", big.code, big.nom);
-      const prefCode = referentiel().departements.get(commune.departement.code)?.chefLieu;
-      const pref = prefCode ? referentiel().byCode.get(prefCode) : null;
-      if (pref) add("Préfecture", pref.code, pref.nom);
-      // Paris seulement s'il reste à portée (moins de 250 km à vol d'oiseau).
-      if (c.parisCentre && c.parisKm != null && c.parisKm <= 250 && commune.code !== "75056") targets.push({ label: "Paris", nom: "Paris", to: c.parisCentre });
-      if (!targets.length) throw new Error("Aucune destination");
-      const r = await collectRoutes(http, commune.centre!, targets);
-      c.routes = { routes: r.routes, source: ctx.ref("osrm", r.url, r.retrievedAt) };
-    });
-  }
+  /*
+   * Orchestration : les sources indépendantes tournent en parallèle. L'INSEE
+   * reste séquentiel (limite de débit) ; les fichiers nationaux passent par
+   * une file bornée et sensible à la mémoire (heavyLane).
+   */
+  await Promise.all([
+    (async () => {
+      await track(
+        "insee",
+        "Statistiques INSEE (recensement, revenus) pour le territoire et ses références",
+        run_insee,
+      );
+      await track(
+        "perimetre",
+        "Indicateurs des communes du périmètre intercommunal",
+        run_perimetre,
+      );
+      await track(
+        "comparables",
+        "Sélection et profil de communes comparables",
+        run_comparables,
+      );
+    })(),
+    (async () => {
+      await track(
+        "elections",
+        "Résultats électoraux officiels (agrégés)",
+        run_elections,
+      );
+      await track("bureaux", "Résultats par bureau de vote", run_bureaux);
+      await track(
+        "bureaux_geo",
+        "Contours et libellés des bureaux de vote",
+        run_bureaux_geo,
+      );
+    })(),
+    track("immobilier", "Transactions immobilières (DVF)", run_immobilier),
+    track(
+      "equipements",
+      "Équipements et services (OpenStreetMap)",
+      run_equipements,
+    ),
+    track(
+      "education",
+      "Établissements scolaires (Annuaire de l'éducation)",
+      run_education,
+    ),
+    (async () => {
+      await track(
+        "transports",
+        "Gares et fréquentation (SNCF Open Data)",
+        run_transports,
+      );
+      await track("gtfs", "Horaires SNCF (GTFS)", run_gtfs);
+    })(),
+    track(
+      "entreprises",
+      "Tissu économique et principaux employeurs (SIRENE)",
+      run_entreprises,
+    ),
+    track(
+      "risques",
+      "Risques naturels et technologiques (Géorisques)",
+      run_risques,
+    ),
+    track(
+      "quartiers",
+      "Quartiers prioritaires et IRIS (ANCT, INSEE, IGN)",
+      run_quartiers,
+    ),
+    track(
+      "municipales",
+      "Élections municipales 2026 et maire (ministère de l'Intérieur)",
+      run_municipales,
+    ),
+    track("bpe", "Équipements (BPE)", run_bpe),
+    track("acces", "Temps de trajet routiers (OSRM)", run_acces),
+  ]);
+  // Journal dans un ordre stable, indépendant de l'ordre d'arrivée.
+  const order = (st: string) => {
+    const i = STEP_ORDER.findIndex((p) => st === p || st.startsWith(p + ":"));
+    return i < 0 ? STEP_ORDER.length : i;
+  };
+  ctx.runs.sort((x, y) => order(x.step) - order(y.step));
 
   /* 18. Données internes facultatives */
   c.interne = await loadInternalData();
   if (c.interne.files.length)
-    ctx.runs.push({ sourceId: "interne", name: "Données militantes internes (fichiers fournis)", step: "interne", status: "ok", message: c.interne.files.join(", "), durationMs: 0, requests: 0, fromCache: 0, retrievedAt: new Date().toISOString() });
+    ctx.runs.push({
+      sourceId: "interne",
+      name: "Données militantes internes (fichiers fournis)",
+      step: "interne",
+      status: "ok",
+      message: c.interne.files.join(", "),
+      durationMs: 0,
+      requests: 0,
+      fromCache: 0,
+      retrievedAt: new Date().toISOString(),
+    });
 
-  progress({ step: "collecte", label: "Collecte terminée", done: done, total: steps.length + 3, status: "running" });
+  log(`collecte terminée (mémoire ${mem()} Mo)`);
+  progress({
+    step: "collecte",
+    label: "Collecte terminée",
+    done,
+    total,
+    status: "running",
+    mem: mem(),
+  });
   return c;
 }

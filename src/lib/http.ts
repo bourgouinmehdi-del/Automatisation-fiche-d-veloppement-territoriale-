@@ -1,5 +1,5 @@
 import { createWriteStream, promises as fsp } from "node:fs";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeWebStream } from "node:stream/web";
 import { bodyPath as bodyFile, cacheKey, commitCacheFile, isFresh, readCache, readCacheMeta, tempCachePath, writeCache } from "./cache";
@@ -149,6 +149,8 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<F
  * Indispensable sur les hébergements à mémoire limitée : les fichiers
  * nationaux de résultats par bureau de vote pèsent plusieurs centaines de Mo.
  */
+const STALL_MS = Number(process.env.DOWNLOAD_STALL_MS ?? 120_000);
+
 export async function fetchToFile(url: string, opts: FetchOptions = {}): Promise<FetchResult<string>> {
   const key = cacheKey(url);
   const cached = await readCacheMeta(key);
@@ -178,7 +180,25 @@ export async function fetchToFile(url: string, opts: FetchOptions = {}): Promise
         continue;
       }
       if (!res.ok || !res.body) throw new HttpError(`HTTP ${res.status}`, res.status, url);
-      await pipeline(Readable.fromWeb(res.body as unknown as NodeWebStream), createWriteStream(tmp));
+      // Transfert bloqué (aucun octet reçu pendant STALL_MS) : abandon puis nouvel essai,
+      // plutôt que d'attendre le délai total (jusqu'à 30 min pour les gros fichiers).
+      let idle = setTimeout(() => ctrl.abort(new Error("transfert bloqué")), STALL_MS);
+      const watchdog = new Transform({
+        transform(chunk, _enc, cb) {
+          clearTimeout(idle);
+          idle = setTimeout(() => ctrl.abort(new Error("transfert bloqué")), STALL_MS);
+          cb(null, chunk);
+        },
+        flush(cb) {
+          clearTimeout(idle);
+          cb();
+        },
+      });
+      try {
+        await pipeline(Readable.fromWeb(res.body as unknown as NodeWebStream), watchdog, createWriteStream(tmp));
+      } finally {
+        clearTimeout(idle);
+      }
       const retrievedAt = new Date().toISOString();
       const file = await commitCacheFile({ key, url, fetchedAt: retrievedAt, status: res.status }, tmp);
       return { data: file, url, retrievedAt, fromCache: false, stale: false };
