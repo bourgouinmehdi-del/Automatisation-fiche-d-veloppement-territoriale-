@@ -31,6 +31,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       try {
         // ?fiche=1 : fiche d'action seule (quelques pages, comme le document de référence).
         if (q.get("fiche")) return file(new Uint8Array(await reportToPdf(r, { sectionIds: ficheIds, style })), "application/pdf", ficheName("pdf"));
+        // ?porte=1 : feuilles de porte-à-porte seules (une page par bureau prioritaire).
+        if (q.get("porte")) {
+          if (!r.sections.some((s) => s.id === "PORTE")) return new Response("Pas de feuilles de porte-à-porte pour cette fiche (contours des bureaux ou adresses indisponibles).", { status: 404 });
+          return file(new Uint8Array(await reportToPdf(r, { sectionIds: ["PORTE"] })), "application/pdf", `${name}-porte-a-porte.pdf`);
+        }
         return file(new Uint8Array(await reportToPdf(r)), "application/pdf", `${name}.pdf`);
       } catch (e) {
         return new Response(`Export PDF impossible : ${e instanceof Error ? e.message : e}. Renseignez CHROMIUM_PATH.`, { status: 500 });

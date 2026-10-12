@@ -178,11 +178,30 @@ function sectionC(x: Ctx): Section {
   return { id: "C", letter: "C", title: "Économie et emploi", blocks };
 }
 
+const BPE_VINTAGE_LABEL = "BPE 2025";
+
 /* ===================================================================== D */
 function sectionD(x: Ctx): Section {
   const blocks: Block[] = [];
   const eq = x.c.equipments?.features.length;
-  if (eq != null)
+  const bpe = x.c.bpe;
+  if (bpe) {
+    const n = (code: string) => bpe.commune.filter((e) => e.type === code).length;
+    const parts = [
+      [n("D265"), "médecin(s) généraliste(s)"],
+      [n("D307"), "pharmacie(s)"],
+      [n("A128"), "espace(s) France Services"],
+      [n("A122"), "agence(s) France Travail"],
+      [n("A206") + n("A207") + n("A208"), "point(s) de contact postal"],
+      [n("B104") + n("B105"), "super ou hypermarché(s)"],
+    ].filter(([v]) => (v as number) > 0) as [number, string][];
+    blocks.push(
+      para(
+        `La Base permanente des équipements de l'INSEE (${BPE_VINTAGE_LABEL}) recense dans la commune ${parts.length ? parts.map(([v, l]) => `${fmtNumber(v)} ${l}`).join(", ") : "peu d'équipements suivis"}. Elle fait référence pour les comptages ci-dessous.${eq != null ? ` OpenStreetMap, base contributive, complète cette vue par la localisation de ${fmtNumber(eq)} équipements et services.` : ""}`,
+        [],
+      ),
+    );
+  } else if (eq != null)
     blocks.push(
       para(
         `${fmtNumber(eq)} équipements et services ont été recensés dans OpenStreetMap à l'intérieur des limites communales. Ce recensement est indicatif : OpenStreetMap est une base contributive, et l'absence d'un équipement dans la base ne prouve pas son absence sur le terrain. La Base permanente des équipements (BPE) de l'INSEE constitue la référence statistique pour confirmer ces décomptes.`,
@@ -191,7 +210,7 @@ function sectionD(x: Ctx): Section {
     );
   const sc = get(x, "nb_etablissements_scolaires", x.c.geos.commune);
   if (sc) blocks.push(para(`L'Annuaire de l'éducation recense ${fmtNumber(sc.value)} établissements scolaires ouverts dans la commune.`, [sc]));
-  blocks.push(...optional(x, "map", "map_equipements"), ...optional(x, "table", "table_equipements"), ...optional(x, "chart", "chart_equipements"), ...optional(x, "table", "table_ecoles"));
+  blocks.push(...optional(x, "table", "table_bpe"), ...optional(x, "map", "map_equipements"), ...optional(x, "table", "table_equipements"), ...optional(x, "chart", "chart_equipements"), ...optional(x, "table", "table_ecoles"));
   blocks.push({ type: "findings", themes: ["equipements", "sante", "education"] });
   blocks.push({ type: "missing", themes: ["equipements", "sante", "education"] });
   return { id: "D", letter: "D", title: "Services publics et équipements", blocks };
@@ -223,7 +242,7 @@ function sectionE(x: Ctx): Section {
       type: "list",
       title: "Temps de trajet et desserte ferroviaire",
       items: [
-        ...routes.map((r) => ({ text: `${r.nom} (${r.label.toLowerCase()}) : ${h(r.minutes)} en voiture, ${fmtNumber(r.km)} km (calculateur OSRM, sans trafic).` })),
+        ...routes.map((r) => ({ text: `${r.nom}${r.label.toLowerCase() !== r.nom.toLowerCase() ? ` (${r.label.toLowerCase()})` : ""} : ${h(r.minutes)} en voiture, ${fmtNumber(r.km)} km (calculateur OSRM, sans trafic).` })),
         ...tts.map((t) => ({ text: `${t.nom} : ${t.departs} passages de trains un mardi type${t.pointe ? `, pointe entre ${t.pointe[0]} h et ${t.pointe[1]} h` : ""}${t.paris ? ` ; Paris en ${h(t.paris.minMinutes)} par trajet direct` : ""} (horaires théoriques SNCF).` })),
       ],
     });

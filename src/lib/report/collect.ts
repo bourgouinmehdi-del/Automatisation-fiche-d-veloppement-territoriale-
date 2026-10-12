@@ -20,6 +20,7 @@ import {
   collectBureaux,
   collectElection,
   ELECTIONS,
+  HISTORICAL_ELECTIONS,
   ElectionConfig,
   ElectionResult,
 } from "../collectors/elections";
@@ -35,6 +36,7 @@ import { BpeResult, BPE_VINTAGE, collectBpe } from "../collectors/bpe";
 import { collectTimetables, StationTimetable } from "../collectors/gtfs";
 import { collectRoutes, Route } from "../collectors/routes";
 import { config } from "../config";
+import { Adresse, collectAdresses } from "../collectors/ban";
 import { rssMb } from "../runtime";
 import { collectInsee, InseeResult } from "../collectors/insee-indicators";
 import {
@@ -116,6 +118,10 @@ export interface Collected {
     departement: string;
     result?: InseeResult;
   }[];
+  /** Périmètre de recherche des communes comparables quand la région n'en compte pas assez. */
+  comparablesScope?: string;
+  /** Adresses de la commune (BAN), pour les feuilles de porte-à-porte. */
+  adresses?: { list: Adresse[]; source: SourceRef };
   dvf?: { stats: DvfStat[]; nSales: number; source: SourceRef };
   equipments?: {
     features: GeoJSON.Feature<GeoJSON.Point>[];
@@ -186,6 +192,7 @@ const STEP_ORDER = [
   "elections",
   "bureaux",
   "bureaux_geo",
+  "adresses",
   "quartiers",
   "municipales",
   "bpe",
@@ -193,8 +200,8 @@ const STEP_ORDER = [
   "acces",
 ];
 
-/** Nombre d'étapes suivies (identité, géographie, 17 étapes parallèles) + 3 étapes d'analyse. */
-export const PROGRESS_TOTAL = 2 + 17 + 3;
+/** Nombre d'étapes suivies (identité, géographie, 18 étapes parallèles) + 3 étapes d'analyse. */
+export const PROGRESS_TOTAL = 2 + 18 + 3;
 
 export async function collect(
   query: ReportQuery,
@@ -550,7 +557,10 @@ export async function collect(
           (x.densite >= targetDens * 0.5 && x.densite <= targetDens * 2),
       );
     if (comps.length < 5) {
-      const nat = franceCommunes().map((x) => ({
+      // Élargissement national : France métropolitaine pour une commune métropolitaine,
+      // outre-mer pour une commune d'outre-mer (contextes non comparables).
+      const dom = (code: string) => code.startsWith("97");
+      const nat = franceCommunes().filter((x) => dom(x.code) === dom(commune.code)).map((x) => ({
         ...x,
         densite: densityByCode.get(x.code) ?? null,
       }));
@@ -560,6 +570,7 @@ export async function collect(
           x.densite == null ||
           (x.densite >= targetDens * 0.5 && x.densite <= targetDens * 2),
       );
+      c.comparablesScope = commune.code.startsWith("97") ? "outre-mer" : "France métropolitaine";
     }
     c.comparables = comps
       .slice(0, 8)
@@ -946,8 +957,9 @@ export async function collect(
     for (const r of res) if (r) c.elections.push(r);
   };
   const run_bureaux = async () => {
+    // Scrutins de 2017 et 2019 : bureaux seulement, pour mesurer l'évolution du vote.
     const res = await Promise.all(
-      ELECTIONS.map((e) =>
+      [...ELECTIONS, ...(enabled("elections_historiques") ? HISTORICAL_ELECTIONS : [])].map((e) =>
         ctx.step(
           "elections",
           `bureaux:${e.id}`,
@@ -975,6 +987,19 @@ export async function collect(
       ),
     );
     for (const r of res) if (r) c.bureaux.push(r);
+  };
+  const run_adresses = async () => {
+    // Utile seulement si les bureaux ont des contours (rattachement des adresses).
+    if (!enabled("ban") || !c.bvGeo?.features.length || query.scope === "departement") return;
+    await ctx.step(
+      "ban",
+      "adresses",
+      async (http) => {
+        const a = await collectAdresses(http, commune.code, commune.departement.code);
+        c.adresses = { list: a.adresses, source: ctx.ref("ban", a.url, a.retrievedAt) };
+      },
+      { theme: "strategie", label: "Adresses par bureau de vote (porte-à-porte)" },
+    );
   };
   const run_bureaux_geo = async () => {
     if (!c.bureaux.length) return;
@@ -1074,6 +1099,7 @@ export async function collect(
         "Contours et libellés des bureaux de vote",
         run_bureaux_geo,
       );
+      await track("adresses", "Adresses des bureaux de vote (Base adresse nationale)", run_adresses);
     })(),
     track("immobilier", "Transactions immobilières (DVF)", run_immobilier),
     track(

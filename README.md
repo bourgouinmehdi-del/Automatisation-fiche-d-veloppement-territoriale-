@@ -104,6 +104,12 @@ Chaque rapport commence par une **fiche d'action** rédigée sur le modèle des 
 
 Les textes acceptent une mise en évidence minimale (`**gras**`), rendue dans l'interface, le PDF et le DOCX, et retirée des exports CSV.
 
+**Feuilles de porte-à-porte** : pour chaque bureau prioritaire, une page imprimable avec les rues et numéros à couvrir (Base adresse nationale, adresses rattachées au bureau par leur position dans les contours), une carte, le lieu de vote et une case « Fait » par voie. Bouton « PDF porte-à-porte » (ou `…/export/pdf?porte=1`). Désactivable avec `DISABLE_SOURCES=ban`.
+
+**Évolution du vote par bureau** : européennes 2019 → 2024, présidentielle 2017 → 2022 (bureaux appariés par numéro, inscrits à ±25 %) et score de la gauche unie aux législatives 2024. Désactivable avec `DISABLE_SOURCES=elections_historiques`.
+
+**Lieux d'action signalés par les militants** : marchés, associations, lieux de passage saisis dans la fiche (jours, horaires, adresse) ; chaque adresse est géolocalisée et rattachée à son bureau de vote ; conservés d'une régénération à l'autre et repris dans le PDF et le Word.
+
 **Vitesse et mémoire** : les sources indépendantes sont interrogées en parallèle ; l'INSEE reste séquentiel (limite de débit). Les fichiers nationaux (contours des bureaux de vote, BPE, GTFS, IRIS, résultats électoraux) sont lus en flux et leurs extraits départementaux ou communaux sont gardés sur disque (`data/cache/extracts/`, 1 à 30 jours selon la source) : la fiche suivante dans le même département les réutilise sans relire le fichier national. Un extrait incomplet (sous-source en panne) n'est pas mis en cache. Sur Railway, monter un **volume persistant** sur `/data` pour que ce cache survive aux redéploiements. La page de progression et les journaux du serveur indiquent la mémoire utilisée à chaque étape.
 
 **Export court** : bouton « PDF fiche d'action » (ou `…/export/pdf?fiche=1`, et `<id>-fiche-action.pdf` en ligne de commande) — la fiche d'action seule, quelques pages, comme le document de référence.

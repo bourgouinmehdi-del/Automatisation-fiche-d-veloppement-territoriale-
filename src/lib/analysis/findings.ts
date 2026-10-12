@@ -166,7 +166,9 @@ export function computeFindings(inp: FindingInput): Finding[] {
     ["osm_alimentaire", "commerce alimentaire (supermarché ou supérette)", 1500],
     ["osm_poste", "bureau ou agence postale", 3000],
   ];
-  for (const [id, label, minPop] of osmChecks) {
+  // Avec la BPE (référence INSEE), les absences dans OpenStreetMap ne sont pas signalées.
+  const hasBpe = indicators.some((i) => i.id.startsWith("bpe_") && i.geo.level === "commune");
+  for (const [id, label, minPop] of hasBpe ? [] : osmChecks) {
     const v = indicators.find((i) => i.id === id && i.geo.level === "commune");
     if (v && v.value === 0 && pop >= minPop)
       add({
@@ -177,8 +179,21 @@ export function computeFindings(inp: FindingInput): Finding[] {
         weight: 50,
       });
   }
+  const gp = indicators.find((i) => i.id === "bpe_D265_10k" && i.geo.level === "commune");
+  const gpDep = indicators.find((i) => i.id === "bpe_D265_10k" && i.geo.level === "departement");
+  const gpN = indicators.find((i) => i.id === "bpe_D265" && i.geo.level === "commune");
+  if (gp && gpDep && gpN && gp.value != null && gpDep.value != null && pop >= 2000) {
+    const low = gp.value < gpDep.value * 0.75;
+    add({
+      kind: low ? "vigilance" : "constat",
+      theme: "sante",
+      text: `${fmtValue(gpN.value, "nombre")} médecin(s) généraliste(s) recensé(s) par la Base permanente des équipements, soit ${fmtValue(gp.value, "nombre")} pour 10 000 habitants (département : ${fmtValue(gpDep.value, "nombre")})${low ? " : densité nettement plus faible que dans le département" : ""}. La BPE ne mesure ni la disponibilité des médecins ni les délais de rendez-vous.`,
+      evidence: [evidenceId(gpN), evidenceId(gp), evidenceId(gpDep)],
+      weight: low ? 75 : 40,
+    });
+  }
   const med = indicators.find((i) => i.id === "osm_medecin" && i.geo.level === "commune");
-  if (med && med.value! > 0 && pop > 0) {
+  if (!hasBpe && med && med.value! > 0 && pop > 0) {
     add({
       kind: "constat",
       theme: "sante",

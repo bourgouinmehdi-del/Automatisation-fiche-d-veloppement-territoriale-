@@ -30,7 +30,7 @@ export interface Family {
  * LUG, LVEC, LCOM, LLR, LREC…) : les motifs couvrent ces trois formes.
  */
 export const FAMILIES: Family[] = [
-  { id: "lfi", label: "LFI", match: { EU24: /^LFI\b|insoumise|aubry/i, PR22T1: /m[ée]lenchon/i } },
+  { id: "lfi", label: "LFI", match: { EU24: /^LFI\b|insoumise|aubry/i, PR22T1: /m[ée]lenchon/i, EU19: /^LFI\b|insoumise|aubry/i, PR17T1: /m[ée]lenchon/i } },
   { id: "nfp", label: "NFP (Union de la gauche)", match: { LG24T1: /^UG$|union de la gauche|nouveau front populaire/i } },
   { id: "pcf", label: "PCF", match: { EU24: /^LCOM$|gauche unie|deffontaines/i, PR22T1: /roussel/i } },
   { id: "ps", label: "PS / Place publique", match: { EU24: /^LUG$|r[ée]veil|glucksmann|place publique/i, PR22T1: /hidalgo/i, LG24T1: /^SOC$/i } },
@@ -179,7 +179,15 @@ export interface BvRow {
   abst2Pct: number | null;
   potentiel: number;
   type: BvType;
+  /** Profil lisible : vote LFI en tiers (fort / moyen / faible) et abstention par rapport à la médiane. */
+  profil: string;
   priorite: 1 | 2 | 3;
+}
+
+/** Profil d'un bureau : tiers de la part LFI des exprimés, abstention au-dessus ou en dessous de la médiane. */
+function profilOf(lfi: number, abst: number, t1: number, t2: number, mA: number) {
+  const l = lfi >= t2 ? "LFI fort" : lfi > t1 ? "LFI moyen" : "LFI faible";
+  return `${l}, ${abst >= mA ? "abstention forte" : "participation forte"}`;
 }
 
 /**
@@ -233,11 +241,15 @@ export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, 
   const zA = zscores(base.map((b) => b.abstPct));
   const mL = median(base.map((b) => b.lfiPctExp))!;
   const mA = median(base.map((b) => b.abstPct))!;
+  const sortedL = base.map((b) => b.lfiPctExp).sort((x, y) => x - y);
+  const q = (p: number) => sortedL[Math.min(sortedL.length - 1, Math.floor(p * sortedL.length))];
+  const t1 = q(1 / 3);
+  const t2 = q(2 / 3);
   const withPot = base.map((b, i) => {
     const highL = b.lfiPctExp >= mL;
     const highA = b.abstPct >= mA;
     const type: BvType = highL && highA ? "bastion_a_mobiliser" : highL ? "bastion" : highA ? "reservoir_abstention" : "terrain_difficile";
-    return { ...b, potentiel: (zL[i] + zA[i]) / 2, type };
+    return { ...b, potentiel: (zL[i] + zA[i]) / 2, type, profil: profilOf(b.lfiPctExp, b.abstPct, t1, t2, mA) };
   });
   const sorted = [...withPot].sort((a, b) => b.potentiel - a.potentiel);
   const n = sorted.length;
@@ -249,7 +261,7 @@ export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, 
     ...sorted.map((b, i) => ({ ...b, priorite: (i < p1 ? 1 : i < p2 ? 2 : 3) as 1 | 2 | 3 })),
     ...small.map((b) => {
       const type: BvType = b.lfiPctExp >= mL ? (b.abstPct >= mA ? "bastion_a_mobiliser" : "bastion") : b.abstPct >= mA ? "reservoir_abstention" : "terrain_difficile";
-      return { ...b, potentiel: Number.NEGATIVE_INFINITY, type, priorite: 3 as const };
+      return { ...b, potentiel: Number.NEGATIVE_INFINITY, type, profil: profilOf(b.lfiPctExp, b.abstPct, t1, t2, mA), priorite: 3 as const };
     }),
   ];
 }

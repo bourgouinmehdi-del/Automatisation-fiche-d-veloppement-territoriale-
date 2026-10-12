@@ -1,12 +1,13 @@
 import * as turf from "@turf/turf";
 import { referentiel } from "../collectors/admin";
 import type { BureauResult, ElectionResult } from "../collectors/elections";
-import { abstention, BV_TYPE_LABELS, BvRow, familyPerformance, frenchHours, lfiOverperformance, prettyBvLabel, rankBureaux, score } from "../analysis/political";
+import { abstention, BvRow, familyPerformance, frenchHours, lfiOverperformance, prettyBvLabel, rankBureaux, score } from "../analysis/political";
 import { gap, haversineKm, quantileBreaks } from "../analysis/stats";
 import { evidenceId } from "../analysis/findings";
 import { fmtNumber, fmtSigned, fmtValue } from "../format";
 import type { Block, ChartSpec, DataTable, Finding, GeoRef, Indicator, MapLegend, MapSpec, Section, SourceRef } from "../types";
 import { MISSING_COLOR, SEQ_COLORS } from "./assemble";
+import { buildPorte } from "./porte";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
 import { NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
@@ -36,12 +37,22 @@ import type { Collected } from "./collect";
 
 export interface LfiOutput {
   section: Section | null;
+  /** Sections complémentaires (feuilles de porte-à-porte). */
+  extra?: Section[];
   tables: DataTable[];
   charts: ChartSpec[];
   maps: MapSpec[];
   findings: Finding[];
   indicators: Indicator[];
 }
+
+/** Adresses du REU en majuscules : « 14 PLACE DE LA FRATERNITE 48000 mende » → « 14 Place de la Fraternite, 48000 Mende ». */
+export const prettyAdr = (raw: string) =>
+  raw
+    .toLowerCase()
+    .replace(/(^|[\s'-])([a-zà-ÿ])/g, (_m, a: string, ch: string) => a + ch.toUpperCase())
+    .replace(/\b(De|Du|Des|La|Le|Les|Et|D|L|Sur|Sous|En)\b/g, (w) => w.toLowerCase())
+    .replace(/\s(\d{5})\s/, ", $1 ");
 
 const pct = (v: number | null | undefined, d = 1) => (v == null || !Number.isFinite(v) ? "n.d." : fmtValue(v, "%", d));
 /** « 2 809 (9,8 %) » avec le pourcentage en gras, comme dans les fiches de référence. */
@@ -560,11 +571,11 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
           const q = quartierOf(b.bv);
           return q ? qName(q) : "";
         })(),
-        type: BV_TYPE_LABELS[b.type],
+        type: b.profil,
       })),
       highlight: ranked.map((b, i) => (b.priorite === 1 ? i : -1)).filter((i) => i >= 0),
       sources: [bvRef.source, ...(c.bvGeo ? [c.bvGeo.source] : [])],
-      note: `Priorité 1 : un quart des bureaux (quatre au plus), classés par potentiel = moyenne de deux scores z calculés entre les bureaux de la commune : réservoir (part LFI des exprimés aux européennes${second ? ", moyennée avec la part de J.-L. Mélenchon au 1er tour de la présidentielle 2022" : ""}) et marge de mobilisation (taux d'abstention aux européennes).${second ? " Présidentielle : bureaux appariés par numéro lorsque leurs inscrits varient de moins de 25 % (n.d. sinon)." : ""} Le découpage des bureaux peut avoir évolué depuis le scrutin.`,
+      note: `Priorité 1 : un quart des bureaux (quatre au plus), classés par potentiel = moyenne de deux scores z calculés entre les bureaux de la commune : réservoir (part LFI des exprimés aux européennes${second ? ", moyennée avec la part de J.-L. Mélenchon au 1er tour de la présidentielle 2022" : ""}) et marge de mobilisation (taux d'abstention aux européennes).${second ? " Présidentielle : bureaux appariés par numéro lorsque leurs inscrits varient de moins de 25 % (n.d. sinon)." : ""} Profil : LFI fort, moyen ou faible selon le tiers des bureaux de la commune (part LFI des exprimés aux européennes) ; abstention forte au-dessus de la médiane des bureaux. Le découpage des bureaux peut avoir évolué depuis le scrutin.`,
     });
     out.charts.push({
       id: "lfi_chart_bureaux",
@@ -583,6 +594,128 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
       sources: [bvRef.source],
     });
     const bvGeoRef = (bv: string): GeoRef => ({ level: "bureau_vote", code: `${commune.code}-${bv}`, name: `${commune.nom} — BV ${bv}` });
+    /* Évolution du vote par bureau : européennes 2019 → 2024, présidentielle 2017 → 2022,
+       et score de la gauche unie aux législatives 2024. Bureaux appariés par numéro
+       lorsque leurs inscrits varient de moins de 25 %. */
+    {
+      const resOf = (id: string) => c.bureaux.find((b) => b.election.id === id);
+      const mapOf = (id: string) => new Map((resOf(id)?.results ?? []).map((r) => [r.bv, r]));
+      const m19 = mapOf("EU19");
+      const m17 = mapOf("PR17T1");
+      const m22 = mapOf("PR22T1");
+      const mlg = mapOf("LG24T1");
+      const pairOf = (m: Map<string, BureauResult>, b: BvRow) => {
+        const x = m.get(b.bv);
+        return x && b.inscrits && Math.abs(x.inscrits - b.inscrits) / b.inscrits <= 0.25 ? x : null;
+      };
+      const r1 = (v: number | null | undefined) => (v == null ? null : Math.round(v * 10) / 10);
+      const rows = [...ranked]
+        .sort((a, b) => Number(a.bv) - Number(b.bv) || a.bv.localeCompare(b.bv))
+        .map((b) => {
+          const e19 = pairOf(m19, b);
+          const p17 = pairOf(m17, b);
+          const p22 = pairOf(m22, b);
+          const lg = pairOf(mlg, b);
+          const lfi19 = e19 ? score("EU19", e19, "lfi")?.pctInscrits ?? null : null;
+          const mel17 = p17 ? score("PR17T1", p17, "lfi")?.pctInscrits ?? null : null;
+          const mel22 = p22 ? score("PR22T1", p22, "lfi")?.pctInscrits ?? null : null;
+          const nfp = lg ? score("LG24T1", lg, "nfp")?.pctInscrits ?? null : null;
+          return {
+            b,
+            lfi19,
+            evoE: lfi19 != null ? b.lfiPctIns - lfi19 : null,
+            mel17,
+            mel22,
+            evoP: mel17 != null && mel22 != null ? mel22 - mel17 : null,
+            nfp,
+          };
+        });
+      const hasE = rows.some((r) => r.lfi19 != null);
+      const hasP = rows.some((r) => r.mel17 != null && r.mel22 != null);
+      const hasL = rows.some((r) => r.nfp != null);
+      if (hasE || hasP || hasL) {
+        const srcs = ["EU19", "PR17T1", "LG24T1"].map(resOf).filter((x): x is NonNullable<typeof x> => !!x).map((x) => x.source);
+        const signed = (v: number | null) => {
+          if (v == null) return null;
+          const a = Math.abs(Math.round(v * 10) / 10);
+          return `${v > 0 ? "+" : v < 0 ? "−" : ""}${fmtNumber(a, 1)} ${a >= 2 ? "pts" : "pt"}`;
+        };
+        out.tables.push({
+          id: "lfi_evolution",
+          title: "Évolution du vote par bureau de vote (% des inscrits)",
+          theme: "strategie",
+          columns: [
+            { key: "bv", label: "BV" },
+            ...(hasLabels ? [{ key: "libelle", label: "Lieu de vote", wide: true }] : []),
+            ...(hasE
+              ? [
+                  { key: "lfi19", label: "LFI E19", align: "right" as const, unit: "%" as const },
+                  { key: "lfi24", label: "LFI E24", align: "right" as const, unit: "%" as const },
+                  { key: "evoE", label: "Évol. E19→E24", align: "right" as const },
+                ]
+              : []),
+            ...(hasP
+              ? [
+                  { key: "mel17", label: "Mélenchon P17", align: "right" as const, unit: "%" as const },
+                  { key: "mel22", label: "Mélenchon P22", align: "right" as const, unit: "%" as const },
+                  { key: "evoP", label: "Évol. P17→P22", align: "right" as const },
+                ]
+              : []),
+            ...(hasL ? [{ key: "nfp", label: "Gauche unie LG24", align: "right" as const, unit: "%" as const }] : []),
+          ],
+          rows: rows.map((r) => ({
+            bv: r.b.bv,
+            libelle: labels.get(r.b.bv) ?? "",
+            lfi19: r1(r.lfi19),
+            lfi24: r1(r.b.lfiPctIns),
+            evoE: signed(r.evoE) ?? "n.d.",
+            mel17: r1(r.mel17),
+            mel22: r1(r.mel22),
+            evoP: signed(r.evoP) ?? "n.d.",
+            nfp: r1(r.nfp),
+          })),
+          highlight: rows.map((r, i) => (r.b.priorite === 1 ? i : -1)).filter((i) => i >= 0),
+          sources: [bvRef.source, ...(bvSecond ? [bvSecond.source] : []), ...srcs],
+          note: `E19 / E24 : liste LFI aux européennes 2019 et 2024 ; P17 / P22 : J.-L. Mélenchon au 1er tour des présidentielles 2017 et 2022 ; LG24 : candidat de la gauche unie (nuance UG) au 1er tour des législatives 2024. Bureaux appariés par numéro lorsque leurs inscrits varient de moins de 25 % (n.d. sinon) : le découpage a pu changer entre deux scrutins. En surbrillance : bureaux prioritaires.`,
+        });
+        // Évolution d'ensemble de la commune (somme des bureaux).
+        const sumAgg = (id: string) => {
+          const rs = resOf(id)?.results ?? [];
+          if (!rs.length) return null;
+          const cand = new Map<string, number>();
+          let inscrits = 0;
+          let exprimes = 0;
+          for (const r of rs) {
+            inscrits += r.inscrits;
+            exprimes += r.exprimes;
+            for (const k of r.candidates) cand.set(k.label, (cand.get(k.label) ?? 0) + k.voix);
+          }
+          return { inscrits, exprimes, votants: 0, abstentions: 0, blancs: null, nuls: null, candidates: [...cand].map(([label, voix]) => ({ label, voix })) };
+        };
+        const s19 = sumAgg("EU19");
+        const s24 = sumAgg("EU24");
+        const s17 = sumAgg("PR17T1");
+        const s22 = sumAgg("PR22T1");
+        const parts: string[] = [];
+        const v19 = s19 ? score("EU19", s19, "lfi") : null;
+        const v24 = s24 ? score("EU24", s24, "lfi") : null;
+        const v17 = s17 ? score("PR17T1", s17, "lfi") : null;
+        const v22 = s22 ? score("PR22T1", s22, "lfi") : null;
+        if (v19 && v24) parts.push(`LFI passe de ${pct(v19.pctInscrits)} des inscrits aux européennes 2019 à ${pct(v24.pctInscrits)} en 2024 (${signed(v24.pctInscrits - v19.pctInscrits)}, ${fmtNumber(v19.voix)} → ${fmtNumber(v24.voix)} voix)`);
+        if (v17 && v22) parts.push(`J.-L. Mélenchon de ${pct(v17.pctInscrits)} en 2017 à ${pct(v22.pctInscrits)} en 2022 (${signed(v22.pctInscrits - v17.pctInscrits)}, ${fmtNumber(v17.voix)} → ${fmtNumber(v22.voix)} voix)`);
+        const up = rows.filter((r) => r.evoE != null).sort((a, b) => b.evoE! - a.evoE!).slice(0, 3).filter((r) => r.evoE! > 0);
+        if (parts.length)
+          ids.ou.push(
+            addF({
+              kind: "constat",
+              text: `${B("Évolution")} : ${parts.join(" ; ")}.${up.length ? ` Plus fortes progressions entre les européennes 2019 et 2024 : ${joinFr(up.map((r) => `BV ${r.b.bv} (${signed(r.evoE)})`))}.` : ""}`,
+              evidence: ranked.map((b) => `lfi_bv_ins@bureau_vote:${commune.code}-${b.bv}`),
+              weight: 84,
+            }),
+          );
+      }
+    }
+
     const bvInd = (b: BvRow, id: string, label: string, value: number) =>
       ({ id, label, theme: "strategie", value, unit: "%", year: bvRef.election.date.slice(0, 4), geo: bvGeoRef(b.bv), source: bvRef.source, status: "ok", denominator: b.inscrits }) as Indicator;
     for (const b of ranked) {
@@ -808,22 +941,60 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
           weight: 88,
         }),
       );
-    // Vote LFI par quartier (bureaux rattachés).
-    for (const q of shown) {
-      const bvs = qBureaux.get(q.code) ?? [];
-      const l = lfiOfBvs(bvs);
-      if (lfiCom == null) continue;
-      const poor = q.stats.pauvrete != null && comPov != null && q.stats.pauvrete >= comPov + 5;
-      if (l) {
-        const g = gap(l.pct, lfiCom, "%");
+    // Vote LFI par quartier (bureaux rattachés). Les quartiers couverts par les mêmes
+    // bureaux (QPV et IRIS superposés) sont regroupés pour éviter les redites.
+    if (lfiCom != null) {
+      const strong: { names: string[]; bvs: string[]; l: number; mel: number | null; qpv: boolean }[] = [];
+      const weak = new Map<string, { names: string[]; bvs: string[]; l: number; ev: string[] }>();
+      const evAll: string[] = [];
+      const label = (q: Quartier) => (q.kind === "qpv" ? `le quartier prioritaire ${quartierLabel(q.nom)}` : quartierLabel(q.nom));
+      // QPV d'abord : un IRIS entièrement couvert par les bureaux d'un QPV déjà cité n'apporte rien de plus.
+      for (const q of [...shown].sort((x, y) => (x.kind === y.kind ? 0 : x.kind === "qpv" ? -1 : 1))) {
+        const bvs = qBureaux.get(q.code) ?? [];
+        const l = lfiOfBvs(bvs);
+        const poor = q.stats.pauvrete != null && comPov != null && q.stats.pauvrete >= comPov + 5;
+        if (!l) {
+          if (poor && q.kind === "qpv")
+            ids2.quartiers.push(addF({ kind: "hypothese", text: `Le quartier prioritaire ${quartierLabel(q.nom)} ne peut pas être isolé par les bureaux de vote (découpé entre plusieurs bureaux) ; au regard de ses données sociodémographiques, il devrait nous être favorable.`, evidence: [`taux_pauvrete_quartier@quartier:${q.kind}:${q.code}`], weight: 60 }));
+          continue;
+        }
         out.indicators.push({ ...qInd(q, "lfi_quartier_ins", "Vote LFI (E24) des bureaux du quartier, en % des inscrits", l.pct, "%"), source: bvRef!.source });
-        const ev = [`lfi_quartier_ins@quartier:${q.kind}:${q.code}`, ...out.indicators.filter((i) => i.id === "lfi_EU24_ins" && i.geo.level === "commune").map(evidenceId)];
-        if (g.direction === "superieur")
-          ids2.quartiers.push(addF({ kind: "atout", text: `${B(`LFI surperforme dans ${q.kind === "qpv" ? "le quartier prioritaire de " : ""}${quartierLabel(q.nom)}`)} (${bvList(bvs)}) : ${pct(l.pct)} des inscrits aux européennes 2024, contre ${pct(lfiCom)} dans la commune${melOfBvs(bvs) != null && melCom != null ? ` ; J.-L. Mélenchon y avait réuni ${pct(melOfBvs(bvs))} des inscrits en 2022 (commune : ${pct(melCom)})` : ""}.`, evidence: ev, weight: 93 }));
-        else if (poor)
-          ids2.quartiers.push(addF({ kind: "hypothese", text: `LFI ne surperforme pas dans ${quartierLabel(q.nom)} (${bvList(bvs)} : ${pct(l.pct)} des inscrits contre ${pct(lfiCom)}), alors qu'au regard de ses données sociodémographiques ce quartier devrait nous être favorable : marge de progression probable (non-inscription, abstention).`, evidence: ev, weight: 72 }));
-      } else if (poor && q.kind === "qpv")
-        ids2.quartiers.push(addF({ kind: "hypothese", text: `Le quartier prioritaire ${quartierLabel(q.nom)} ne peut pas être isolé par les bureaux de vote (découpé entre plusieurs bureaux) ; au regard de ses données sociodémographiques, il devrait nous être favorable.`, evidence: [`taux_pauvrete_quartier@quartier:${q.kind}:${q.code}`], weight: 60 }));
+        const ev = `lfi_quartier_ins@quartier:${q.kind}:${q.code}`;
+        const key = [...bvs].sort().join(",");
+        if (gap(l.pct, lfiCom, "%").direction === "superieur") {
+          const same = strong.find((x) => [...x.bvs].sort().join(",") === key);
+          if (same) {
+            same.names.push(label(q));
+            continue;
+          }
+          if (strong.some((x) => bvs.every((b) => x.bvs.includes(b)))) continue;
+          strong.push({ names: [label(q)], bvs, l: l.pct, mel: melOfBvs(bvs) ?? null, qpv: q.kind === "qpv" });
+          evAll.push(ev);
+        } else if (poor) {
+          const w = weak.get(key);
+          if (w) w.names.push(q.kind === "qpv" ? `${quartierLabel(q.nom)} (QPV)` : quartierLabel(q.nom));
+          else weak.set(key, { names: [q.kind === "qpv" ? `${quartierLabel(q.nom)} (QPV)` : quartierLabel(q.nom)], bvs, l: l.pct, ev: [ev] });
+        }
+      }
+      const comEv = out.indicators.filter((i) => i.id === "lfi_EU24_ins" && i.geo.level === "commune").map(evidenceId);
+      if (strong.length) {
+        strong.sort((x, y) => y.l - x.l);
+        const item = (x: (typeof strong)[number]) =>
+          `${joinFr([...new Set(x.names)])} (${bvList(x.bvs)} : ${pct(x.l)} des inscrits${x.mel != null && melCom != null ? ` ; Mélenchon ${pct(x.mel)} en 2022` : ""})`;
+        ids2.quartiers.push(
+          addF({
+            kind: "atout",
+            text:
+              strong.length > 1
+                ? `${B("LFI surperforme dans plusieurs quartiers")} : ${strong.map(item).join(", ")}, contre ${pct(lfiCom)} des inscrits aux européennes 2024 dans la commune${melCom != null ? ` (Mélenchon 2022 : ${pct(melCom)})` : ""}.`
+                : `${B(`LFI surperforme dans ${joinFr([...new Set(strong[0].names)])}`)} (${bvList(strong[0].bvs)}) : ${pct(strong[0].l)} des inscrits aux européennes 2024, contre ${pct(lfiCom)} dans la commune${strong[0].mel != null && melCom != null ? ` ; J.-L. Mélenchon y avait réuni ${pct(strong[0].mel)} des inscrits en 2022 (commune : ${pct(melCom)})` : ""}.`,
+            evidence: [...evAll, ...comEv],
+            weight: 93,
+          }),
+        );
+      }
+      for (const w of weak.values())
+        ids2.quartiers.push(addF({ kind: "hypothese", text: `LFI ${w.l > lfiCom ? "ne dépasse que légèrement la moyenne de la commune" : "ne surperforme pas"} dans ${joinFr([...new Set(w.names)])} (${bvList(w.bvs)} : ${pct(w.l)} des inscrits contre ${pct(lfiCom)}), alors qu'au regard de ses données sociodémographiques ce quartier devrait nous être favorable : marge de progression probable (non-inscription, abstention).`, evidence: [...w.ev, ...comEv], weight: 72 }));
     }
   }
 
@@ -918,7 +1089,7 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
   const eq = c.equipments?.features ?? [];
   for (const f of eq.filter((f) => f.properties?.category === "marche")) {
     const [lon, lat] = f.geometry.coordinates;
-    pushLieu("Marché", String(f.properties?.name ?? "Marché"), frenchHours(f.properties?.opening_hours as string) || "horaires non renseignés dans OSM", lon, lat);
+    pushLieu("Marché", String(f.properties?.name ?? "Marché"), frenchHours(f.properties?.opening_hours as string) || "jours et horaires à compléter (lieux signalés par les militants)", lon, lat);
   }
   for (const s of c.stations?.stations ?? []) {
     const last = s.frequentation[s.frequentation.length - 1];
@@ -934,11 +1105,36 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
     if (!f.properties?.name || /^(total|esso|bp|shell|avia)\b/i.test(String(f.properties.name))) continue;
     pushLieu("Supermarché", String(f.properties.name), frenchHours(f.properties?.opening_hours as string), lon, lat);
   }
-  const seenSchools = new Set<string>();
-  for (const s of (c.schools?.schools ?? []).filter((s) => /coll[èe]ge|lyc[ée]e/i.test(s.type) && !/^section/i.test(s.nom))) {
-    if (seenSchools.has(s.nom)) continue;
-    seenSchools.add(s.nom);
-    pushLieu(`Sortie de ${s.type.toLowerCase()}`, s.nom, s.priorite && !/^non$/i.test(s.priorite) ? `éducation prioritaire (${s.priorite})` : s.statut, s.lon, s.lat);
+  // Un même site accueille souvent plusieurs établissements (lycée général, lycée professionnel,
+  // collège) : une seule sortie à tenir, regroupée par nom de base ou par position (~100 m).
+  const sites = new Map<string, { base: string; kinds: Set<string>; s: (typeof schoolsList)[number]; ep: string | null; pub: boolean; n: number }>();
+  const schoolsList = (c.schools?.schools ?? []).filter((s) => /coll[èe]ge|lyc[ée]e/i.test(s.type) && !/^section/i.test(s.nom));
+  const baseName = (n: string) =>
+    n
+      .replace(/^(cit[ée] scolaire|lyc[ée]e|coll[èe]ge)((\s+|-)(professionn?el|polyvalent|g[ée]n[ée]ral|technologique|agricole|industriel|mixte|priv[ée]|public|hors contrat|et))*\s*/i, "")
+      .trim();
+  const near = (a: { lon: number | null; lat: number | null }, b: { lon: number | null; lat: number | null }) =>
+    a.lon == null || a.lat == null || b.lon == null || b.lat == null || haversineKm([a.lon, a.lat], [b.lon, b.lat]) <= 0.3;
+  let k = 0;
+  for (const s of schoolsList) {
+    // Nom de base exploitable (« Mireille Grenet ») ; sinon le nom complet, pour ne rien fusionner à tort.
+    const b0 = baseName(s.nom);
+    const base = b0.length >= 4 && /[a-zà-ÿ]{3}/i.test(b0) && !/^\(.*\)$/.test(b0) ? b0 : s.nom;
+    const ep = s.priorite && !/^non$/i.test(s.priorite) ? s.priorite : null;
+    // Même site : même nom de base et à moins de 300 m (ou position inconnue).
+    const hit = [...sites.values()].find((v) => v.base.toLowerCase() === base.toLowerCase() && near(v.s, s));
+    if (hit) {
+      hit.kinds.add(s.type.toLowerCase());
+      hit.ep ??= ep;
+      hit.pub ||= /public/i.test(s.statut);
+      hit.n++;
+    } else sites.set(String(k++), { base, kinds: new Set([s.type.toLowerCase()]), s, ep, pub: /public/i.test(s.statut), n: 1 });
+  }
+  for (const v of sites.values()) {
+    const kinds = [...v.kinds].sort();
+    const nom = v.n > 1 ? `${cap(v.base)} (${kinds.join(" et ")})` : v.s.nom;
+    const type = kinds.length > 1 ? `Sortie de ${kinds.join(" et ")}` : `Sortie de ${kinds[0]}`;
+    pushLieu(type, nom, v.ep ? `éducation prioritaire (${v.ep})` : v.pub ? "Public" : v.s.statut, v.s.lon, v.s.lat);
   }
   if (centroids.size && prioSet.size) {
     // Marchés, gares, services publics et établissements scolaires attirent toute la commune :
@@ -948,7 +1144,7 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
     lieux.push(...keep);
   }
   if (lieux.length) {
-    const order = ["Marché", "Gare", "Supermarché", "Service public", "Sortie de collège", "Sortie de lycée"];
+    const order = ["Marché", "Gare", "Supermarché", "Service public", "Sortie de collège", "Sortie de collège et lycée", "Sortie de lycée"];
     lieux.sort((a, b) => (b.prioritaire ? 1 : 0) - (a.prioritaire ? 1 : 0) || order.indexOf(a.type) - order.indexOf(b.type) || a.bv.localeCompare(b.bv));
     out.tables.push({
       id: "lfi_lieux",
@@ -983,11 +1179,7 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
       items: prio.map((p) => {
         const rawAdr = c.bvGeo?.points.find((f) => String(f.properties?.bv) === p.bv)?.properties?.adresse as string | undefined;
         // Adresses du REU en majuscules : « 14 PLACE DE LA FRATERNITE 48000 mende » → « 14 Place de la Fraternite, 48000 Mende ».
-        const adr = rawAdr
-          ?.toLowerCase()
-          .replace(/(^|[\s'-])([a-zà-ÿ])/g, (_m, a: string, ch: string) => a + ch.toUpperCase())
-          .replace(/\b(De|Du|Des|La|Le|Les|Et|D|L|Sur|Sous|En)\b/g, (w) => w.toLowerCase())
-          .replace(/\s(\d{5})\s/, ", $1 ");
+        const adr = rawAdr ? prettyAdr(rawAdr) : undefined;
         const ns = nearSchools(p.bv);
         const where = adr ? `lieu de vote : ${adr}` : ns.length ? `repères : ${ns.join(", ")}` : "";
         const q = quartierOf(p.bv);
@@ -1001,7 +1193,7 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
   }
   const markets = lieux.filter((l) => l.type === "Marché");
   if (markets.length) actionGroups.push({ title: "Marchés", items: markets.slice(0, 5).map((m) => `${B(m.nom)} : ${m.infos}${m.bv ? ` (${m.bv}${m.prioritaire ? ", prioritaire" : ""})` : ""}.`) });
-  else if ((commune.population ?? 0) >= 2000) actionGroups.push({ title: "Marchés", items: ["Aucun marché recensé dans OpenStreetMap : jours, horaires et emplacements à demander à la mairie ou aux militants locaux."] });
+  else if ((commune.population ?? 0) >= 2000) actionGroups.push({ title: "Marchés", items: ["Aucun marché recensé dans OpenStreetMap : jours, horaires et emplacements à demander à la mairie ou aux militants locaux, puis à ajouter dans « Lieux d'action signalés par les militants »."] });
   const gares = lieux.filter((l) => l.type === "Gare");
   const tt = (nom: string) => c.timetables?.stations.find((s) => s.nom === nom);
   if (gares.length)
@@ -1232,6 +1424,7 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
     if (out.maps.some((m) => m.id === "lfi_map_bv_p22")) blocks.push({ type: "mapPair", mapIds: ["lfi_map_bv_p22", "lfi_map_bv_p22_participation"], title: "Vote Mélenchon (à gauche) et participation (à droite) par bureau de vote — présidentielle 2022, 1er tour, % des inscrits" });
     prose(ids.ou);
     blocks.push({ type: "table", tableId: "lfi_bureaux" }, { type: "chart", chartId: "lfi_chart_bureaux" });
+    if (has("lfi_evolution")) blocks.push({ type: "table", tableId: "lfi_evolution" });
   } else blocks.push({ type: "note", text: "Résultats par bureau de vote indisponibles lors de la génération." });
 
   const hypQ = ids2.quartiers.filter((id) => out.findings.find((f) => f.id === id)?.kind === "hypothese");
@@ -1245,8 +1438,21 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
   else blocks.push({ type: "note", text: "Aucun lieu d'action identifié automatiquement (marchés, gares, commerces, établissements) : à compléter avec les militants locaux." });
   if (access.length) blocks.push({ type: "callout", tone: "info", text: `${B("Accessibilité")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps de trajet théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
   if (has("lfi_lieux")) blocks.push({ type: "table", tableId: "lfi_lieux" });
+  blocks.push({ type: "fieldPlaces" });
 
   out.section = { id: "LFI", letter: "", title: "Fiche d'action — proposition de ciblage", blocks };
+
+  // Feuilles de porte-à-porte des bureaux prioritaires.
+  const porte = buildPorte(c, ranked, labels, (bv) => {
+    const raw = c.bvGeo?.points.find((f) => String(f.properties?.bv) === bv)?.properties?.adresse as string | undefined;
+    return raw ? prettyAdr(raw) : "";
+  });
+  if (porte.section) {
+    out.maps.push(...porte.maps);
+    out.tables.push(...porte.tables);
+    out.extra = [porte.section];
+    blocks.push({ type: "note", text: `${B("Feuilles de porte-à-porte")} : une page par bureau prioritaire (rues et numéros à couvrir) est jointe à la fiche et disponible en PDF séparé.` });
+  }
   return out;
 }
 

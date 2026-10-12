@@ -132,13 +132,13 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
     case "chart": {
       const c = r.charts.find((x) => x.id === b.chartId);
       if (!c) return "";
-      return `<figure class="chart"><figcaption>${esc(c.title)}</figcaption>${chartSvg(c)}<div class="src">Sources : ${c.sources.map((s) => `[${cit.cite(s)}]`).join(" ")}${c.note ? ` — ${esc(c.note)}` : ""}</div></figure>`;
+      return `<figure class="chart"><figcaption>${esc(c.title)}</figcaption>${chartSvg(c)}<div class="src">Sources : ${[...new Set(c.sources.map((s) => `[${cit.cite(s)}]`))].join(" ")}${c.note ? ` — ${esc(c.note)}` : ""}</div></figure>`;
     }
     case "map": {
       const m = r.maps.find((x) => x.id === b.mapId);
       if (!m) return "";
       const srcs = [...new Map(m.layers.map((l) => [l.source.id + l.source.url, l.source])).values()];
-      return `<figure class="map"><figcaption>${esc(m.title)}</figcaption>${mapSvg(m)}<div class="src">Sources : ${srcs.map((s) => `[${cit.cite(s)}]`).join(" ")} · Fond : contours ADMIN EXPRESS (IGN) via geo.api.gouv.fr${m.note ? ` — ${esc(m.note)}` : ""}</div></figure>`;
+      return `<figure class="map"><figcaption>${esc(m.title)}</figcaption>${mapSvg(m)}<div class="src">Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")} · Fond : contours ADMIN EXPRESS (IGN) via geo.api.gouv.fr${m.note ? ` — ${esc(m.note)}` : ""}</div></figure>`;
     }
     case "locator": {
       if (!hasLocator(r.commune.departement.code)) return "";
@@ -151,7 +151,7 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       const srcs = [...new Map(ms.flatMap((m) => m.layers.map((l) => [l.source.id + l.source.url, l.source] as const))).values()];
       return `<figure class="map pair"><figcaption>${esc(b.title ?? ms.map((m) => m.title).join(" / "))}</figcaption><div class="pair-grid">${ms
         .map((m) => `<div><div class="pair-t">${esc(m.period ?? m.title)}</div>${mapSvg(m, 420, 470)}</div>`)
-        .join("")}</div><div class="src">Sources : ${srcs.map((s) => `[${cit.cite(s)}]`).join(" ")}${ms[0].note ? ` — ${esc(ms[0].note)}` : ""}</div></figure>`;
+        .join("")}</div><div class="src">Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")}${ms[0].note ? ` — ${esc(ms[0].note)}` : ""}</div></figure>`;
     }
     case "note":
       return `<div class="note">${inline(b.text)}</div>`;
@@ -170,6 +170,14 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       return r.fieldNotes?.text.trim()
         ? `<div class="callout terrain"><div class="callout-t">Retours du terrain <span class="muted" style="font-weight:400">(mis à jour le ${esc(fmtDate(r.fieldNotes.updatedAt))})</span></div>${inline(r.fieldNotes.text.trim())}</div>`
         : "";
+    case "fieldPlaces": {
+      const items = r.fieldPlaces?.items ?? [];
+      if (!items.length) return "";
+      const rows = [...items].sort((a, b) => Number(!!b.prioritaire) - Number(!!a.prioritaire) || a.type.localeCompare(b.type));
+      return `<figure class="tbl"><figcaption>Lieux d'action signalés par les militants <span class="muted" style="font-weight:400">(mis à jour le ${esc(fmtDate(r.fieldPlaces!.updatedAt))})</span></figcaption><table><thead><tr><th>Type</th><th>Lieu</th><th>Jours et horaires</th><th>Adresse</th><th>Bureau</th></tr></thead><tbody>${rows
+        .map((p) => `<tr${p.prioritaire ? ' class="hl"' : ""}><td>${esc(p.type)}</td><td>${esc(p.nom)}</td><td>${esc(p.horaires)}</td><td>${esc(p.adresse)}</td><td>${p.bv ? `BV ${esc(p.bv)}${p.prioritaire ? " (prioritaire)" : ""}` : ""}</td></tr>`)
+        .join("")}</tbody></table></figure>`;
+    }
     case "glance":
       if (style === "yonne")
         return `<ul class="yl">${b.items.map((i) => `<li>${esc(i.label)} : <strong>${esc(i.value)}</strong>${i.detail ? ` (${esc(i.detail)})` : ""}</li>`).join("")}</ul>`;
@@ -287,6 +295,12 @@ p.prose.hyp { color: #2c2b29; }
 h3.target-t { font-size: 24pt; font-weight: 900; color: #4c0297; text-transform: uppercase; margin: 1mm 0 1mm; }
 .target-f { font-style: italic; color: #2c2b29; margin-bottom: 2mm; }
 .fiche-src .biblio li { font-size: 7.8pt; }
+/* Feuilles de porte-à-porte : une page par bureau. */
+#part-PORTE h3.fh { break-before: page; }
+#part-PORTE h3.fh:first-of-type { break-before: auto; }
+#part-PORTE figure.map svg { max-height: 92mm; width: auto; margin: 0 auto; }
+#part-PORTE figure.map { break-inside: avoid; margin-top: 2mm; }
+#part-PORTE td:first-child { font-size: 11pt; width: 9mm; text-align: center; }
 `;
 
 /**

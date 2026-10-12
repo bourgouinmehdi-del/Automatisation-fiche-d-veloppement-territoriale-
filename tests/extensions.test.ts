@@ -162,3 +162,21 @@ describe("lecteurs des nouvelles sources", () => {
     expect(quartierOfBureau(m, "9")!.quartier).toBe("I1"); // lieu de vote dans l'IRIS
   });
 });
+
+describe("résultats électoraux au format long", () => {
+  it("compte les totaux une fois par bureau (une ligne par candidat)", async () => {
+    const { aggregateRows } = await import("@/lib/collectors/elections");
+    const base = { "Code du département": "60", "Code de la commune": "159", "Code du b.vote": "0001", Inscrits: 1000, Votants: 700, Exprimés: 680 };
+    const rows = [
+      { ...base, Nom: "MÉLENCHON", Voix: 200 },
+      { ...base, Nom: "MACRON", Voix: 300 },
+      { ...base, Nom: "LE PEN", Voix: 180 },
+      { ...base, "Code du b.vote": "0002", Nom: "MÉLENCHON", Voix: 50 },
+    ];
+    const a = aggregateRows(rows)!;
+    expect(a.inscrits).toBe(2000);
+    expect(a.exprimes).toBe(1360);
+    expect(a.candidates.find((c) => c.label === "MÉLENCHON")?.voix).toBe(250);
+  });
+});
+

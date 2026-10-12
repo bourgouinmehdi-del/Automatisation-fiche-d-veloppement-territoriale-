@@ -2,6 +2,7 @@ import * as turf from "@turf/turf";
 import { referentiel } from "../collectors/admin";
 import { CATEGORIES, GROUP_COLORS, GROUP_LABELS } from "../collectors/osm";
 import { SECTIONS_NAF } from "../collectors/public-apis";
+import { BPE_TYPES, BPE_VINTAGE } from "../collectors/bpe";
 import { density, quantileBreaks, seriesEvolution } from "../analysis/stats";
 import type { ChartSpec, DataTable, GeoRef, Indicator, MapLegend, MapSpec, MissingItem, Series, SourceRef, ThemeId } from "../types";
 import type { Collected } from "./collect";
@@ -275,14 +276,15 @@ export function assemble(c: Collected): Assembled {
         { key: "nombre", label: "Nombre", align: "right" },
         { key: "pour10k", label: "Pour 10 000 hab.", align: "right" },
       ],
-      rows: counts.map(({ cat, n }) => ({
+      // Avec la BPE, les catégories absentes d'OSM (valeur 0) ne sont pas affichées : la BPE fait foi.
+      rows: counts.filter(({ n }) => !c.bpe || n > 0).map(({ cat, n }) => ({
         groupe: GROUP_LABELS[cat.group],
         categorie: cat.label,
         nombre: n,
         pour10k: commune.population ? Math.round((n / commune.population) * 100000) / 10 : null,
       })),
       sources: [c.equipments.source, c.popSource],
-      note: "OpenStreetMap est une base contributive : l'absence d'un équipement dans la base ne prouve pas son absence sur le terrain.",
+      note: `OpenStreetMap est une base contributive : l'absence d'un équipement dans la base ne prouve pas son absence sur le terrain.${c.bpe ? " Catégories sans objet dans OpenStreetMap non affichées : voir le tableau de la Base permanente des équipements, qui fait référence." : ""}`,
     });
     const groups = Object.keys(GROUP_LABELS) as (keyof typeof GROUP_LABELS)[];
     charts.push({
@@ -297,6 +299,51 @@ export function assemble(c: Collected): Assembled {
       note: "Arrêts de bus exclus du décompte « Transports ».",
     });
   }
+  /* Base permanente des équipements (INSEE) : référence pour les comptages. */
+  if (c.bpe) {
+    const popCom = commune.population ?? null;
+    const popDep = c.populations.find((p) => p.geo.level === "departement")?.value ?? null;
+    const comCounts: Record<string, number> = {};
+    for (const e of c.bpe.commune) comCounts[e.type] = (comCounts[e.type] ?? 0) + 1;
+    const per10k = (n: number, pop: number | null) => (pop ? Math.round((n / pop) * 100000) / 10 : null);
+    const GROUPS: Record<string, string> = { sante: "Santé", public: "Services publics", commerce: "Commerces", education: "Enseignement" };
+    const rows: Record<string, string | number | null>[] = [];
+    for (const [code, t] of Object.entries(BPE_TYPES)) {
+      const n = comCounts[code] ?? 0;
+      const nd = c.bpe.countsDep[code] ?? 0;
+      indicators.push({
+        id: `bpe_${code}`,
+        label: `${t.label} (BPE)`,
+        theme: t.group === "sante" ? "sante" : t.group === "education" ? "education" : "equipements",
+        value: n,
+        unit: "nombre",
+        geo: geos.commune,
+        source: c.bpe.source,
+        year: BPE_VINTAGE,
+        status: "ok",
+      });
+      indicators.push({ id: `bpe_${code}_10k`, label: `${t.label} pour 10 000 habitants (BPE)`, theme: t.group === "sante" ? "sante" : "equipements", value: per10k(n, popCom), unit: "nombre", geo: geos.commune, source: c.bpe.source, year: BPE_VINTAGE, status: popCom ? "ok" : "missing" });
+      indicators.push({ id: `bpe_${code}_10k`, label: `${t.label} pour 10 000 habitants (BPE)`, theme: t.group === "sante" ? "sante" : "equipements", value: per10k(nd, popDep), unit: "nombre", geo: geos.departement, source: c.bpe.source, year: BPE_VINTAGE, status: popDep ? "ok" : "missing" });
+      if (!n && !nd) continue;
+      rows.push({ groupe: GROUPS[t.group], type: t.label, nombre: n, pour10k: per10k(n, popCom), dep10k: per10k(nd, popDep) });
+    }
+    tables.push({
+      id: "table_bpe",
+      title: `Équipements et services de ${commune.nom} (Base permanente des équipements ${BPE_VINTAGE})`,
+      theme: "equipements",
+      columns: [
+        { key: "groupe", label: "Domaine" },
+        { key: "type", label: "Équipement", wide: true },
+        { key: "nombre", label: "Nombre", align: "right" },
+        { key: "pour10k", label: "Pour 10 000 hab.", align: "right" },
+        { key: "dep10k", label: "Département (pour 10 000 hab.)", align: "right" },
+      ],
+      rows,
+      sources: [c.bpe.source, c.popSource],
+      note: "Base permanente des équipements de l'INSEE : équipements au 1er janvier. Un professionnel exerçant dans plusieurs lieux peut être compté plusieurs fois ; la BPE ne mesure ni la disponibilité ni les délais.",
+    });
+  }
+
   if (c.cycleways) {
     const km = c.cycleways.lines.reduce((s, l) => s + turf.length(l, { units: "kilometers" }), 0);
     indicators.push({
@@ -318,17 +365,18 @@ export function assemble(c: Collected): Assembled {
     const sc = c.schools.schools;
     const byType = new Map<string, { n: number; pub: number; eleves: number; withEleves: number; ep: number }>();
     for (const s of sc) {
-      const t = s.type || "Autre";
+      const t = (s.type || "Autre").replace(/^Ecole/, "École");
       const v = byType.get(t) ?? { n: 0, pub: 0, eleves: 0, withEleves: 0, ep: 0 };
       v.n++;
       if (/public/i.test(s.statut)) v.pub++;
-      if (s.eleves != null) {
+      if (s.eleves != null && s.eleves > 0) {
         v.eleves += s.eleves;
         v.withEleves++;
       }
       if (s.priorite && !/^non$/i.test(s.priorite) && s.priorite !== "") v.ep++;
       byType.set(t, v);
     }
+    const anyEleves = [...byType.values()].some((v) => v.withEleves > 0);
     indicators.push({ id: "nb_etablissements_scolaires", label: "Établissements scolaires ouverts", theme: "education", value: sc.length, unit: "nombre", geo: geos.commune, source: c.schools.source, status: "ok" });
     tables.push({
       id: "table_ecoles",
@@ -339,11 +387,11 @@ export function assemble(c: Collected): Assembled {
         { key: "n", label: "Établissements", align: "right" },
         { key: "pub", label: "dont publics", align: "right" },
         { key: "ep", label: "dont éducation prioritaire", align: "right" },
-        { key: "eleves", label: "Élèves (si renseigné)", align: "right" },
+        ...(anyEleves ? [{ key: "eleves", label: "Élèves (si renseigné)", align: "right" as const }] : []),
       ],
       rows: [...byType.entries()].map(([type, v]) => ({ type, n: v.n, pub: v.pub, ep: v.ep, eleves: v.withEleves ? v.eleves : null })),
       sources: [c.schools.source],
-      note: "Effectifs renseignés pour une partie des établissements seulement.",
+      note: anyEleves ? "Effectifs renseignés pour une partie des établissements seulement." : "Effectifs d'élèves non renseignés dans l'annuaire pour cette commune.",
     });
   }
 
@@ -804,7 +852,7 @@ export function assemble(c: Collected): Assembled {
       ],
       rows: c.nearest.map((n) => ({ type: n.label, nom: n.name, distance: Math.round(n.distanceKm * 10) / 10 })),
       sources: [c.nearestSource!],
-      note: "Recherche dans un rayon de 30 km dans OpenStreetMap. Les temps de trajet ne sont pas calculés (pas de calculateur d'itinéraire public intégré).",
+      note: `Recherche dans un rayon de 30 km dans OpenStreetMap ; distances à vol d'oiseau depuis le centre de la commune.${c.routes?.routes.length ? " Temps de trajet routiers : voir « Temps de trajet et desserte ferroviaire »." : ""}`,
     });
   if (c.comparables.length) {
     const val = (r: (typeof c.comparables)[number]["result"], id: string) => r?.indicators.find((i) => i.id === id)?.value ?? null;
@@ -848,7 +896,9 @@ export function assemble(c: Collected): Assembled {
       sources: [c.popSource, ...(c.polesSource ? [c.polesSource] : [])],
       note:
         c.comparables.some((x) => x.densite != null)
-          ? "Sélection : communes de la même région dont la population est à ±30 % et la densité comprise entre la moitié et le double de celle de la commune (élargie à la France si moins de 5 communes)."
+          ? c.comparablesScope
+            ? `Sélection : la région comptant moins de 5 communes proches, la recherche a été élargie (${c.comparablesScope}) aux communes dont la population est à ±20 % et la densité comprise entre la moitié et le double de celle de la commune.`
+            : "Sélection : communes de la même région dont la population est à ±30 % et la densité comprise entre la moitié et le double de celle de la commune."
           : "Sélection sur le seul critère de population (±30 %, même région) : les densités n'ont pas pu être calculées lors de la génération.",
     });
   }
