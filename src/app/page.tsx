@@ -91,22 +91,7 @@ export default function Home() {
       <h1 className="mb-8 mt-24 text-6xl uppercase leading-[.98] sm:text-7xl">
         <span className="iso">Où aller,<br />qui rencontrer,<br /><span className="text-[var(--mark)]">quoi dire.</span></span>
       </h1>
-      <p className="mb-5 text-[var(--ink-2)]">
-        Saisissez un code postal ou le nom d&apos;une commune : l&apos;application collecte les données publiques (INSEE, élections par bureau de vote,
-        OpenStreetMap, SNCF, éducation…), les compare au département et produit une fiche d&apos;action sourcée, suivie du diagnostic complet.
-      </p>
-      <ul className="mb-8 grid gap-2 text-sm sm:grid-cols-2">
-        {[
-          ["Profil sociodémographique", "écarts significatifs au département, âges, logement, emploi"],
-          ["Profil politique", "vote LFI, parrainages, abstention, forces de gauche et RN"],
-          ["Où agir", "cartes et classement des bureaux de vote prioritaires"],
-          ["Actions recommandées", "porte-à-porte, marchés, gares, commerces, accessibilité"],
-        ].map(([t, d]) => (
-          <li key={t} className="rounded-lg border border-[var(--line)] bg-white px-3 py-2">
-            <span className="block font-semibold">{t}</span> <span className="text-[var(--ink-2)]">{d.charAt(0).toUpperCase() + d.slice(1)}.</span>
-          </li>
-        ))}
-      </ul>
+      <p className="mb-8 text-lg text-[var(--ink-2)]">Entrez une commune : l&apos;outil prépare en quelques minutes une fiche d&apos;action de quelques pages, à partir des données publiques.</p>
 
       <div className="card p-5">
         <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-[var(--accent-soft)] p-1 text-sm font-semibold" role="tablist">

@@ -150,12 +150,19 @@ describe("chaîne de génération (API simulées)", () => {
     const types = fiche.blocks.map((b) => b.type);
     // Avertissement, chiffres clés, intertitres, cartes jumelles, actions groupées.
     expect(fiche.blocks[0]).toMatchObject({ type: "callout", tone: "warning" });
-    for (const t of ["glance", "heading", "mapPair", "actions"]) expect(types).toContain(t);
+    for (const t of ["glance", "heading", "mapPair", "table"]) expect(types).toContain(t);
     const headings = fiche.blocks.filter((b) => b.type === "heading").map((b) => (b as { text: string }).text);
     expect(headings).toEqual(expect.arrayContaining(["Profil sociodémographique du territoire", "Profil politique du territoire", "Actions recommandées"]));
-    const actions = fiche.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
+    // Fiche : plan d'action en tableau ; toutes les pistes détaillées en annexe.
+    const plan = report.tables.find((t) => t.id === "lfi_plan")!;
+    expect(plan.rows[0]).toMatchObject({ action: "Porte-à-porte", bv: "BV 2" });
+    expect(plan.columns.length).toBeLessThanOrEqual(7);
+    expect(report.tables.find((t) => t.id === "lfi_bureaux_prio")!.columns.length).toBeLessThanOrEqual(7);
+    const detail = report.sections.find((x) => x.id === "LFI_DETAIL")!;
+    const actions = detail.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
     expect(actions.groups[0].title).toBe("Porte-à-porte");
     expect(actions.groups[0].items[0]).toMatch(/^\*\*BV 2/);
+    expect(types).not.toContain("actions");
     // Les constats rédigés renvoient à des constats existants.
     for (const b of fiche.blocks) if (b.type === "findings" && b.ids) for (const id of b.ids) expect(report.findings.some((f) => f.id === id)).toBe(true);
     // Profil socio synthétique : intro en langage courant, tableau limité aux indicateurs
@@ -202,15 +209,15 @@ describe("chaîne de génération (API simulées)", () => {
     const fiche = report.sections[0];
     expect(fiche.blocks.some((b) => b.type === "paragraph" && /dirigée par Alice DURAND/.test(b.text) && /gauche battue/.test(b.text))).toBe(true);
     // BPE : désert médical (2 médecins pour ~41 000 habitants, département bien mieux doté).
-    const socio = fiche.blocks.find((b) => b.type === "list" && b.items.some((i) => /habitants/.test(i.text))) as Extract<(typeof fiche.blocks)[number], { type: "list" }>;
+    const socio = fiche.blocks.find((b) => b.type === "list" && b.items.some((i) => /Désert médical/.test(i.text))) as Extract<(typeof fiche.blocks)[number], { type: "list" }>;
     expect(socio.items.some((i) => /Désert médical/.test(i.text) && /France Services/.test(i.text))).toBe(true);
     // Horaires GTFS : pointe du soir et temps vers Paris ; temps routiers.
-    const actions = fiche.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
+    const actions = report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
     const gare = actions.groups.find((g) => g.title === "Gare")!;
     expect(gare.items[0]).toMatch(/entre 17 h et 19 h/);
     expect(gare.items[0]).toMatch(/Paris en 52 min/);
     expect(actions.groups.some((g) => g.title === "Services publics")).toBe(true);
-    const access = fiche.blocks.find((b) => b.type === "callout" && /Accessibilité/.test(b.text)) as { text: string };
+    const access = fiche.blocks.find((b) => b.type === "paragraph" && /Accès/.test(b.text)) as { text: string };
     expect(access.text).toMatch(/en voiture/);
     // Groupe d'action importé depuis l'export Action Populaire (code postal + ville).
     expect(fiche.blocks.some((b) => b.type === "callout" && /Groupe d'action fictif/.test(b.text))).toBe(true);
@@ -223,9 +230,10 @@ describe("chaîne de génération (API simulées)", () => {
     const bv = report.tables.find((t) => t.id === "lfi_bureaux")!;
     expect(bv.columns.map((c) => c.key)).toEqual(expect.arrayContaining(["lfi2", "lfi2exp"]));
     expect(report.maps.some((m) => m.id === "lfi_map_bv_p22")).toBe(true);
-    expect(fiche.blocks.filter((b) => b.type === "mapPair")).toHaveLength(2);
+    expect(fiche.blocks.filter((b) => b.type === "mapPair")).toHaveLength(1);
+    expect(report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.filter((b) => b.type === "mapPair")).toHaveLength(1);
     expect(report.charts.find((c) => c.id === "lfi_chart_bureaux")!.series.map((x) => x.key)).toContain("mel");
-    const actions = fiche.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
+    const actions = report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
     expect(actions.groups[0].items[0]).toMatch(/Mélenchon/);
   });
 
