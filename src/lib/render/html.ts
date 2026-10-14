@@ -139,6 +139,8 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       const m = r.maps.find((x) => x.id === b.mapId);
       if (!m) return "";
       const srcs = [...new Map(m.layers.map((l) => [l.source.id + l.source.url, l.source])).values()];
+      // Carte « affiche » : titre, légende et source sont dans l'image ; renvois aux sources en dessous.
+      if (m.poster) return `<figure class="map poster">${mapSvg(m)}<div class="src">Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")}${m.note ? ` — ${esc(m.note)}` : ""}</div></figure>`;
       return `<figure class="map"><figcaption>${esc(m.title)}</figcaption>${mapSvg(m)}<div class="src">Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")} · Fond : contours ADMIN EXPRESS (IGN) via geo.api.gouv.fr${m.note ? ` — ${esc(m.note)}` : ""}</div></figure>`;
     }
     case "locator": {
@@ -299,6 +301,8 @@ p.prose.hyp { color: #2c2b29; }
 h3.target-t { font-size: 24pt; font-weight: 900; color: #4c0297; text-transform: uppercase; margin: 1mm 0 1mm; }
 .target-f { font-style: italic; color: #2c2b29; margin-bottom: 2mm; }
 .fiche-src .biblio li { font-size: 7.8pt; }
+figure.poster svg { width: 100%; height: auto; }
+figure.poster { break-inside: avoid; }
 /* Fiche destinée à des non-spécialistes : pas d'appels de note dans le texte (les sources restent listées en fin de fiche). */
 .fiche section:not(.fiche-src) sup, .fiche section:not(.fiche-src) .refs { display: none; }
 /* Feuilles de porte-à-porte : une page par bureau. */

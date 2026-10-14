@@ -26,6 +26,9 @@ import {
 } from "../collectors/elections";
 import { BureauGeo, collectBureauxGeo } from "../collectors/bureaux-geo";
 import { InternalData, loadInternalData } from "../collectors/interne";
+import { loadStmt, type StmtSeries } from "../collectors/emploi";
+import { collectCirconscriptions, collectDepartementsVoisins, collectFondOsm, collectResidences, fitAspect, type Bbox, type Circo, type FondOsm, type Residence } from "../collectors/carto";
+import { rankBureaux } from "../analysis/political";
 import { collectIris, collectQpv, Quartier } from "../collectors/quartiers";
 import {
   collectMunicipales,
@@ -156,6 +159,14 @@ export interface Collected {
   }[];
   bvGeo?: BureauGeo & { source: SourceRef };
   interne: InternalData;
+  /** Cartes « affiche » (commune) : fond OpenStreetMap et résidences étudiantes. */
+  fond?: FondOsm & { bbox: Bbox; source: SourceRef };
+  residences?: { list: Residence[]; source: SourceRef };
+  /** Cartes « affiche » (département) : circonscriptions et départements voisins. */
+  circos?: { list: Circo[]; source: SourceRef };
+  depVoisins?: { features: GeoJSON.Feature[]; bbox: Bbox; source: SourceRef };
+  /** Demandeurs d'emploi par mois : commune, département, France (fichiers déposés). */
+  emploi?: StmtSeries & { source: SourceRef };
   /** Quartiers prioritaires et IRIS de la commune. */
   quartiers?: { qpv: Quartier[]; iris: Quartier[]; sources: SourceRef[] };
   /** Municipales 2026 (commune) et nuance de la majorité municipale (communes du département). */
@@ -198,10 +209,11 @@ const STEP_ORDER = [
   "bpe",
   "services",
   "acces",
+  "cartes",
 ];
 
 /** Nombre d'étapes suivies (identité, géographie, 18 étapes parallèles) + 3 étapes d'analyse. */
-export const PROGRESS_TOTAL = 2 + 18 + 3;
+export const PROGRESS_TOTAL = 2 + 19 + 3;
 
 export async function collect(
   query: ReportQuery,
@@ -1143,6 +1155,75 @@ export async function collect(
     track("bpe", "Équipements (BPE)", run_bpe),
     track("acces", "Temps de trajet routiers (OSRM)", run_acces),
   ]);
+  /* Cartes « affiche » : fond de plan et résidences étudiantes (commune),
+     circonscriptions et départements voisins (département). */
+  const run_cartes = async () => {
+    if (query.scope === "departement") {
+      if (!c.depFeatures?.features.length) return;
+      const bb = fitAspect(turf.bbox(c.depFeatures) as Bbox, 0.04);
+      await ctx.step("circonscriptions", "cartes:circonscriptions", async (http) => {
+        const r = await collectCirconscriptions(http, commune.departement.code);
+        c.circos = { list: r.circos, source: ctx.ref("circonscriptions", r.url, r.retrievedAt) };
+      });
+      await ctx.step("contours_admin", "cartes:departements", async (http) => {
+        const r = await collectDepartementsVoisins(http, commune.departement.code, bb);
+        c.depVoisins = { features: r.features, bbox: bb, source: ctx.ref("contours_admin", r.url, r.retrievedAt) };
+      });
+      return;
+    }
+    if (!enabled("osm") || !commune.contour) return;
+    const cb = turf.bbox(turf.feature(commune.contour as GeoJSON.Polygon)) as Bbox;
+    await ctx.step("osm", "cartes:residences", async (http) => {
+      const r = await collectResidences(http, cb);
+      const inCommune = r.list.filter((x) => {
+        try {
+          return turf.booleanPointInPolygon([x.lon, x.lat], turf.feature(commune.contour as GeoJSON.Polygon));
+        } catch {
+          return true;
+        }
+      });
+      c.residences = { list: inCommune, source: ctx.ref("osm", r.url, r.retrievedAt) };
+    });
+    // Emprise : les lieux de la carte (bureaux prioritaires, quartiers prioritaires,
+    // résidences, marchés, gares), plutôt que toute la commune (forêts, champs).
+    const pts: [number, number][] = [];
+    const corners = (g: GeoJSON.Feature | GeoJSON.Geometry) => {
+      try {
+        const b = turf.bbox(g as GeoJSON.Feature);
+        pts.push([b[0], b[1]], [b[2], b[3]]);
+      } catch {
+        /* géométrie invalide */
+      }
+    };
+    const ref = c.bureaux.find((b) => b.election.id === "EU24") ?? c.bureaux.find((b) => b.election.id === "PR22T1");
+    const sec = c.bureaux.find((b) => b.election.id === "PR22T1" && b !== ref);
+    if (ref && c.bvGeo?.features.length) {
+      const prio = new Set(rankBureaux(ref.results, sec?.results ?? null, new Map()).filter((b) => b.priorite === 1).map((b) => b.bv));
+      for (const f of c.bvGeo.features) if (prio.has(String(f.properties?.bv))) corners(f);
+    }
+    for (const q of c.quartiers?.qpv ?? []) if (q.geometry) corners(q.geometry);
+    for (const r of c.residences?.list ?? []) pts.push([r.lon, r.lat]);
+    const inBox = (lon: number, lat: number) => lon >= cb[0] && lon <= cb[2] && lat >= cb[1] && lat <= cb[3];
+    for (const f of c.equipments?.features ?? []) if (f.properties?.category === "marche") pts.push(f.geometry.coordinates as [number, number]);
+    for (const st of c.stations?.stations ?? []) if (st.lon != null && st.lat != null && inBox(st.lon, st.lat)) pts.push([st.lon, st.lat]);
+    let fb: Bbox = cb;
+    if (pts.length >= 2) {
+      const xs = pts.map((p) => p[0]);
+      const ys = pts.map((p) => p[1]);
+      fb = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+      // Au moins 1,2 km de côté.
+      const minDeg = 0.011;
+      if (fb[3] - fb[1] < minDeg) (fb[1] -= minDeg / 2), (fb[3] += minDeg / 2);
+      if (fb[2] - fb[0] < minDeg * 1.5) (fb[0] -= minDeg * 0.75), (fb[2] += minDeg * 0.75);
+    }
+    const bb = fitAspect(fb, 0.18);
+    await ctx.step("osm", "cartes:fond", async (http) => {
+      const r = await collectFondOsm(http, bb);
+      c.fond = { ...r, bbox: bb, source: ctx.ref("osm_fond", r.url, r.retrievedAt) };
+    });
+  };
+  await track("cartes", "Fond de plan et contours des cartes", run_cartes);
+
   // Journal dans un ordre stable, indépendant de l'ordre d'arrivée.
   const order = (st: string) => {
     const i = STEP_ORDER.findIndex((p) => st === p || st.startsWith(p + ":"));
@@ -1164,6 +1245,28 @@ export async function collect(
       fromCache: 0,
       retrievedAt: new Date().toISOString(),
     });
+
+  /* 19. Demandeurs d'emploi (fichiers France Travail déposés, facultatifs) */
+  if (query.scope !== "departement") {
+    try {
+      const t0 = Date.now();
+      // Paris, Lyon, Marseille : la ville = somme de ses arrondissements.
+      const plmCity = { "75056": ["751", 20], "69123": ["6938", 9], "13055": ["132", 16] } as Record<string, [string, number]>;
+      const pc = plmCity[commune.code];
+      const codes = pc ? Array.from({ length: pc[1] }, (_, i) => `${pc[0]}${String(i + 1).padStart(pc[0].length === 4 ? 1 : 2, "0")}`) : [commune.code];
+      const s = await loadStmt(codes, commune.departement.code);
+      if (s?.commune.length) {
+        const last = s.commune[s.commune.length - 1].mois;
+        c.emploi = {
+          ...s,
+          source: { id: "interne_stmt", name: "Demandeurs d'emploi inscrits à France Travail par commune (fichiers fournis)", url: "data/interne/demandeurs-emploi", retrievedAt: new Date().toISOString(), vintage: `${last.slice(4)}/${last.slice(0, 4)}` },
+        };
+        ctx.runs.push({ sourceId: "interne_stmt", name: "Demandeurs d'emploi (France Travail, fichiers fournis)", step: "emploi", status: "ok", message: `${s.commune.length} mois`, durationMs: Date.now() - t0, requests: 0, fromCache: 0, retrievedAt: new Date().toISOString() });
+      }
+    } catch (e) {
+      c.warnings.push(`Demandeurs d'emploi : lecture impossible (${(e as Error).message}).`);
+    }
+  }
 
   log(`collecte terminée (mémoire ${mem()} Mo)`);
   progress({

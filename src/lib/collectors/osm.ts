@@ -157,7 +157,7 @@ export const OVERPASS_MIRRORS = [config.overpassUrl, ...(process.env.OVERPASS_MI
   .map((u) => u.trim())
   .filter((u, i, a) => u && a.indexOf(u) === i);
 
-async function overpass<T>(http: TrackedHttp, query: string): Promise<{ data: T | null; retrievedAt: string; url: string }> {
+export async function overpass<T>(http: TrackedHttp, query: string): Promise<{ data: T | null; retrievedAt: string; url: string }> {
   let last: unknown = null;
   for (const url of OVERPASS_MIRRORS) {
     try {

@@ -639,9 +639,15 @@ function MapBlock({ maps, cite, exp }: { maps: Report["maps"]; cite: (s: Report[
           <a href={exp("geojson", `?id=${m.id}`)}>GeoJSON</a>
         </span>
       </figcaption>
-      <MapView key={m.id} map={m} />
+      {m.poster ? (
+        // Carte « affiche » : l'image mise en page (titre, étiquettes, légende), identique au PDF.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={exp("map-svg", `?id=${m.id}&inline=1`)} alt={m.title} className="w-full rounded border border-[var(--line)] bg-white" loading="lazy" />
+      ) : (
+        <MapView key={m.id} map={m} />
+      )}
       <div className="mt-1 text-[11px] text-[var(--ink-2)]">
-        Sources : {[...new Set(srcs.map((s) => `[${cite(s)}]`))].join(" ")}. Fond de carte © contributeurs OpenStreetMap{m.note ? ` — ${m.note}` : ""}
+        Sources : {[...new Set(srcs.map((s) => `[${cite(s)}]`))].join(" ")}.{m.poster ? "" : " Fond de carte © contributeurs OpenStreetMap"}{m.note ? ` — ${m.note}` : ""}
       </div>
     </figure>
   );

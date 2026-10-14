@@ -123,6 +123,28 @@ function muniRow(code: string, dep: string, tour: 1 | 2) {
 export function mockExtra(url: URL): Response | null {
   const h = url.host;
   const p = url.pathname;
+  // Cartes « affiche » : circonscriptions (deux moitiés du département fictif) et départements voisins.
+  if (h === "www.data.gouv.fr" && p === "/api/1/datasets/contours-geographiques-des-circonscriptions-legislatives/")
+    return json({ resources: [{ id: "circ-p10", title: "circonscriptions-legislatives-p10.geojson", format: "geojson", filesize: 1000, url: "https://static.data.gouv.fr/circonscriptions-legislatives-p10.geojson" }] });
+  if (h === "static.data.gouv.fr" && p === "/circonscriptions-legislatives-p10.geojson")
+    return json({
+      type: "FeatureCollection",
+      features: [
+        { type: "Feature", properties: { codeDepartement: "60", codeCirconscription: "6001", nomCirconscription: "1ère circonscription" }, geometry: rect(-0.05, -0.05, 0.02, 0.09) },
+        { type: "Feature", properties: { codeDepartement: "60", codeCirconscription: "6002", nomCirconscription: "2e circonscription" }, geometry: rect(0.02, -0.05, 0.09, 0.09) },
+        { type: "Feature", properties: { codeDepartement: "02", codeCirconscription: "0201" }, geometry: rect(0.09, -0.05, 0.2, 0.09) },
+      ],
+    });
+  if (h === "etalab-datasets.geo.data.gouv.fr" && p.endsWith("/departements-100m.geojson"))
+    return json({
+      type: "FeatureCollection",
+      features: [
+        { type: "Feature", properties: { code: "60", nom: "Oise" }, geometry: rect(-0.05, -0.05, 0.09, 0.09) },
+        { type: "Feature", properties: { code: "02", nom: "Aisne" }, geometry: rect(0.09, -0.1, 0.25, 0.15) },
+        { type: "Feature", properties: { code: "80", nom: "Somme" }, geometry: rect(-0.1, 0.09, 0.09, 0.25) },
+        { type: "Feature", properties: { code: "13", nom: "Bouches-du-Rhône" }, geometry: rect(-5, -6, -4.9, -5.9) },
+      ],
+    });
   if (h === "www.data.gouv.fr" && p === "/api/1/datasets/quartiers-prioritaires-de-la-politique-de-la-ville-qpv/")
     return json({
       slug: "quartiers-prioritaires-de-la-politique-de-la-ville-qpv",

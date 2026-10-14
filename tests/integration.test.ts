@@ -24,6 +24,14 @@ beforeAll(async () => {
   await fs.writeFile(path.join(dir, "interne", "groupes.csv"), "code_commune;nom;membres;statut\n60159;Groupe d'action fictif;9;actif\n");
   // Export Action Populaire : commune retrouvée par code postal et ville.
   await fs.writeFile(path.join(dir, "interne", "action-populaire.csv"), "Nom;Code postal;Ville;Nombre de membres;Certifié\nGroupe des étudiants;60200;Compiègne;4;Oui\n");
+  // Demandeurs d'emploi (fichiers France Travail, fictifs) : déposés bruts, importés au premier usage.
+  {
+    const head = "COMRES;MOISTA;_FREQ_;part_fem;AGE_m;ancien_m;ancien_mn\n";
+    const months = ["202408", "202508", "202607", "202608"];
+    const com = months.map((m, k) => `60159;${m};${3600 + 200 * k};0.5;39.5;600;\n60057;${m};${800 + 10 * k};0.48;41;700;\n60001;${m};2;;;;`).join("\n");
+    await fs.writeFile(path.join(dir, "interne", "RES_STMT_COM_1.csv"), "\uFEFF" + head + com + "\n");
+    await fs.writeFile(path.join(dir, "interne", "RES_NAT.csv"), head + months.map((m, k) => `;${m};${5500000 + 100000 * k};0.51;39.3;640;`).join("\n") + "\n");
+  }
   vi.stubGlobal("fetch", mockFetch());
   build = (await import("@/lib/report/build")).buildReport;
   report = await build({ codeInsee: "60159", scope: "commune" });
@@ -225,6 +233,34 @@ describe("chaîne de génération (API simulées)", () => {
     expect(access.text).toMatch(/en voiture/);
     // Groupe d'action importé depuis l'export Action Populaire (code postal + ville).
     expect(fiche.blocks.some((b) => b.type === "callout" && /Groupe d'action fictif/.test(b.text))).toBe(true);
+  });
+
+  it("demandeurs d'emploi : tableau, graphique, phrase de la fiche", () => {
+    const t = report.tables.find((x) => x.id === "table_demandeurs")!;
+    expect(t.rows[0]).toMatchObject({ territoire: "Compiègne", n: expect.stringMatching(/^4\s?200$/) });
+    expect(t.rows.map((r) => r.territoire)).toEqual(["Compiègne", "Oise", "France"]);
+    // Oise = somme des communes du fichier (60159 + 60057 + 60001).
+    expect(String(t.rows[1].n).replace(/\D/g, "")).toBe(String(4200 + 830 + 2));
+    expect(report.charts.some((c) => c.id === "chart_demandeurs")).toBe(true);
+    const fiche = report.sections[0];
+    const lists = fiche.blocks.filter((b) => b.type === "list") as Extract<(typeof fiche.blocks)[number], { type: "list" }>[];
+    expect(lists.some((l) => l.items.some((i) => /demandeurs d'emploi\*\* fin août 2026/.test(i.text)))).toBe(true);
+    expect(report.sections.find((x) => x.id === "C")!.blocks.some((b) => b.type === "table" && b.tableId === "table_demandeurs")).toBe(true);
+  });
+
+  it("carte « affiche » de la commune : porte-à-porte et tractage sur fond de plan", async () => {
+    const m = report.maps.find((x) => x.id === "lfi_affiche")!;
+    expect(m.poster?.kicker).toBe("Compiègne");
+    const ids = m.layers.map((l) => l.id);
+    expect(ids).toEqual(expect.arrayContaining(["voisins", "commune", "voies", "fer", "limite", "bv_prio", "qpv", "residences", "tractage"]));
+    expect(m.layers.find((l) => l.id === "residences")!.data.features[0].properties).toMatchObject({ nom: "Résidence Roberval", sub: "385 logements" });
+    expect(m.layers.find((l) => l.id === "tractage")!.data.features.some((f) => /voyageurs\/jour/.test(f.properties?.sub))).toBe(true);
+    const { mapSvg } = await import("@/lib/render/svg");
+    const svg = mapSvg(m);
+    for (const t of ["COMPIÈGNE", "Propositions de ciblage : porte-à-porte et tractage", "Résidence Roberval", "Lieu de tractage (marché, gare)", "Limite communale"]) expect(svg).toContain(t);
+    const fiche = report.sections[0];
+    const iAct = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Actions recommandées");
+    expect(fiche.blocks.slice(iAct).some((b) => b.type === "map" && b.mapId === "lfi_affiche")).toBe(true);
   });
 
   it("fiche en langage courant : pas de jargon, tableau du vote court", async () => {

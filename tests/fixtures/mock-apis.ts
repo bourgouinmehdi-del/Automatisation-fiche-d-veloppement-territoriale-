@@ -191,6 +191,22 @@ function overpass(body: string) {
       ],
     };
   }
+  // Fond de plan (cartes « affiche ») : quelques voies, une voie ferrée, une rivière et un plan d'eau.
+  if (q.includes("waterway")) {
+    const g = (pts: [number, number][]) => pts.map(([x, y]) => ({ lon: LON0 + x, lat: LAT0 + y }));
+    return {
+      elements: [
+        { type: "way", id: 501, tags: { highway: "primary" }, geometry: g([[-0.01, 0.0], [0.05, 0.03]]) },
+        { type: "way", id: 502, tags: { highway: "residential" }, geometry: g([[0.0, 0.02], [0.04, 0.02], [0.04, 0.035]]) },
+        { type: "way", id: 503, tags: { railway: "rail" }, geometry: g([[-0.01, 0.035], [0.05, 0.005]]) },
+        { type: "way", id: 504, tags: { waterway: "river", name: "L'Oise" }, geometry: g([[-0.01, 0.04], [0.05, 0.041]]) },
+        { type: "way", id: 505, tags: { natural: "water" }, geometry: g([[0.03, 0.03], [0.035, 0.03], [0.035, 0.034], [0.03, 0.03]]) },
+      ],
+    };
+  }
+  if (q.includes("dormitory")) {
+    return { elements: [{ type: "way", id: 601, center: { lat: LAT0 + 0.01, lon: LON0 + 0.008 }, tags: { building: "dormitory", name: "Résidence Roberval", operator: "CROUS Amiens-Picardie", "building:flats": "385" } }] };
+  }
   if (q.includes("cycleway")) {
     return { elements: [{ type: "way", id: 10, tags: { highway: "cycleway" }, geometry: [{ lat: LAT0 + 0.01, lon: LON0 + 0.01 }, { lat: LAT0 + 0.02, lon: LON0 + 0.03 }] }] };
   }
