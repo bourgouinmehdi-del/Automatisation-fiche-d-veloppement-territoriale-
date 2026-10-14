@@ -86,51 +86,92 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
   const depName = geos.departement.name;
 
   /* ================================================================ 1. socio */
-  const socioGeos = [geos.commune, geos.epci, geos.departement, geos.region, geos.france].filter(Boolean) as GeoRef[];
+  /** Ligne « commune » du tableau des quartiers. */
   const rowFor = (g: GeoRef) => {
     const v = (id: string) => get(id, g)?.value ?? null;
     return {
-      territoire: g.level === "commune" ? g.name : g.level === "france" ? "France" : g.name,
       revenu: v("revenu_median") != null ? fmtValue(v("revenu_median"), "€") : "n.d.",
       pauvrete: pct(v("taux_pauvrete")),
       jeunes: pct(v("part_moins_25") ?? v("part_moins_30")),
-      ages: pct(v("part_65_plus") ?? v("part_60_plus")),
       chomage: pct(v("taux_chomage_rp")),
       locataires: v("part_locataires") != null ? `${pct(v("part_locataires"), 0)} (${pct(v("part_locataires_hlm"), 0)})` : "n.d.",
-      diplome: pct(v("part_sans_diplome")),
-      ouvriers: pct(v("part_ouvriers")),
     };
   };
-  const socioRows = socioGeos.map((g) => ({ g, row: rowFor(g) })).filter(({ row }) => Object.values(row).some((x, i) => i > 0 && x !== "n.d."));
-  const socioSources = [...new Map(indicators.filter((i) => ["revenu_median", "taux_pauvrete", "part_moins_25", "part_65_plus", "taux_chomage_rp", "part_locataires", "part_ouvriers"].includes(i.id)).map((i) => [i.source.dataset ?? i.source.id, i.source])).values()];
-  if (socioRows.length) {
+  // Fiche destinée à des militants et élus qui ne sont pas statisticiens : une phrase
+  // d'introduction en langage courant, un tableau limité aux indicateurs qui
+  // distinguent vraiment la commune du département, puis 2 ou 3 phrases qualitatives.
+  type SocioDef = { id: string; alt?: string; label: string; up: { adj?: string; avec?: string }; down: { adj?: string; avec?: string }; core?: boolean };
+  const SOCIO: SocioDef[] = [
+    { id: "taux_pauvrete", label: "Taux de pauvreté", up: { adj: "plus pauvre" }, down: { adj: "moins touchée par la pauvreté" }, core: true },
+    { id: "revenu_median", label: "Revenu médian", up: { adj: "plus aisée" }, down: { adj: "aux revenus plus modestes" }, core: true },
+    { id: "taux_chomage_rp", label: "Chômage", up: { adj: "plus touchée par le chômage" }, down: { adj: "moins touchée par le chômage" }, core: true },
+    { id: "part_locataires_hlm", label: "Locataires HLM", up: { avec: "beaucoup de logements sociaux" }, down: { avec: "peu de logements sociaux" } },
+    { id: "part_65_plus", alt: "part_60_plus", label: "65 ans et +", up: { adj: "plus âgée" }, down: { adj: "plus jeune" } },
+    { id: "part_moins_25", alt: "part_moins_30", label: "Moins de 25 ans", up: { adj: "plus jeune" }, down: { adj: "plus âgée" } },
+    { id: "part_sans_diplome", label: "Sans diplôme ou brevet seul", up: { adj: "moins diplômée" }, down: { adj: "plus diplômée" } },
+    { id: "part_ouvriers", label: "Ouvriers", up: { avec: "une forte part d'ouvriers" }, down: { avec: "peu d'ouvriers" } },
+    { id: "part_employes", label: "Employés", up: { avec: "une forte part d'employés" }, down: { avec: "peu d'employés" } },
+    { id: "part_cadres", label: "Cadres", up: { avec: "beaucoup de cadres" }, down: { avec: "peu de cadres" } },
+    { id: "part_menages_sans_voiture", label: "Ménages sans voiture", up: { avec: "beaucoup de ménages sans voiture" }, down: {} },
+    { id: "part_logements_vacants", label: "Logements vacants", up: { avec: "beaucoup de logements vacants" }, down: {} },
+  ];
+  const socioCmp = SOCIO.map((d) => {
+    const id = get(d.id, geos.commune) ? d.id : d.alt && get(d.alt, geos.commune) ? d.alt : d.id;
+    const a = get(id, geos.commune);
+    const b = get(id, geos.departement);
+    if (!a || !b || a.value == null || b.value == null || !b.value) return null;
+    const dir = gap(a.value, b.value, a.unit === "€" ? "€" : "%").direction;
+    return { d, id, a, b, dir, score: Math.abs(a.value - b.value) / Math.abs(b.value) };
+  }).filter((x): x is NonNullable<typeof x> => !!x);
+  // Indicateurs déterminants : écarts significatifs, les plus forts d'abord (7 au plus) ;
+  // complétés par les indicateurs de base (pauvreté, revenu, chômage) jusqu'à 4 colonnes.
+  const signif = socioCmp.filter((x) => x.dir === "superieur" || x.dir === "inferieur").sort((x, y) => y.score - x.score);
+  // « Plus jeune » et « plus âgée » ne doivent pas se contredire : une seule mesure d'âge par sens.
+  const kept: typeof signif = [];
+  for (const x of signif) {
+    const desc = x.dir === "superieur" ? x.d.up : x.d.down;
+    if (desc.adj && kept.some((k) => (k.dir === "superieur" ? k.d.up : k.d.down).adj === desc.adj)) continue;
+    if (kept.length < 7) kept.push(x);
+  }
+  const cols = [...kept];
+  for (const x of socioCmp.filter((x) => x.d.core)) if (cols.length < 4 && !cols.includes(x)) cols.push(x);
+  const socioRefGeos = [geos.commune, geos.epci, geos.departement, geos.france].filter(Boolean) as GeoRef[];
+  const fmtCell = (id: string, g: GeoRef) => {
+    const v = get(id, g);
+    return v?.value != null ? fmtValue(v.value, v.unit, v.unit === "€" ? 0 : 1) : "n.d.";
+  };
+  if (cols.length) {
     out.tables.push({
       id: "lfi_socio",
-      title: "Profil sociodémographique comparé",
+      title: "Ce qui distingue la commune",
       theme: "strategie",
-      columns: [
-        { key: "territoire", label: "", wide: true },
-        { key: "revenu", label: "Revenu médian", align: "right" },
-        { key: "pauvrete", label: "Taux de pauvreté", align: "right" },
-        { key: "jeunes", label: "Moins de 25 ans", align: "right" },
-        { key: "ages", label: "65 ans et +", align: "right" },
-        { key: "chomage", label: "Taux de chômage", align: "right" },
-        { key: "locataires", label: "Locataires (dont HLM)", align: "right" },
-        { key: "diplome", label: "Sans diplôme ou brevet seul", align: "right" },
-        { key: "ouvriers", label: "Ouvriers", align: "right" },
-      ],
-      rows: socioRows.map((x) => x.row),
-      highlight: socioRows[0]?.g.level === "commune" ? [0] : [],
-      sources: socioSources,
-      note: "Revenu disponible médian par unité de consommation (Filosofi) ; autres indicateurs : recensement de la population. Locataires : part des ménages, dont locataires HLM entre parenthèses.",
+      columns: [{ key: "territoire", label: "", wide: true }, ...cols.map((x) => ({ key: x.id, label: x.d.label, align: "right" as const }))],
+      rows: socioRefGeos.map((g) => ({ territoire: g.level === "france" ? "France" : g.name, ...Object.fromEntries(cols.map((x) => [x.id, fmtCell(x.id, g)])) })),
+      highlight: [0],
+      sources: [...new Map(cols.map((x) => [x.a.source.dataset ?? x.a.source.id, x.a.source])).values()],
+      note: `Indicateurs retenus : ceux qui s'écartent nettement de la moyenne du département${cols.length > kept.length ? " (complétés par la pauvreté, le revenu et le chômage)" : ""}. Le détail complet figure dans le diagnostic (partie B).`,
     });
   }
+  // Phrase d'introduction en langage courant.
+  const popI = get("pop_municipale", geos.commune);
+  const evolI = get("evol_pop_annuelle", geos.commune);
+  const adjs = [...new Set(kept.map((x) => (x.dir === "superieur" ? x.d.up : x.d.down).adj).filter((v): v is string => !!v))].slice(0, 3);
+  const avecs = [...new Set(kept.map((x) => (x.dir === "superieur" ? x.d.up : x.d.down).avec).filter((v): v is string => !!v))].slice(0, 2);
+  const socioIntro: string[] = [];
+  if (popI)
+    socioIntro.push(
+      `${commune.nom} compte environ ${fmtNumber(Math.round(popI.value! / 100) * 100)} habitants${evolI ? (evolI.value! <= -0.5 ? ", une population en baisse" : evolI.value! >= 0.5 ? ", une population en hausse" : "") : ""}.`,
+    );
+  if (adjs.length || avecs.length)
+    socioIntro.push(
+      `${adjs.length ? `C'est une commune ${B(joinFr(adjs))} que la moyenne du département (${depName})` : `Par rapport au département (${depName}), la commune compte`}${avecs.length ? `${adjs.length ? ", avec " : " "}${B(joinFr(avecs))}` : ""}.`,
+    );
+  else if (socioCmp.length) socioIntro.push(`Son profil social est proche de la moyenne du département (${depName}) : les écarts portent sur les quartiers plus que sur la commune dans son ensemble.`);
 
   // Puces rédigées : seuls les écarts significatifs au département sont développés,
   // les indicateurs proches de la moyenne sont regroupés dans une puce unique.
   type Item = { text: string; evidence?: string[] };
   const socio: Item[] = [];
-  const average: string[] = [];
   const evOf = (...xs: (Indicator | undefined)[]) => xs.filter(Boolean).map((i) => evidenceId(i!));
   const cmp = (id: string) => {
     const a = get(id, geos.commune);
@@ -141,84 +182,10 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
   };
   const vs = (x: NonNullable<ReturnType<typeof cmp>>) => `${x.va} contre ${x.vb} dans le département`;
 
-  const pop = get("pop_municipale", geos.commune);
-  const dens = get("densite", geos.commune);
-  const evol = get("evol_pop_annuelle", geos.commune);
-  const popEpci = get("pop_municipale", geos.epci);
-  if (pop) {
-    let t = `${B(`Environ ${fmtNumber(Math.round(pop.value! / 100) * 100)} habitants`)}${dens ? ` (${fmtValue(dens.value, "hab/km²")})` : ""}`;
-    if (popEpci && geos.epci) t += `, au sein d'une intercommunalité de ${fmtNumber(Math.round(popEpci.value! / 1000) * 1000)} habitants`;
-    if (evol) {
-      const v = evol.value!;
-      const period = evol.label.match(/\((\d{4}-\d{4})\)/)?.[1];
-      t +=
-        v <= -0.5
-          ? ` ; ${B("déclin démographique")} (${fmtSigned(v, "%", 1)} par an${period ? ` sur ${period}` : ""})`
-          : v >= 0.5
-            ? ` ; population en croissance (${fmtSigned(v, "%", 1)} par an${period ? ` sur ${period}` : ""})`
-            : ` ; population à peu près stable (${fmtSigned(v, "%", 1)} par an${period ? ` sur ${period}` : ""})`;
-    }
-    socio.push({ text: t + ".", evidence: evOf(pop, dens, evol) });
-  }
-
-  const rev = cmp("revenu_median");
-  const pov = cmp("taux_pauvrete");
-  if (rev || pov) {
-    let head: string;
-    if (pov?.dir === "superieur") head = `${B("Pauvreté marquée")} : taux de pauvreté de ${vs(pov)}`;
-    else if (rev?.dir === "inferieur") head = `${B("Classes moyennes-inférieures")} : revenu médian de ${vs(rev)}${pov ? `, mais pauvreté contenue (${pov.va})` : ""}`;
-    else if (rev?.dir === "superieur") head = `${B("Population plutôt aisée")} : revenu médian de ${vs(rev)}${pov ? `, taux de pauvreté de ${pov.va}` : ""}`;
-    else head = "";
-    if (head) {
-      if (pov?.dir === "superieur" && rev) head += ` ; revenu médian de ${rev.va} (département : ${rev.vb})`;
-      socio.push({ text: head + ".", evidence: evOf(rev?.a, rev?.b, pov?.a, pov?.b) });
-    } else average.push("revenus et pauvreté");
-  }
-
-  const hlm = cmp("part_locataires_hlm");
-  if (hlm) {
-    if (hlm.dir === "superieur") socio.push({ text: `${B("Parc HLM important")} : ${hlm.va} des ménages sont locataires HLM (département : ${hlm.vb}).`, evidence: evOf(hlm.a, hlm.b) });
-    else if (hlm.dir === "inferieur") socio.push({ text: `${B("Territoire sous-doté en HLM")} : ${hlm.va} des ménages (département : ${hlm.vb}).`, evidence: evOf(hlm.a, hlm.b) });
-    else average.push("logement social");
-  }
   const sec = get("part_residences_secondaires", geos.commune);
   if (sec && sec.value! >= 10) socio.push({ text: `${B("Résidences secondaires nombreuses")} : ${pct(sec.value)} des logements.`, evidence: evOf(sec) });
   const vac = cmp("part_logements_vacants");
   if (vac && vac.dir === "superieur" && vac.a.value! >= 9) socio.push({ text: `${B("Vacance élevée")} : ${vac.va} de logements vacants (département : ${vac.vb}).`, evidence: evOf(vac.a, vac.b) });
-
-  const old = cmp(get("part_65_plus", geos.commune) ? "part_65_plus" : "part_60_plus");
-  const young = cmp(get("part_moins_25", geos.commune) ? "part_moins_25" : "part_moins_30");
-  const ret = cmp("part_retraites");
-  const older = old?.dir === "superieur" || young?.dir === "inferieur";
-  const younger = old?.dir === "inferieur" || young?.dir === "superieur";
-  if (older !== younger) {
-    const det = [old && `${old.va} de 65 ans et plus (département : ${old.vb})`, young && `${young.va} de moins de 25 ans (${young.vb})`, ret && `${ret.va} de retraités parmi les 15 ans et plus`].filter(Boolean).join(", ");
-    socio.push({ text: `Population ${B(older ? "plus âgée" : "plus jeune")} que dans le reste du département : ${det}.`, evidence: evOf(old?.a, old?.b, young?.a, young?.b, ret?.a) });
-  } else if (old || young) average.push("structure par âge");
-
-  const csp = [
-    { id: "part_ouvriers", lbl: "ouvriers" },
-    { id: "part_employes", lbl: "employés" },
-    { id: "part_cadres", lbl: "cadres" },
-  ].map((x) => ({ ...x, c: cmp(x.id) }));
-  const over = csp.filter((x) => x.c?.dir === "superieur");
-  const under = csp.filter((x) => x.c?.dir === "inferieur");
-  if (over.length || under.length) {
-    const parts = [];
-    if (over.length) parts.push(`${B(`sur-représentation des ${joinFr(over.map((x) => x.lbl))}`)} (${over.map((x) => `${x.c!.va} contre ${x.c!.vb}`).join(" ; ")})`);
-    if (under.length) parts.push(`${B(`peu ${under.length === 1 && under[0].lbl === "cadres" ? "de cadres" : `d'${joinFr(under.map((x) => x.lbl))}`}`)} (${under.map((x) => `${x.c!.va} contre ${x.c!.vb}`).join(" ; ")})`);
-    socio.push({ text: cap(parts.join(" ; ")) + ", parmi les 15 ans et plus.", evidence: [...over, ...under].flatMap((x) => evOf(x.c!.a, x.c!.b)) });
-  } else if (csp.some((x) => x.c)) average.push("catégories socioprofessionnelles");
-
-  const cho = cmp("taux_chomage_rp");
-  if (cho) {
-    if (cho.dir === "superieur") socio.push({ text: `${B("Chômage élevé")} : ${cho.va} des actifs de 15-64 ans (département : ${cho.vb}).`, evidence: evOf(cho.a, cho.b) });
-    else if (cho.dir === "inferieur") socio.push({ text: `Chômage plus faible que dans le département (${vs(cho)}).`, evidence: evOf(cho.a, cho.b) });
-    else average.push("chômage");
-  }
-  const dip = cmp("part_sans_diplome");
-  if (dip?.dir === "superieur") socio.push({ text: `${B("Faible niveau de diplôme")} : ${dip.va} des 15 ans et plus sans diplôme ou avec le brevet seul (département : ${dip.vb}).`, evidence: evOf(dip.a, dip.b) });
-  else if (dip) average.push("diplômes");
 
   const conc = get("concentration_emploi", geos.commune);
   const nearestBig = (commune.population ?? 0) < 20000 ? c.poles.find((p) => p.population >= 20000) : null;
@@ -269,7 +236,14 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
       evidence: evOf(med, fs),
     });
   }
-  if (average.length) socio.push({ text: `Dans la moyenne départementale : ${joinFr(average)}.` });
+  // 2 ou 3 phrases qualitatives au plus, par ordre d'utilité pour l'action (services, mobilité, emploi, logement).
+  const order = [/m[ée]decin|services publics/i, /sans voiture/i, /emploi|r[ée]sidentielle/i, /vacance|secondaires/i];
+  const rank = (t: string) => {
+    const i = order.findIndex((re) => re.test(t));
+    return i < 0 ? order.length : i;
+  };
+  socio.sort((x, y) => rank(x.text) - rank(y.text));
+  socio.splice(3);
 
   /* ================================================================ 2. politique */
   const el = (id: string) => c.elections.find((e) => e.results[0]?.election.id === id);
@@ -1247,6 +1221,10 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
   if (cy) access.push(`${fmtValue(cy.value, "km")} d'aménagements cyclables`);
 
   /* ================================================================ en bref */
+  const pop = popI;
+  const evol = evolI;
+  const pov = cmp("taux_pauvrete");
+  const rev = cmp("revenu_median");
   const glance: Extract<Block, { type: "glance" }>["items"] = [];
   const tone = (dir?: string) => (dir === "superieur" ? "up" : dir === "inferieur" ? "down" : "neutral") as "up" | "down" | "neutral";
   if (pop) glance.push({ label: "Habitants", value: fmtNumber(Math.round(pop.value! / 100) * 100), detail: evol ? `${fmtSigned(evol.value!, "%", 1)} par an` : undefined });
@@ -1389,15 +1367,42 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
   blocks.push({ type: "fieldNotes" });
 
   blocks.push({ type: "heading", text: "Profil sociodémographique du territoire" });
-  if (socio.length) blocks.push({ type: "list", items: socio });
+  if (socioIntro.length) blocks.push({ type: "paragraph", text: socioIntro.join(" ") });
   if (has("lfi_socio")) blocks.push({ type: "table", tableId: "lfi_socio" });
-  blocks.push({ type: "chart", chartId: "chart_ages" });
+  if (socio.length) blocks.push({ type: "list", items: socio });
+  blocks.push({ type: "fieldNotes", part: "socio" });
   if (has("lfi_quartiers")) {
     blocks.push({ type: "heading", text: "Quartiers" });
     blocks.push({ type: "table", tableId: "lfi_quartiers" });
   }
 
   blocks.push({ type: "heading", text: "Profil politique du territoire" });
+  // En bref, en langage courant : vote insoumis, participation, mairie.
+  {
+    const parts: string[] = [];
+    if (l24 && dl24) {
+      const d = gap(l24.pctExprimes, dl24.pctExprimes, "%").direction;
+      parts.push(
+        d === "superieur"
+          ? `Le vote insoumis y est ${B("plus fort que dans le département")} (${pct(l24.pctExprimes)} des exprimés aux européennes 2024, contre ${pct(dl24.pctExprimes)}${m22 && dm22 ? ` ; ${pct(m22.pctExprimes)} pour J.-L. Mélenchon en 2022, contre ${pct(dm22.pctExprimes)}` : ""}).`
+          : d === "inferieur"
+            ? `Le vote insoumis y est ${B("plus faible que dans le département")} (${pct(l24.pctExprimes)} des exprimés aux européennes 2024, contre ${pct(dl24.pctExprimes)}).`
+            : `Le vote insoumis y est ${B("dans la moyenne du département")} (${pct(l24.pctExprimes)} des exprimés aux européennes 2024, contre ${pct(dl24.pctExprimes)}).`,
+      );
+    }
+    if (abstMain)
+      parts.push(
+        abstMain.dir === "superieur"
+          ? `Les habitants ${B("votent moins qu'ailleurs")} (${pct(abstMain.c, 0)} d'abstention contre ${pct(abstMain.d, 0)}) : il y a des électeurs à remobiliser.`
+          : abstMain.dir === "inferieur"
+            ? `La participation est plus forte que dans le département (${pct(abstMain.c, 0)} d'abstention contre ${pct(abstMain.d, 0)}).`
+            : `La participation est proche de celle du département (${pct(abstMain.c, 0)} d'abstention).`,
+      );
+    if (parts.length) {
+      const t = parts.join(" ");
+      blocks.push({ type: "paragraph", text: `${B("En bref")} : ${t.charAt(0).toLowerCase()}${t.slice(1)}` });
+    }
+  }
   if (groupes.length)
     blocks.push({
       type: "callout",
@@ -1414,8 +1419,8 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
   if (has("lfi_politique")) blocks.push({ type: "table", tableId: "lfi_politique" });
   prose(ids2.quartiers.filter((id) => out.findings.find((f) => f.id === id)?.kind !== "hypothese"));
   prose(ids.abst);
-  prose(ids.partis);
   if (has("lfi_partis")) blocks.push({ type: "table", tableId: "lfi_partis" });
+  blocks.push({ type: "fieldNotes", part: "politique" });
 
   blocks.push({ type: "heading", text: "Où agir : analyse par bureau de vote" });
   if (has("lfi_bureaux")) {
@@ -1439,6 +1444,7 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
   if (access.length) blocks.push({ type: "callout", tone: "info", text: `${B("Accessibilité")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps de trajet théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
   if (has("lfi_lieux")) blocks.push({ type: "table", tableId: "lfi_lieux" });
   blocks.push({ type: "fieldPlaces" });
+  blocks.push({ type: "fieldNotes", part: "actions" });
 
   out.section = { id: "LFI", letter: "", title: "Fiche d'action — proposition de ciblage", blocks };
 

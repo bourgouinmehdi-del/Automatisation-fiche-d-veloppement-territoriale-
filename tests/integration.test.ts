@@ -158,10 +158,21 @@ describe("chaîne de génération (API simulées)", () => {
     expect(actions.groups[0].items[0]).toMatch(/^\*\*BV 2/);
     // Les constats rédigés renvoient à des constats existants.
     for (const b of fiche.blocks) if (b.type === "findings" && b.ids) for (const id of b.ids) expect(report.findings.some((f) => f.id === id)).toBe(true);
-    // Puces sociodémographiques : écarts significatifs développés, le reste regroupé.
-    const socio = fiche.blocks.find((b) => b.type === "list" && b.items.some((i) => /habitants/.test(i.text))) as Extract<(typeof fiche.blocks)[number], { type: "list" }>;
-    expect(socio.items.some((i) => /^Dans la moyenne départementale/.test(i.text))).toBe(true);
-    expect(socio.items.filter((i) => /proche de la moyenne/.test(i.text))).toHaveLength(0);
+    // Profil socio synthétique : intro en langage courant, tableau limité aux indicateurs
+    // déterminants (7 au plus), 3 phrases qualitatives au plus, retours du terrain par partie.
+    const iSocio = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil sociodémographique du territoire");
+    const intro = fiche.blocks[iSocio + 1] as Extract<(typeof fiche.blocks)[number], { type: "paragraph" }>;
+    expect(intro.type).toBe("paragraph");
+    expect(intro.text).toMatch(/habitants/);
+    const t = report.tables.find((x) => x.id === "lfi_socio")!;
+    expect(t.columns.length - 1).toBeGreaterThanOrEqual(1);
+    expect(t.columns.length - 1).toBeLessThanOrEqual(7);
+    const qual = fiche.blocks.slice(iSocio).find((b) => b.type === "list") as Extract<(typeof fiche.blocks)[number], { type: "list" }> | undefined;
+    if (qual) expect(qual.items.length).toBeLessThanOrEqual(3);
+    expect(fiche.blocks.some((b) => b.type === "list" && b.items.some((i) => /^Dans la moyenne départementale/.test(i.text)))).toBe(false);
+    const parts = fiche.blocks.filter((b) => b.type === "fieldNotes").map((b) => (b as { part?: string }).part ?? "general");
+    expect(parts).toEqual(expect.arrayContaining(["general", "socio", "politique", "actions"]));
+    expect(fiche.blocks.some((b) => b.type === "paragraph" && /En bref/.test(b.text))).toBe(true);
     // Gras rendu en HTML, retiré du CSV.
     const { renderReportHtml } = await import("@/lib/render/html");
     const { tableCsv } = await import("@/lib/export/csv");

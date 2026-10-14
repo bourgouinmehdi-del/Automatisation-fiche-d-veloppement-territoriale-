@@ -27,6 +27,7 @@ import { cellText, Citations, freshness, selectFindings, sourceLabel } from "../
 import { inlineParts } from "../render/cite";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "../render/svg";
 import type { Block, DataTable, Indicator, Report, SourceRef } from "../types";
+import { FIELD_NOTE_LABELS } from "../types";
 
 /**
  * Export DOCX modifiable : styles de titres Word (sommaire automatique),
@@ -217,14 +218,15 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       ];
     }
     case "fieldNotes": {
-      if (!r.fieldNotes?.text.trim()) return [];
+      const n = b.part ? r.fieldNotes?.parts?.[b.part] : r.fieldNotes;
+      if (!n?.text.trim()) return [];
       const side = { style: BorderStyle.SINGLE, size: 8, color: "1BAF7A", space: 6 };
       return [
         new Paragraph({
           spacing: { before: 120, after: 200 },
           border: { top: side, bottom: side, left: side, right: side },
           shading: { type: ShadingType.CLEAR, color: "auto", fill: "F1FAF6" },
-          children: [new TextRun({ text: `Retours du terrain (${fmtDate(r.fieldNotes.updatedAt)}) — `, font: FONT, size: 20, bold: true }), ...runs(r.fieldNotes.text.trim(), { size: 20 })],
+          children: [new TextRun({ text: `${FIELD_NOTE_LABELS[b.part ?? "general"].title} (${fmtDate(n.updatedAt)}) — `, font: FONT, size: 20, bold: true }), ...runs(n.text.trim(), { size: 20 })],
         }),
       ];
     }

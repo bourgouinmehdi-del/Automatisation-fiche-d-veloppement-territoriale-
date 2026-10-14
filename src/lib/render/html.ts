@@ -2,6 +2,7 @@ import { SOURCES } from "../collectors/catalog";
 import { KIND_LABELS, THEME_LABELS } from "../analysis/findings";
 import { isSmallSample } from "../analysis/stats";
 import { fmtDate, fmtValue } from "../format";
+import { FIELD_NOTE_LABELS } from "../types";
 import type { Block, DataTable, Finding, Indicator, Report, SourceRef } from "../types";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "./svg";
 import { cellText, Citations, inlineParts, sourceLabel } from "./cite";
@@ -166,10 +167,13 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
           return `<section class="target" style="--tc:${esc(t.color)}"><div class="target-k"><span class="dot" style="background:${esc(t.color)}"></span>Proposition de ciblage n°${k + 1}</div><h3 class="target-t">${esc(t.nom)}</h3>${t.focus?.length ? `<div class="target-f">Focus possibles : ${esc(t.focus.join(", "))}</div>` : ""}<ul class="list">${t.raisons.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>${tb ? tableHtml(tb, cit) : ""}</section>`;
         })
         .join("");
-    case "fieldNotes":
-      return r.fieldNotes?.text.trim()
-        ? `<div class="callout terrain"><div class="callout-t">Retours du terrain <span class="muted" style="font-weight:400">(mis à jour le ${esc(fmtDate(r.fieldNotes.updatedAt))})</span></div>${inline(r.fieldNotes.text.trim())}</div>`
+    case "fieldNotes": {
+      const n = b.part ? r.fieldNotes?.parts?.[b.part] : r.fieldNotes;
+      const title = FIELD_NOTE_LABELS[b.part ?? "general"].title;
+      return n?.text.trim()
+        ? `<div class="callout terrain"><div class="callout-t">${esc(title)} <span class="muted" style="font-weight:400">(mis à jour le ${esc(fmtDate(n.updatedAt))})</span></div>${inline(n.text.trim())}</div>`
         : "";
+    }
     case "fieldPlaces": {
       const items = r.fieldPlaces?.items ?? [];
       if (!items.length) return "";
