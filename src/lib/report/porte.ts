@@ -1,7 +1,7 @@
 import * as turf from "@turf/turf";
 import type { BvRow } from "../analysis/political";
 import type { Adresse } from "../collectors/ban";
-import { fmtNumber, fmtValue } from "../format";
+import { fmtNumber } from "../format";
 import type { Block, DataTable, MapSpec, Section } from "../types";
 import type { Collected } from "./collect";
 
@@ -18,7 +18,7 @@ export interface PorteOutput {
   maps: MapSpec[];
 }
 
-const pct = (v: number | null | undefined, d = 1) => (v == null || !Number.isFinite(v) ? "n.d." : fmtValue(v, "%", d));
+const pp = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "n.d." : `${Math.round(v)}\u00a0%`);
 
 /** « 1 à 45 » à partir d'une liste de numéros. */
 function range(nums: number[]) {
@@ -68,12 +68,12 @@ export function buildPorte(c: Collected, ranked: BvRow[], labels: Map<string, st
     if (!inside.length) continue;
     const streets = streetsOf(inside);
     const label = labels.get(b.bv);
-    const title = `BV ${b.bv}${label ? ` — ${label}` : ""}`;
+    const title = `Bureau ${b.bv}${label ? ` — ${label}` : ""}`;
     const place = placeOf(b.bv);
     blocks.push({ type: "heading", text: `Porte-à-porte : ${title}` });
     blocks.push({
       type: "paragraph",
-      text: `**${fmtNumber(b.inscrits)} inscrits** pour ${fmtNumber(inside.length)} adresses dans ${fmtNumber(streets.length)} voies${place ? ` ; lieu de vote : ${place}` : ""}. Européennes 2024 : LFI ${pct(b.lfiPctIns)} des inscrits${b.lfi2PctIns != null ? ` ; Mélenchon 2022 : ${pct(b.lfi2PctIns)}` : ""} ; abstention ${pct(b.abstPct, 0)} (${fmtNumber(b.abstN)} abstentionnistes).`,
+      text: `**${fmtNumber(b.inscrits)} électeurs inscrits** pour ${fmtNumber(inside.length)} adresses dans ${fmtNumber(streets.length)} rues${place ? ` ; lieu de vote : ${place}` : ""}. Vote LFI aux européennes 2024 : ${pp(b.lfiPctExp)} des voix${b.lfi2PctExp != null ? ` (Mélenchon 2022 : ${pp(b.lfi2PctExp)})` : ""} ; **${fmtNumber(b.abstN)} inscrits n'ont pas voté** (${pp(b.abstPct)}).`,
     });
     // Carte : le bureau, ses voisins en gris clair, les adresses et le lieu de vote.
     const pad = 0.0015;
@@ -88,7 +88,7 @@ export function buildPorte(c: Collected, ranked: BvRow[], labels: Map<string, st
       bbox: [bb[0] - pad, bb[1] - pad, bb[2] + pad, bb[3] + pad],
       layers: [
         { id: "voisins", label: "Autres bureaux", kind: "polygons", data: turf.featureCollection(others) as GeoJSON.FeatureCollection, color: "#ece6d6", visible: true, source: src },
-        { id: "bureau", label: `BV ${b.bv}`, kind: "polygons", data: turf.featureCollection([{ ...poly, properties: { ...poly.properties, nom: title } }]) as GeoJSON.FeatureCollection, color: "#c9adff", visible: true, source: src },
+        { id: "bureau", label: `Bureau ${b.bv}`, kind: "polygons", data: turf.featureCollection([{ ...poly, properties: { ...poly.properties, nom: title } }]) as GeoJSON.FeatureCollection, color: "#c9adff", visible: true, source: src },
         { id: "adresses", label: "Adresses", kind: "points", data: turf.featureCollection(pts) as GeoJSON.FeatureCollection, color: "#4c0297", visible: true, source: adr.source },
         ...(vote.length ? [{ id: "vote", label: "Lieu de vote", kind: "points" as const, data: turf.featureCollection(vote) as GeoJSON.FeatureCollection, color: "#d1271c", visible: true, source: src }] : []),
       ],
@@ -106,18 +106,18 @@ export function buildPorte(c: Collected, ranked: BvRow[], labels: Map<string, st
     const max = 70;
     out.tables.push({
       id: `porte_rues_${b.bv}`,
-      title: `${title} : voies à couvrir (${fmtNumber(streets.length)})`,
+      title: `${title} : rues à couvrir (${fmtNumber(streets.length)})`,
       theme: "strategie",
       columns: [
         { key: "fait", label: "Fait" },
-        { key: "voie", label: "Voie", wide: true },
+        { key: "voie", label: "Rue", wide: true },
         { key: "numeros", label: "Numéros" },
         { key: "adresses", label: "Adresses", align: "right" },
         { key: "notes", label: "Notes (portes ouvertes, contacts)", wide: true },
       ],
       rows: streets.slice(0, max).map((s) => ({ fait: "☐", voie: s.voie, numeros: s.numeros, adresses: s.adresses, notes: "" })),
       sources: [adr.source, src],
-      note: `Voies classées par nombre d'adresses.${streets.length > max ? ` ${streets.length - max} petites voies non listées (${fmtNumber(streets.slice(max).reduce((n, s) => n + s.adresses, 0))} adresses).` : ""} Numéros extrêmes par côté de la voie : les numéros intermédiaires peuvent manquer.`,
+      note: `Rues classées par nombre d'adresses.${streets.length > max ? ` ${streets.length - max} petites rues non listées (${fmtNumber(streets.slice(max).reduce((n, s) => n + s.adresses, 0))} adresses).` : ""} Premier et dernier numéro de chaque côté de la rue : certains numéros intermédiaires peuvent manquer.`,
     });
     blocks.push({ type: "table", tableId: `porte_rues_${b.bv}` });
   }

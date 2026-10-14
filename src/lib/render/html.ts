@@ -299,6 +299,8 @@ p.prose.hyp { color: #2c2b29; }
 h3.target-t { font-size: 24pt; font-weight: 900; color: #4c0297; text-transform: uppercase; margin: 1mm 0 1mm; }
 .target-f { font-style: italic; color: #2c2b29; margin-bottom: 2mm; }
 .fiche-src .biblio li { font-size: 7.8pt; }
+/* Fiche destinée à des non-spécialistes : pas d'appels de note dans le texte (les sources restent listées en fin de fiche). */
+.fiche section:not(.fiche-src) sup, .fiche section:not(.fiche-src) .refs { display: none; }
 /* Feuilles de porte-à-porte : une page par bureau. */
 #part-PORTE h3.fh { break-before: page; }
 #part-PORTE h3.fh:first-of-type { break-before: auto; }
