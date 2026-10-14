@@ -3,13 +3,18 @@ import "@fontsource-variable/archivo/wdth.css";
 import "@fontsource-variable/stack-sans-text";
 import "./globals.css";
 import "leaflet/dist/leaflet.css";
+import { cookies } from "next/headers";
+import { authEnabled, readSession, SESSION_COOKIE } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Fiches territoriales",
   description: "Génération automatisée de fiches de diagnostic territorial à partir de données publiques françaises",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Lecture du cookie à chaque requête (les comptes sont déclarés à l'exécution, pas à la construction).
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const user = authEnabled() ? readSession(token) : null;
   return (
     <html lang="fr">
       <body className="min-h-screen antialiased">
@@ -28,6 +33,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <a href="/methodologie">
                 Méthodologie et sources
               </a>
+              {user && (
+                <form action="/api/auth/logout" method="post" className="inline">
+                  <button className="site-logout" title={`Connecté : ${user}`}>
+                    Déconnexion
+                  </button>
+                </form>
+              )}
             </nav>
           </div>
         </header>

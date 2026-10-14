@@ -2,7 +2,8 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import type { Block, Finding, Indicator, Report } from "@/lib/types";
+import type { Block, FieldNotePart, Finding, Indicator, Report } from "@/lib/types";
+import { FIELD_NOTE_LABELS } from "@/lib/types";
 import type { SourceInfo } from "@/lib/collectors/catalog";
 import { KIND_LABELS } from "@/lib/analysis/findings";
 import { isSmallSample } from "@/lib/analysis/stats";
@@ -92,7 +93,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
           </div>
         );
       case "fieldNotes":
-        return <FieldNotes key={key} id={r.id} initial={r.fieldNotes} />;
+        return <FieldNotes key={key} id={r.id} part={b.part} initial={b.part ? r.fieldNotes?.parts?.[b.part] : r.fieldNotes} />;
       case "fieldPlaces":
         return <FieldPlaces key={key} id={r.id} initial={r.fieldPlaces} />;
       case "targets":
@@ -619,7 +620,8 @@ function MapBlock({ maps, cite, exp }: { maps: Report["maps"]; cite: (s: Report[
 }
 
 /** Retours du terrain : texte libre enregistré avec la fiche et repris dans les exports. */
-function FieldNotes({ id, initial }: { id: string; initial?: Report["fieldNotes"] }) {
+function FieldNotes({ id, part, initial }: { id: string; part?: FieldNotePart; initial?: { text: string; updatedAt: string } }) {
+  const L = FIELD_NOTE_LABELS[part ?? "general"];
   const [text, setText] = useState(initial?.text ?? "");
   const [saved, setSaved] = useState(initial?.updatedAt ?? null);
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
@@ -627,7 +629,7 @@ function FieldNotes({ id, initial }: { id: string; initial?: Report["fieldNotes"
   const dirty = text !== (initial?.text ?? "") && state !== "saving";
   async function save() {
     setState("saving");
-    const res = await fetch(`/api/reports/${id}/notes`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    const res = await fetch(`/api/reports/${id}/notes`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, part }) });
     if (!res.ok) return setState("error");
     const d = await res.json();
     setSaved(d.updatedAt);
@@ -636,21 +638,21 @@ function FieldNotes({ id, initial }: { id: string; initial?: Report["fieldNotes"
   }
   if (!open)
     return (
-      <button className="no-print my-3 text-sm font-semibold text-[#0b6b47] underline" onClick={() => setOpen(true)}>
-        + Ajouter des retours du terrain
+      <button className="no-print my-3 text-sm font-semibold text-[var(--accent)] underline" onClick={() => setOpen(true)}>
+        + {part ? `${L.title} (retour qualitatif)` : "Ajouter des retours du terrain"}
       </button>
     );
   return (
     <div className="callout callout-terrain">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-        <span className="font-semibold">Retours du terrain</span>
+        <span className="font-semibold">{L.title}</span>
         <span className="text-xs text-[var(--ink-2)]">{saved ? `Enregistré le ${fmtDate(saved)}` : "Non enregistré"}. Les notes sont reprises dans le PDF et le Word.</span>
       </div>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={5}
-        placeholder="Ce que les militants locaux savent et que les données ne disent pas : quartiers, lieux de passage, horaires de marché, contacts associatifs, corrections… (**gras** possible)"
+        placeholder={L.placeholder}
         className="no-print w-full rounded-md border border-[var(--line)] bg-white p-2 text-sm"
       />
       <div className="print-only whitespace-pre-wrap">{text}</div>

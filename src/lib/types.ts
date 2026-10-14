@@ -237,7 +237,7 @@ export type Block =
   | { type: "actions"; title?: string; groups: { title: string; hint?: string; items: string[] }[] }
   | { type: "missing"; themes: ThemeId[] }
   /** Notes de terrain saisies dans l'application (lues dans `Report.fieldNotes` au moment du rendu). */
-  | { type: "fieldNotes" }
+  | { type: "fieldNotes"; part?: FieldNotePart }
   /** Lieux d'action signalés par les militants (lus dans `Report.fieldPlaces` au moment du rendu). */
   | { type: "fieldPlaces" }
   /** Propositions de ciblage (mode département) : une carte par territoire, avec son tableau. */
@@ -338,10 +338,20 @@ export interface Report {
   /** Avertissements globaux (mode hors ligne, sources indisponibles...). */
   warnings: string[];
   /** Retours du terrain saisis par les militants (conservés d'une régénération à l'autre). */
-  fieldNotes?: { text: string; updatedAt: string };
+  fieldNotes?: { text: string; updatedAt: string; parts?: Partial<Record<FieldNotePart, { text: string; updatedAt: string }>> };
   /** Lieux d'action signalés par les militants (marchés, associations…), conservés d'une régénération à l'autre. */
   fieldPlaces?: { items: FieldPlace[]; updatedAt: string };
 }
+
+/** Parties de la fiche qui peuvent recevoir des retours du terrain. */
+export type FieldNotePart = "socio" | "politique" | "actions";
+
+export const FIELD_NOTE_LABELS: Record<FieldNotePart | "general", { title: string; placeholder: string }> = {
+  general: { title: "Retours du terrain", placeholder: "Ce que les militants locaux savent et que les données ne disent pas : contexte, corrections… (**gras** possible)" },
+  socio: { title: "Ce que le terrain ajoute sur la population", placeholder: "Quartiers, fermetures d'usines ou de services, projets urbains, vie associative…" },
+  politique: { title: "Ce que le terrain ajoute sur la situation politique", placeholder: "Équipe municipale, élus de gauche, collectifs, mobilisations récentes, figures locales…" },
+  actions: { title: "Ce que le terrain ajoute sur les actions", placeholder: "Lieux qui marchent, horaires, contacts, actions déjà menées et leurs résultats…" },
+};
 
 export interface FieldPlace {
   type: string;

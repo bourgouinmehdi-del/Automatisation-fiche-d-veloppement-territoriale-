@@ -2,7 +2,7 @@ import { booleanPointInPolygon } from "@turf/turf";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { reportsDir } from "../config";
-import type { FieldPlace, ProgressEvent, Report, ReportQuery } from "../types";
+import type { FieldNotePart, FieldPlace, ProgressEvent, Report, ReportQuery } from "../types";
 import { buildReport, reportId } from "./build";
 
 /**
@@ -39,15 +39,17 @@ export async function saveReport(r: Report) {
 }
 
 /** Enregistre les retours du terrain d'une fiche (sans changer de version). */
-export async function saveFieldNotes(id: string, text: string) {
+export async function saveFieldNotes(id: string, text: string, part?: FieldNotePart) {
   const r = await getReport(id);
   if (!r) return null;
-  r.fieldNotes = {
-    text: text.slice(0, 20000),
-    updatedAt: new Date().toISOString(),
-  };
+  const note = { text: text.slice(0, 20000), updatedAt: new Date().toISOString() };
+  // Retours par partie de la fiche (population, politique, actions) ou retours généraux.
+  if (part) {
+    r.fieldNotes ??= { text: "", updatedAt: note.updatedAt };
+    r.fieldNotes.parts = { ...(r.fieldNotes.parts ?? {}), [part]: note };
+  } else r.fieldNotes = { ...r.fieldNotes, ...note };
   await fs.writeFile(file(r.id), JSON.stringify(r));
-  return r.fieldNotes;
+  return part ? r.fieldNotes!.parts![part]! : r.fieldNotes;
 }
 
 export async function getReport(id: string): Promise<Report | null> {

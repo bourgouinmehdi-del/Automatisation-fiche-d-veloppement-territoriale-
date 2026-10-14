@@ -104,6 +104,12 @@ Chaque rapport commence par une **fiche d'action** rédigée sur le modèle des 
 
 Les textes acceptent une mise en évidence minimale (`**gras**`), rendue dans l'interface, le PDF et le DOCX, et retirée des exports CSV.
 
+**Accès réservé** : dès que la variable `AUTH_USERS` est renseignée, toutes les pages et API exigent une connexion (identifiant et mot de passe ; session de 30 jours ; 10 tentatives par quart d'heure). Pour ajouter une personne : `npm run mot-de-passe -- prenom.nom` (le mot de passe est saisi puis chiffré), copier la ligne affichée dans `AUTH_USERS` sur Railway (comptes séparés par `;`), et définir une fois `AUTH_SECRET` (longue chaîne aléatoire). Retirer une ligne de `AUTH_USERS` coupe l'accès de la personne immédiatement. Bouton « Déconnexion » dans l'en-tête.
+
+**Retours du terrain** : sous l'en-tête de la fiche et sous chaque partie (population, situation politique, actions), un encadré permet d'ajouter un retour qualitatif ; il est conservé à la régénération et repris dans le PDF et le Word. Les lieux d'action (marchés, associations…) se saisissent dans l'encadré dédié.
+
+**Fiche synthétique** : le profil sociodémographique s'ouvre sur une phrase en langage courant, suivie d'un tableau limité aux indicateurs qui distinguent vraiment la commune du département (7 au plus) et de 2 ou 3 phrases qualitatives ; le profil politique s'ouvre sur un « En bref ». Le détail reste dans le diagnostic complet.
+
 **Feuilles de porte-à-porte** : pour chaque bureau prioritaire, une page imprimable avec les rues et numéros à couvrir (Base adresse nationale, adresses rattachées au bureau par leur position dans les contours), une carte, le lieu de vote et une case « Fait » par voie. Bouton « PDF porte-à-porte » (ou `…/export/pdf?porte=1`). Désactivable avec `DISABLE_SOURCES=ban`.
 
 **Évolution du vote par bureau** : européennes 2019 → 2024, présidentielle 2017 → 2022 (bureaux appariés par numéro, inscrits à ±25 %) et score de la gauche unie aux législatives 2024. Désactivable avec `DISABLE_SOURCES=elections_historiques`.
