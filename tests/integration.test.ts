@@ -142,7 +142,11 @@ describe("chaîne de génération (API simulées)", () => {
     for (const k of ["atout", "hypothese", "piste"]) expect(kinds).toContain(k);
     expect(report.findings.some((f) => f.theme === "strategie" && /Porte-à-porte/.test(f.text))).toBe(true);
     expect(report.tables.find((t) => t.id === "lfi_lieux")!.rows.length).toBeGreaterThan(0);
-    expect(report.tables.find((t) => t.id === "lfi_socio")!.rows.length).toBeGreaterThanOrEqual(4);
+    // Commune, département, France ; 4 à 7 indicateurs.
+    const socioT = report.tables.find((t) => t.id === "lfi_socio")!;
+    expect(socioT.rows.length).toBe(3);
+    expect(socioT.columns.length - 1).toBeGreaterThanOrEqual(4);
+    expect(socioT.columns.length - 1).toBeLessThanOrEqual(7);
   });
 
   it("fiche d'action rédigée sur le modèle « Développement territorial »", async () => {
@@ -155,7 +159,7 @@ describe("chaîne de génération (API simulées)", () => {
     expect(headings).toEqual(expect.arrayContaining(["Profil sociodémographique du territoire", "Profil politique du territoire", "Actions recommandées"]));
     // Fiche : plan d'action en tableau ; toutes les pistes détaillées en annexe.
     const plan = report.tables.find((t) => t.id === "lfi_plan")!;
-    expect(plan.rows[0]).toMatchObject({ action: "Porte-à-porte", bv: "BV 2" });
+    expect(plan.rows[0]).toMatchObject({ action: "Porte-à-porte", bv: "2" });
     expect(plan.columns.length).toBeLessThanOrEqual(7);
     expect(report.tables.find((t) => t.id === "lfi_bureaux_prio")!.columns.length).toBeLessThanOrEqual(7);
     const detail = report.sections.find((x) => x.id === "LFI_DETAIL")!;
@@ -223,10 +227,23 @@ describe("chaîne de génération (API simulées)", () => {
     expect(fiche.blocks.some((b) => b.type === "callout" && /Groupe d'action fictif/.test(b.text))).toBe(true);
   });
 
+  it("fiche en langage courant : pas de jargon, tableau du vote court", async () => {
+    const { renderReportHtml } = await import("@/lib/render/html");
+    const html = renderReportHtml(report, { sectionIds: ["LFI"] });
+    const text = html.replace(/<style[\s\S]*?<\/style>/g, "").replace(/<[^>]+>/g, " ");
+    for (const jargon of [/\bE24\b/, /\bP22\b/, /\bpts?\b/, /surperform/i, /exprimés/, /\bQPV\b/, /scores? z/i]) expect(text).not.toMatch(jargon);
+    const vote = report.tables.find((t) => t.id === "lfi_vote")!;
+    expect(vote.columns.length).toBeLessThanOrEqual(7);
+    for (const r of vote.rows) for (const [k, v] of Object.entries(r)) if (k !== "territoire" && k !== "inscrits" && v) expect(String(v)).toMatch(/^[\d\s\u00a0]+(%)?$/);
+    const fiche = report.sections[0];
+    expect(fiche.blocks.some((b) => b.type === "table" && b.tableId === "lfi_vote")).toBe(true);
+    expect(fiche.blocks.some((b) => b.type === "table" && b.tableId === "lfi_politique")).toBe(false);
+  });
+
   it("présidentielle 2022 (Mélenchon) à côté des européennes dans la fiche", () => {
     const fiche = report.sections[0];
     const glance = fiche.blocks.find((b) => b.type === "glance") as Extract<(typeof fiche.blocks)[number], { type: "glance" }>;
-    expect(glance.items.map((i) => i.label)).toEqual(expect.arrayContaining(["Vote LFI (européennes 2024)", "Vote Mélenchon (présidentielle 2022)"]));
+    expect(glance.items.map((i) => i.label)).toEqual(expect.arrayContaining(["Vote LFI aux européennes 2024", "Vote Mélenchon à la présidentielle 2022"]));
     const bv = report.tables.find((t) => t.id === "lfi_bureaux")!;
     expect(bv.columns.map((c) => c.key)).toEqual(expect.arrayContaining(["lfi2", "lfi2exp"]));
     expect(report.maps.some((m) => m.id === "lfi_map_bv_p22")).toBe(true);
@@ -275,9 +292,9 @@ describe("chaîne de génération (API simulées)", () => {
     expect(rues.flatMap((t) => t.rows.map((r) => String(r.voie)))).not.toContain("Rue Ailleurs");
     const evo = report.tables.find((t) => t.id === "lfi_evolution");
     expect(evo?.columns.map((c) => c.key)).toEqual(expect.arrayContaining(["lfi19", "evoE", "mel17", "evoP", "nfp"]));
-    expect(report.findings.some((f) => /LFI passe de/.test(f.text))).toBe(true);
+    expect(report.findings.some((f) => /voix aux européennes 2024, contre \d+ en 2019/.test(f.text))).toBe(true);
     const { renderReportHtml } = await import("@/lib/render/html");
-    expect(renderReportHtml(report, { sectionIds: ["PORTE"] })).toContain("Porte-à-porte : BV");
+    expect(renderReportHtml(report, { sectionIds: ["PORTE"] })).toContain("Porte-à-porte : Bureau");
   });
 
   it("fiche au format du document de référence (HTML et Word)", async () => {
