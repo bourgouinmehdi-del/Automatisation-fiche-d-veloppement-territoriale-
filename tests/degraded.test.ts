@@ -46,7 +46,7 @@ describe("génération en mode dégradé", () => {
     // Les autres sources restent exploitées.
     expect(r.indicators.find((i) => i.id === "prix_m2_appartement")).toBeDefined();
     // Fiche d'action + A à I (+ feuilles de porte-à-porte quand les adresses sont disponibles).
-    expect(r.sections.filter((s) => s.id !== "PORTE")).toHaveLength(10);
+    expect(r.sections.filter((s) => s.id !== "PORTE" && s.id !== "LFI_DETAIL")).toHaveLength(10);
   }, 60000);
 
   it("mode hors ligne : n'émet aucune requête et réutilise le cache", async () => {

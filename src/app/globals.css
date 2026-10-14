@@ -119,3 +119,5 @@ table.data thead th { position: sticky; top: 0; z-index: 1; }
 @media (min-width: 640px) { .site-logo { font-size: 1.5rem; } }
 .site-logout { color: #d9d6cc; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; }
 .site-logout:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.menu-list .menu-item { display: block; width: 100%; text-align: left; padding: .45rem .6rem; border-radius: 6px; color: var(--ink); font-size: .875rem; background: none; border: 0; cursor: pointer; }
+.menu-list .menu-item:hover { background: var(--accent-soft); }

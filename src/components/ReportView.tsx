@@ -41,6 +41,11 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
   const failed = r.runs.filter((x) => x.status === "failed");
   const hasFiche = r.sections.some((s) => s.id === "LFI");
   const hasCiblage = r.sections.some((s) => s.id === "CIBLAGE");
+  // L'outil s'ouvre sur la fiche seule ; le détail (bureaux, quartiers, porte-à-porte,
+  // diagnostic A à I) est replié et s'affiche à la demande.
+  const isMain = (id: string) => id === "LFI" || id === "CIBLAGE";
+  const [showDetail, setShowDetail] = useState(!(hasFiche || hasCiblage));
+  const visible = r.sections.filter((s) => showDetail || isMain(s.id));
 
   // Partie visible (surbrillance dans la navigation).
   useEffect(() => {
@@ -381,7 +386,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
   };
 
   // Rendu des sections avant la liste des sources pour une numérotation cohérente.
-  const sections = r.sections.map((s) =>
+  const sections = visible.map((s) =>
     s.id === "LFI" || s.id === "CIBLAGE" ? (
       <section key={s.id} id={`part-${s.id}`} className="card fiche mb-8 scroll-mt-20 overflow-hidden">
         <div className="fiche-band">
@@ -414,9 +419,13 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
           </div>
         </div>
         <div className="no-print flex flex-wrap items-center gap-2">
-          {(hasFiche || hasCiblage) && (
+          {(hasFiche || hasCiblage) ? (
             <a className="btn btn-primary" href={exp("pdf", "?fiche=1")}>
-              {hasCiblage ? "PDF ciblage" : "PDF fiche d'action"}
+              {hasCiblage ? "PDF du ciblage" : "PDF de la fiche"}
+            </a>
+          ) : (
+            <a className="btn btn-primary" href={exp("pdf")}>
+              PDF
             </a>
           )}
           {r.sections.some((s) => s.id === "PORTE") && (
@@ -424,12 +433,14 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
               PDF porte-à-porte
             </a>
           )}
-          <a className={`btn ${hasFiche || hasCiblage ? "" : "btn-primary"}`} href={exp("pdf")}>
-            PDF complet
-          </a>
           <details className="menu">
-            <summary className="btn">Autres formats ▾</summary>
+            <summary className="btn">Plus ▾</summary>
             <div className="menu-list">
+              {(hasFiche || hasCiblage) && <a href={exp("pdf")}>Diagnostic complet (PDF)</a>}
+              <button className="menu-item" onClick={() => setShowSources(true)}>
+                Sources et journal de collecte
+              </button>
+              <hr />
               {(hasFiche || hasCiblage) && (
                 <>
                   <a href={exp("pdf", "?fiche=1&style=yonne")}>Fiche au format Word de référence (PDF)</a>
@@ -444,9 +455,6 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
               <a href={exp("json")}>JSON complet</a>
             </div>
           </details>
-          <button className="btn" onClick={() => setShowSources((v) => !v)}>
-            Sources
-          </button>
           <button className="btn" onClick={regenerate} disabled={regen} title="Relance la collecte ; les données encore valides en cache ne sont pas retéléchargées">
             {regen ? "Relance…" : "Régénérer"}
           </button>
@@ -472,10 +480,10 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
       <div className="grid gap-6 lg:grid-cols-[230px_1fr]">
         <nav className="no-print lg:sticky lg:top-4 lg:self-start" aria-label="Parties du rapport">
           <ol className="card space-y-0.5 p-2 text-sm">
-            {r.sections.map((s) => (
+            {visible.map((s) => (
               <li key={s.id}>
                 <a href={`#part-${s.id}`} className={`nav-link ${active === s.id ? "nav-active" : ""} ${s.id === "LFI" || s.id === "CIBLAGE" ? "nav-fiche" : ""}`}>
-                  {s.id === "LFI" || s.id === "CIBLAGE" ? (
+                  {isMain(s.id) ? (
                     <>{s.id === "CIBLAGE" ? "Ciblage départemental" : "Fiche d'action"}</>
                   ) : (
                     <>
@@ -486,9 +494,29 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
                 </a>
               </li>
             ))}
+            {(hasFiche || hasCiblage) && (
+              <li>
+                <button className="nav-link w-full text-left text-[var(--accent)]" onClick={() => setShowDetail((v) => !v)}>
+                  {showDetail ? "Masquer le détail" : "Afficher le détail"}
+                </button>
+              </li>
+            )}
           </ol>
         </nav>
-        <div className="min-w-0">{sections}</div>
+        <div className="min-w-0">
+          {sections}
+          {(hasFiche || hasCiblage) && !showDetail && (
+            <div className="card no-print p-5">
+              <p className="mb-3 text-sm text-[var(--ink-2)]">
+                La fiche ne garde que l&apos;essentiel. Le détail reste disponible : classement de tous les bureaux, quartiers, toutes les pistes et lieux
+                {r.sections.some((s) => s.id === "PORTE") ? ", feuilles de porte-à-porte" : ""} et diagnostic complet du territoire.
+              </p>
+              <button className="btn" onClick={() => setShowDetail(true)}>
+                Afficher le détail
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {showSources && (
