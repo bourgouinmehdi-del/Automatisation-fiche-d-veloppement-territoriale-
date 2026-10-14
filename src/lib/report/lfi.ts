@@ -8,6 +8,7 @@ import { fmtNumber, fmtSigned, fmtValue } from "../format";
 import type { Block, ChartSpec, DataTable, Finding, GeoRef, Indicator, MapLegend, MapSpec, Section, SourceRef } from "../types";
 import { MISSING_COLOR, SEQ_COLORS } from "./assemble";
 import { buildPorte } from "./porte";
+import { communePoster } from "./affiche";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
 import { NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
@@ -131,7 +132,7 @@ function divergingLegend(title: string, vals: number[]): MapLegend {
   return { title, unit: "%", classes, missingLabel: "Bureau non apparié" };
 }
 
-export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
+export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiText?: string | null } = {}): LfiOutput {
   const out: LfiOutput = { section: null, tables: [], charts: [], maps: [], findings: [], indicators: [] };
   const { commune, geos } = c;
   let fid = 1000;
@@ -303,8 +304,14 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
       evidence: evOf(med, fs),
     });
   }
-  // 2 ou 3 phrases qualitatives au plus, par ordre d'utilité pour l'action (services, mobilité, emploi, logement).
-  const order = [/m[ée]decin|France Services/i, /voiture/i, /emploi|travaill/i, /vides|secondaires/i];
+  // Demandeurs d'emploi (fichiers France Travail) : remplacent la phrase sur l'emploi local.
+  if (extra.emploiText) {
+    const i = socio.findIndex((x) => /emplois sur place|travaillent ailleurs/.test(x.text));
+    if (i >= 0) socio.splice(i, 1);
+    socio.push({ text: extra.emploiText, evidence: [`de_nombre@commune:${commune.code}`, `de_evol_1an@commune:${commune.code}`] });
+  }
+  // 2 ou 3 phrases qualitatives au plus, par ordre d'utilité pour l'action (services, chômage, mobilité, emploi, logement).
+  const order = [/m[ée]decin|France Services/i, /demandeurs d'emploi/i, /voiture/i, /emploi|travaill/i, /vides|secondaires/i];
   const rank = (t: string) => {
     const i = order.findIndex((re) => re.test(t));
     return i < 0 ? order.length : i;
@@ -1400,6 +1407,15 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
       ? `${B("Priorité")} : ${porteMsg ? `${porteMsg}${lieuxMsg.length ? `, complété par des tractages ${joinFr(lieuxMsg)}` : ""}` : `tractages ${joinFr(lieuxMsg)}`}.`
       : "";
 
+  // Carte « affiche » : porte-à-porte et tractage sur fond de plan.
+  const affiche = communePoster(c, {
+    prio,
+    labels,
+    markets,
+    gares: (c.stations?.stations ?? []).map((st) => ({ nom: st.nom, infos: "", lon: st.lon, lat: st.lat, voyageurs: st.frequentation[st.frequentation.length - 1]?.voyageurs ?? null })),
+  });
+  if (affiche) out.maps.push(affiche);
+
   // Constats « piste » (traçabilité, synthèse du rapport complet).
   for (const g of actionGroups) addF({ kind: "piste", text: `${g.title} : ${g.items.join(" ")}`.replace(/\*\*/g, ""), evidence: [], weight: 70 });
 
@@ -1650,9 +1666,11 @@ export function buildLfi(c: Collected, indicators: Indicator[]): LfiOutput {
   const otherHyps = [...hyps.slice(2), ...ids.spread];
   if (otherHyps.length) detail.push({ type: "heading", text: "Autres questions à vérifier" }, { type: "findings", ids: otherHyps, style: "prose" });
   if (has("lfi_quartiers")) detail.push({ type: "heading", text: "Profil des quartiers" }, { type: "table", tableId: "lfi_quartiers" });
+  if (c.emploi?.commune.length) detail.push({ type: "heading", text: "Demandeurs d'emploi" }, { type: "table", tableId: "table_demandeurs" }, { type: "chart", chartId: "chart_demandeurs" });
 
   blocks.push({ type: "heading", text: "Actions recommandées" });
   if (planIntro) blocks.push({ type: "paragraph", text: planIntro });
+  if (affiche) blocks.push({ type: "map", mapId: "lfi_affiche" });
   if (has("lfi_plan")) blocks.push({ type: "table", tableId: "lfi_plan" });
   else blocks.push({ type: "note", text: "Aucun lieu d'action identifié automatiquement (marchés, gares, commerces, établissements) : à compléter avec les militants locaux." });
   if (access.length) blocks.push({ type: "paragraph", text: `${B("Accès")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });

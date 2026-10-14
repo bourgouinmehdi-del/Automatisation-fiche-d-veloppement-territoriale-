@@ -20,5 +20,8 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   runtime: "nodejs",
-  matcher: ["/((?!_next/|icon\\.svg|favicon\\.ico|.*\\.(?:woff2?|png|svg|css|js)$).*)"],
+  // Dépôt des gros fichiers (demandeurs d'emploi) : hors middleware, qui
+  // recopierait le corps de la requête en mémoire (limite de 10 Mo) ; la
+  // session y est vérifiée par la route elle-même.
+  matcher: ["/((?!_next/|api/interne/emploi|icon\\.svg|favicon\\.ico|.*\\.(?:woff2?|png|svg|css|js)$).*)"],
 };

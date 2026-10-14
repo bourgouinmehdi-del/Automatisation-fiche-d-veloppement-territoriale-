@@ -351,6 +351,63 @@ export function buildCiblage(c: Collected): CiblageOutput {
     });
   }
 
+  // Carte « affiche » : groupes d'action et propositions de ciblage, par circonscription.
+  if (c.depFeatures?.features.length) {
+    const gs = c.interne.groupes;
+    // Groupes certifiés et actifs (5 actions ou plus) si l'export le permet ; sinon tous les groupes.
+    const detailed = gs.some((g) => g.certifie != null || g.actions != null);
+    const active = gs.filter((g) => !detailed || (g.certifie === true && (g.actions ?? 0) >= 5));
+    const gaCodes = new Set(active.map((g) => g.code));
+    const targetCodes = new Set(chosen.flatMap((u) => u.codes));
+    const feat = (f: GeoJSON.Feature, extra: Record<string, unknown> = {}) => ({ ...turf.truncate(f, { precision: 4 }), properties: { nom: (f.properties as { nom: string }).nom, ...extra } }) as GeoJSON.Feature;
+    const all = c.depFeatures.features;
+    const ga = all.filter((f) => gaCodes.has((f.properties as { code: string }).code) && !targetCodes.has((f.properties as { code: string }).code));
+    const cib = all.filter((f) => targetCodes.has((f.properties as { code: string }).code));
+    const bb = c.depVoisins?.bbox ?? (turf.bbox(c.depFeatures) as [number, number, number, number]);
+    const ord = (n: number) => (n === 1 ? "1ère" : `${n}ème`);
+    const geoSrc = c.geoSource ?? src[0];
+    const interneSrcMap: SourceRef = { id: "interne", name: "Données militantes internes (groupes d'action)", url: "data/interne", retrievedAt: new Date().toISOString() };
+    out.maps.push({
+      id: "ciblage_affiche",
+      title: `${dep.nom} : état des groupes d'action et propositions de ciblage`,
+      theme: "strategie",
+      bbox: bb,
+      poster: { kicker: dep.nom, title: "État des groupes d'action et propositions de ciblage", source: "Source : Pôle d'études électorales. Fonds : IGN (ADMIN EXPRESS), data.gouv.fr." },
+      layers: [
+        ...(c.depVoisins?.features.length
+          ? [{ id: "voisins", label: "Départements voisins", kind: "polygons" as const, data: { type: "FeatureCollection" as const, features: c.depVoisins.features }, style: { fill: "#ddd8cd", stroke: "#8f897d", strokeWidth: 1.4 }, labelMode: "caps" as const, labelProperty: "nom", visible: true, source: c.depVoisins.source }]
+          : []),
+        { id: "communes", label: "Communes", kind: "polygons", data: { type: "FeatureCollection", features: all.map((f) => feat(f)) }, style: { fill: "#fffcf4", stroke: "#cfc8ba", strokeWidth: 0.5 }, legendItem: { label: "Commune", swatch: "line" }, visible: true, source: geoSrc },
+        ...(ga.length
+          ? [{ id: "ga", label: detailed ? "Groupes d'action certifiés actifs" : "Groupes d'action", kind: "polygons" as const, data: { type: "FeatureCollection" as const, features: ga.map((f) => feat(f)) }, style: { fill: "#4c0297", stroke: "#4c0297", strokeWidth: 0.6 }, labelMode: "callout" as const, labelProperty: "nom", labelColor: "#4c0297", legendItem: { label: detailed ? "Groupe d'action certifié actif (5 actions ou plus)" : "Groupe d'action", swatch: "fill" as const }, visible: true, source: interneSrcMap }]
+          : []),
+        ...(cib.length
+          ? [{ id: "cibles", label: "Ciblages proposés", kind: "polygons" as const, data: { type: "FeatureCollection" as const, features: cib.map((f) => feat(f)) }, style: { fill: "#f3b51b", stroke: "#c98a00", strokeWidth: 0.6 }, labelMode: "callout" as const, labelProperty: "nom", labelColor: "#c98a00", legendItem: { label: "Ciblage proposé", swatch: "fill" as const }, visible: true, source: src[0] }]
+          : []),
+        ...(c.circos?.list.length
+          ? [
+              {
+                id: "circos",
+                label: "Circonscriptions législatives",
+                kind: "polygons" as const,
+                data: { type: "FeatureCollection" as const, features: c.circos.list.map((x) => ({ type: "Feature" as const, geometry: x.geometry, properties: { nom: c.circos!.list.length > 1 ? `${ord(x.num)} circo.` : "" } })) },
+                style: { fill: "none", stroke: "#212320", strokeWidth: 2 },
+                labelMode: "caps" as const,
+                labelProperty: "nom",
+                labelColor: "#4c0297",
+                legendItem: { label: "Circonscription législative", swatch: "line" as const },
+                visible: true,
+                source: c.circos.source,
+              },
+            ]
+          : c.depContour
+            ? [{ id: "contour", label: "Limite départementale", kind: "polygons" as const, data: { type: "FeatureCollection" as const, features: [c.depContour] }, style: { fill: "none", stroke: "#212320", strokeWidth: 2.2 }, visible: true, source: geoSrc }]
+            : []),
+      ],
+      note: `${detailed ? "Groupes d'action certifiés ayant au moins 5 actions référencées (export Action Populaire)." : "Groupes d'action référencés dans les données internes."} Ciblages : territoires proposés ci-dessous.`,
+    });
+  }
+
   // Constat de synthèse.
   out.findings.push({
     id: "C1",
@@ -368,6 +425,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       text: `Le ciblage présenté ci-dessous a été réalisé à partir de la seule exploitation de données statistiques et électorales publiques, par des personnes qui ne vivent pas forcément dans ce département. ${B(`Les informations qui y sont suggérées doivent être confrontées avec la connaissance du terrain des militant·es de ${dep.nom}.`)}`,
     },
     { type: "list", title: "Territoires proposés pour un ciblage militant", items: chosen.map((u, k) => ({ text: `${B(`${k + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) },
+    ...(out.maps.some((m) => m.id === "ciblage_affiche") ? [{ type: "map" as const, mapId: "ciblage_affiche" }] : []),
     { type: "map", mapId: "ciblage_carte" },
     { type: "targets", items: targets },
     { type: "heading", text: "Classement de l'ensemble des territoires" },

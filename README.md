@@ -133,10 +133,20 @@ Les textes acceptent une mise en évidence minimale (`**gras**`), rendue dans l'
 | `parrains.csv` | `code_commune;parrains` | colonne « Parrains » et ratio parrains / voix LFI vs département |
 | `groupes.csv` | `code_commune;nom;membres;statut;description` | encadré « Implantation militante » |
 | `bv-<code>.geojson` | polygones avec propriété `bv` | carte exacte des bureaux |
+| `RES_STMT_COM*.csv` / `RES_NAT.csv` | `COMRES;MOISTA;_FREQ_;part_fem;AGE_m;ancien_m` | demandeurs d'emploi (France Travail) par commune et par mois : phrase de la fiche, tableau et courbes (partie C et annexe) |
+
+**Demandeurs d'emploi** : le fichier communal (≈ 230 Mo) se dépose depuis la page « Données internes » (compressé dans le navigateur, lu en flux sur le serveur, environ 20 s) ou se copie dans `data/interne/` (importé au premier usage). Il est découpé une fois pour toutes en un fichier par département (`data/interne/demandeurs-emploi/`). Rupture de série en janvier 2025 (inscription automatique des allocataires du RSA et des jeunes suivis par une mission locale) : signalée dans les notes.
 
 Exemples dans `docs/exemples-interne/`. Uniquement des agrégats par commune : aucun nom de personne.
 
 **Garde-fous** : uniquement des agrégats publics (commune, bureau de vote) ; aucune donnée individuelle ; aucune variable d'origine ou de nationalité ; explications présentées comme hypothèses.
+
+### Cartes « affiche »
+
+Sur le modèle des cartes du pôle, rendues en SVG (PDF, Word, PNG, et dans l'interface) :
+
+- **Département** (périmètre « département ») : *État des groupes d'action et propositions de ciblage* — communes avec un groupe d'action certifié actif (5 actions ou plus, d'après l'export Action Populaire) en violet, ciblages proposés en jaune, circonscriptions législatives ([contours data.gouv.fr](https://www.data.gouv.fr/datasets/contours-geographiques-des-circonscriptions-legislatives)), départements voisins grisés ([contours Etalab](https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/)).
+- **Commune** : *Propositions de ciblage : porte-à-porte et tractage* — quartiers prioritaires, bureaux de vote prioritaires et résidences étudiantes (porte-à-porte), marchés et gares (tractage), sur un fond OpenStreetMap (voies, voies ferrées, cours d'eau), avec échelle. L'emprise se resserre sur ces lieux plutôt que sur toute la commune.
 
 ### Quartiers, contexte municipal, services et accès (fiche d'action)
 

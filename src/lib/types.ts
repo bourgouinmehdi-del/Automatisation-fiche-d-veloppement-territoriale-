@@ -168,6 +168,17 @@ export interface MapLayer {
   /** Couche affichée par défaut. */
   visible: boolean;
   source: SourceRef;
+  /**
+   * Cartes « affiche » : style de la couche (les propriétés `_fill`, `_stroke`,
+   * `_sw`, `_dash` d'une entité le remplacent pour elle seule).
+   */
+  style?: { fill?: string; stroke?: string; strokeWidth?: number; dash?: string; symbol?: "circle" | "diamond" | "dot"; size?: number };
+  /** Étiquettes : « callout » (texte décalé et trait de rappel), « caps » (capitales grises au centre). */
+  labelMode?: "callout" | "caps";
+  sublabelProperty?: string;
+  labelColor?: string;
+  /** Entrée de la légende encadrée (cartes « affiche »). */
+  legendItem?: { label: string; swatch: "fill" | "line" | "dash" | "circle" | "diamond" };
 }
 
 export interface MapLegend {
@@ -191,6 +202,11 @@ export interface MapSpec {
   /** [ouest, sud, est, nord] */
   bbox?: [number, number, number, number];
   note?: string;
+  /**
+   * Carte « affiche » (modèle des cartes du pôle) : bandeau titre, fond clair,
+   * étiquettes avec traits de rappel, légende encadrée, échelle et source.
+   */
+  poster?: { kicker: string; title: string; source: string; footnote?: string; scaleBar?: boolean };
 }
 
 /* --------------------------------------------------------------- analyses */

@@ -48,6 +48,20 @@ describe("ciblage départemental", () => {
     expect(map.legend?.categories?.length).toBe(targets.items.length + 1);
   });
 
+  it("carte « affiche » : groupes d'action, ciblages, circonscriptions, départements voisins", async () => {
+    const m = dep.maps.find((x) => x.id === "ciblage_affiche")!;
+    expect(m.poster?.title).toBe("État des groupes d'action et propositions de ciblage");
+    const ids = m.layers.map((l) => l.id);
+    expect(ids).toEqual(expect.arrayContaining(["voisins", "communes", "ga", "cibles", "circos"]));
+    expect(m.layers.find((l) => l.id === "voisins")!.data.features.map((f) => f.properties?.nom).sort()).toEqual(["Aisne", "Somme"]);
+    expect(m.layers.find((l) => l.id === "circos")!.data.features.map((f) => f.properties?.nom)).toEqual(["1ère circo.", "2ème circo."]);
+    expect(m.layers.find((l) => l.id === "ga")!.data.features.map((f) => f.properties?.nom)).toEqual(["Compiègne"]);
+    const { mapSvg } = await import("@/lib/render/svg");
+    const svg = mapSvg(m);
+    for (const t of ["OISE", "1ÈRE CIRCO.", "AISNE", "Circonscription législative", "Ciblage proposé"]) expect(svg).toContain(t);
+    expect(dep.sections[0].blocks.some((b) => b.type === "map" && b.mapId === "ciblage_affiche")).toBe(true);
+  });
+
   it("export PDF du ciblage (si Chromium est disponible)", async () => {
     const { findChromium, reportToPdf } = await import("@/lib/export/pdf");
     const { renderReportHtml } = await import("@/lib/render/html");

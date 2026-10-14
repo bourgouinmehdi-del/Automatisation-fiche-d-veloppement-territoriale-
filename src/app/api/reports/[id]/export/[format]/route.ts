@@ -68,7 +68,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       const m = r.maps.find((x) => x.id === sub);
       if (!m) return new Response("Carte introuvable", { status: 404 });
       const svg = mapSvg(m, 1000, 760);
-      if (format === "map-svg") return file(svg, "image/svg+xml", `${name}-${m.id}.svg`);
+      if (format === "map-svg") return file(svg, "image/svg+xml", `${name}-${m.id}.svg`, q.get("inline") === "1");
       const png = new Resvg(svg, { fitTo: { mode: "width", value: 2000 }, font: { loadSystemFonts: true }, background: "#ffffff" }).render().asPng();
       return file(new Uint8Array(png), "image/png", `${name}-${m.id}.png`);
     }

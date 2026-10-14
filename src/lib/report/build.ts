@@ -8,6 +8,7 @@ import { collect, PROGRESS_TOTAL } from "./collect";
 import { buildSections } from "./sections";
 import { buildLfi } from "./lfi";
 import { buildCiblage } from "./ciblage";
+import { buildEmploi } from "./emploi";
 
 /**
  * Chaîne complète de génération d'une fiche :
@@ -31,6 +32,11 @@ export async function buildReport(
     status: "running",
   });
   const a = assemble(c);
+  // Demandeurs d'emploi (fichiers France Travail déposés).
+  const emp = buildEmploi(c);
+  a.indicators.push(...emp.indicators);
+  a.tables.push(...emp.tables);
+  a.charts.push(...emp.charts);
 
   emit({
     step: "analyse",
@@ -69,12 +75,12 @@ export async function buildReport(
   const lfi =
     query.scope === "departement"
       ? { ...buildCiblage(c), charts: [] }
-      : buildLfi(c, a.indicators);
+      : buildLfi(c, a.indicators, { emploiText: emp.ficheText });
   a.indicators.push(...lfi.indicators);
   a.tables.push(...lfi.tables);
   a.charts.push(...lfi.charts);
   a.maps.push(...lfi.maps);
-  findings.push(...lfi.findings);
+  findings.push(...lfi.findings, ...emp.findings);
 
   emit({
     step: "redaction",

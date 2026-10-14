@@ -169,6 +169,7 @@ function sectionC(x: Ctx): Section {
     );
   blocks.push({ type: "findings", themes: ["emploi", "economie"], kinds: ["constat", "hypothese"] });
   blocks.push({ type: "comparison", title: "Emploi et activité", indicatorIds: ["taux_emploi", "taux_chomage_rp", "concentration_emploi", "emplois_lieu_travail", "part_sans_diplome", "part_diplome_superieur"] });
+  if (has(x, "table", "table_demandeurs")) blocks.push({ type: "heading", text: "Demandeurs d'emploi inscrits à France Travail" }, { type: "table", tableId: "table_demandeurs" }, ...optional(x, "chart", "chart_demandeurs"), ...optional(x, "chart", "chart_demandeurs_nombre"));
   blocks.push(...optional(x, "chart", "chart_sections"), ...optional(x, "chart", "chart_dist_csp"), ...optional(x, "table", "table_employeurs"));
   blocks.push({
     type: "note",

@@ -15,6 +15,7 @@ export interface DgResource {
   format?: string;
   url?: string;
   last_modified?: string;
+  filesize?: number;
 }
 
 /**

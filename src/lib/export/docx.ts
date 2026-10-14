@@ -152,6 +152,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       const m = r.maps.find((x) => x.id === b.mapId);
       if (!m) return [];
       const srcs = [...new Map(m.layers.map((l) => [l.source.id + l.source.url, l.source])).values()];
+      if (m.poster) return [image(mapSvg(m), 600), small(`Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")}${m.note ? ` — ${m.note}` : ""}`)];
       return [caption(m.title), image(mapSvg(m), 560), small(`Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")} · Fond : contours ADMIN EXPRESS (IGN) via geo.api.gouv.fr${m.note ? ` — ${m.note}` : ""}`)];
     }
     case "locator": {

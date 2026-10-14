@@ -19,7 +19,19 @@ const KINDS = [
   { id: "parrains", title: "Parrainages par commune", help: "Colonnes : code_commune ; parrains (nombre de parrainages, ex. JLM27)." },
 ];
 
+type StmtMeta = { rows: number; communes: number; first: string; last: string; updatedAt: string };
+const STMT = [
+  {
+    id: "communes" as const,
+    title: "Demandeurs d'emploi par commune (France Travail)",
+    help: "Fichier RES_STMT_COM (colonnes COMRES ; MOISTA ; _FREQ_ ; part_fem ; AGE_m ; ancien_m). Gros fichier (environ 230 Mo) : il est compressé dans le navigateur avant l'envoi, puis découpé par département sur le serveur. Compter une à deux minutes.",
+  },
+  { id: "national" as const, title: "Demandeurs d'emploi, France entière", help: "Fichier RES_NAT (même format, colonne COMRES vide) : sert de point de comparaison." },
+];
+const per = (m: string) => `${m.slice(4)}/${m.slice(0, 4)}`;
+
 export default function DonneesInternes() {
+  const [stmt, setStmt] = useState<Partial<Record<"communes" | "national", StmtMeta>>>({});
   const [sum, setSum] = useState<Summary | null>(null);
   const [msg, setMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -29,7 +41,35 @@ export default function DonneesInternes() {
       .then((r) => r.json())
       .then(setSum)
       .catch(() => {});
+    fetch("/api/interne/emploi")
+      .then((r) => r.json())
+      .then(setStmt)
+      .catch(() => {});
   }, []);
+
+  async function uploadStmt(kind: "communes" | "national", file: File) {
+    setBusy(kind);
+    setMsg((m) => ({ ...m, [kind]: { ok: true, text: "Compression et envoi en cours…" } }));
+    try {
+      // Compression gzip dans le navigateur (le fichier communal passe d'environ 230 à 50 Mo).
+      const gz = typeof CompressionStream !== "undefined" && !file.name.endsWith(".gz");
+      const body = gz ? await new Response(file.stream().pipeThrough(new CompressionStream("gzip"))).blob() : file;
+      const res = await fetch(`/api/interne/emploi${gz || file.name.endsWith(".gz") ? "?gzip=1" : ""}`, { method: "POST", body });
+      const d = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      setMsg((m) => ({ ...m, [kind]: res.ok ? { ok: true, text: `Fichier enregistré : ${d.info}.` } : { ok: false, text: d.error } }));
+      if (d.summary) setStmt(d.summary);
+    } catch (e) {
+      setMsg((m) => ({ ...m, [kind]: { ok: false, text: `Échec de l'envoi : ${(e as Error).message}` } }));
+    }
+    setBusy(null);
+  }
+
+  async function removeStmt(kind: "communes" | "national") {
+    const res = await fetch(`/api/interne/emploi?kind=${kind}`, { method: "DELETE" });
+    const d = await res.json();
+    if (d.summary) setStmt(d.summary);
+    setMsg((m) => ({ ...m, [kind]: { ok: true, text: "Fichier supprimé." } }));
+  }
 
   async function upload(kind: string, file: File) {
     setBusy(kind);
@@ -56,7 +96,7 @@ export default function DonneesInternes() {
     <main className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="mb-2 text-3xl font-bold text-[var(--accent-strong)]">Données internes</h1>
       <p className="mb-6 text-[var(--ink-2)]">
-        Fichiers facultatifs qui complètent les fiches : implantation militante (groupes d&apos;action) et parrainages. Ils restent sur le serveur
+        Fichiers facultatifs qui complètent les fiches : implantation militante (groupes d&apos;action), parrainages et demandeurs d&apos;emploi. Ils restent sur le serveur
         (dossier <code>data/interne/</code>) et ne sont jamais publiés ; placez l&apos;application derrière une authentification si elle est en ligne.
         Les fiches déjà générées les prennent en compte après « Régénérer ».
       </p>
@@ -106,6 +146,46 @@ export default function DonneesInternes() {
                   </label>
                   {f && (
                     <button className="btn" onClick={() => remove(k.id)}>
+                      Supprimer
+                    </button>
+                  )}
+                </div>
+              </div>
+              {msg[k.id] && <p className={`mt-3 text-sm ${msg[k.id].ok ? "text-[#0b6b47]" : "text-[#a12a29]"}`}>{msg[k.id].text}</p>}
+            </section>
+          );
+        })}
+        {STMT.map((k) => {
+          const f = stmt[k.id];
+          return (
+            <section key={k.id} className="card p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold">{k.title}</h2>
+                  <p className="mt-1 text-sm text-[var(--ink-2)]">{k.help}</p>
+                  <p className="mt-2 text-xs text-[var(--muted)]">
+                    {f
+                      ? `Présent — ${k.id === "communes" ? `${f.communes.toLocaleString("fr-FR")} communes, ` : ""}${per(f.first)} à ${per(f.last)}, déposé le ${new Date(f.updatedAt).toLocaleDateString("fr-FR")}`
+                      : "Aucun fichier déposé"}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <label className={`btn ${busy === k.id ? "opacity-60" : ""} cursor-pointer`}>
+                    {busy === k.id ? "Envoi…" : f ? "Remplacer" : "Déposer un CSV"}
+                    <input
+                      type="file"
+                      accept=".csv,.gz,text/csv"
+                      className="hidden"
+                      disabled={!!busy}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadStmt(k.id, file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  {f && (
+                    <button className="btn" onClick={() => removeStmt(k.id)}>
                       Supprimer
                     </button>
                   )}

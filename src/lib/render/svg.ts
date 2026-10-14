@@ -5,6 +5,7 @@ import { rewind } from "@turf/turf";
 import { fmtNumber, fmtValue } from "../format";
 import type { ChartSpec, MapSpec } from "../types";
 import { colorFor, MISSING_COLOR } from "../report/assemble";
+import { posterMapSvg } from "./poster";
 
 /**
  * Rendu SVG statique des graphiques et des cartes, utilisé par l'export PDF
@@ -251,6 +252,7 @@ function forD3<T extends GeoJSON.Feature | GeoJSON.FeatureCollection>(g: T): T {
 }
 
 export function mapSvg(map: MapSpec, width = 720, height = 540): string {
+  if (map.poster) return posterMapSvg(map, Math.max(width, 900));
   const visible = map.layers
     .filter((l) => l.visible && l.data.features.length)
     .map((l) => (l.kind === "polygons" ? { ...l, data: forD3(structuredClone(l.data)) } : l));
