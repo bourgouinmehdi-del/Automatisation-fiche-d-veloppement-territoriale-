@@ -50,37 +50,90 @@ export interface LfiOutput {
 }
 
 /**
- * Forces politiques du graphique « Européennes 2024 » : ordre et couleurs de
- * la charte. Score national : résultats définitifs (France entière, % des
- * suffrages exprimés), ministère de l'Intérieur, 9 juin 2024.
+ * Graphiques « résultats par force politique » du profil politique : un par
+ * scrutin, présentés en onglets (européennes 2024 par défaut). Ordre et
+ * couleurs de la charte ; repère = score national (résultats définitifs,
+ * France entière, % des suffrages exprimés, ministère de l'Intérieur).
+ * Une force sans liste ni candidat à un scrutin n'a pas de barre.
  */
-export const EU24_CHART: { id: string; label: string; color: string; national: number }[] = [
-  { id: "pcf", label: "PCF", color: "#830E21", national: 2.36 },
-  { id: "lfi", label: "LFI", color: "#E8434B", national: 9.89 },
-  { id: "eco", label: "LÉ", color: "#49C07A", national: 5.5 },
-  { id: "ps", label: "PS / PP", color: "#F08FB7", national: 13.83 },
-  { id: "ens", label: "Ensemble", color: "#FED700", national: 14.6 },
-  { id: "lr", label: "LR", color: "#8CB0DC", national: 7.25 },
-  { id: "rn", label: "RN", color: "#313567", national: 31.37 },
-  { id: "rec", label: "Reconquête", color: "#8D6E63", national: 5.47 },
+interface ChartForce {
+  id: string;
+  label: string;
+  color: string;
+  national: number;
+}
+const COLORS: Record<string, string> = { pcf: "#830E21", lfi: "#E8434B", eco: "#49C07A", ps: "#F08FB7", ens: "#FED700", lr: "#8CB0DC", rn: "#313567", rec: "#8D6E63" };
+const force = (id: string, label: string, national: number): ChartForce => ({ id, label, color: COLORS[id], national });
+export const VOTE_CHARTS: { eid: string; id: string; title: string; tab: string; forces: ChartForce[] }[] = [
+  {
+    eid: "PR17T1",
+    id: "lfi_chart_pr17",
+    title: "Présidentielle 2017 (1er tour)",
+    tab: "Présidentielle 2017",
+    forces: [force("lfi", "Mélenchon (LFI)", 19.58), force("ps", "Hamon (PS)", 6.36), force("ens", "Macron", 24.01), force("lr", "Fillon (LR)", 20.01), force("rn", "Le Pen (FN)", 21.3)],
+  },
+  {
+    eid: "EU19",
+    id: "lfi_chart_eu19",
+    title: "Européennes 2019",
+    tab: "Européennes 2019",
+    forces: [force("pcf", "PCF", 2.49), force("lfi", "LFI", 6.31), force("eco", "EELV", 13.48), force("ps", "PS / PP", 6.19), force("ens", "Renaissance", 22.42), force("lr", "LR", 8.48), force("rn", "RN", 23.34)],
+  },
+  {
+    eid: "PR22T1",
+    id: "lfi_chart_pr22",
+    title: "Présidentielle 2022 (1er tour)",
+    tab: "Présidentielle 2022",
+    forces: [
+      force("pcf", "Roussel (PCF)", 2.28),
+      force("lfi", "Mélenchon (LFI)", 21.95),
+      force("eco", "Jadot (LÉ)", 4.63),
+      force("ps", "Hidalgo (PS)", 1.75),
+      force("ens", "Macron", 27.85),
+      force("lr", "Pécresse (LR)", 4.78),
+      force("rn", "Le Pen (RN)", 23.15),
+      force("rec", "Zemmour (Reconquête)", 7.07),
+    ],
+  },
+  {
+    eid: "EU24",
+    id: "lfi_chart_eu24",
+    title: "Européennes 2024",
+    tab: "Européennes 2024",
+    forces: [force("pcf", "PCF", 2.36), force("lfi", "LFI", 9.89), force("eco", "LÉ", 5.5), force("ps", "PS / PP", 13.83), force("ens", "Ensemble", 14.6), force("lr", "LR", 7.25), force("rn", "RN", 31.37), force("rec", "Reconquête", 5.47)],
+  },
 ];
+/** Forces du graphique « Européennes 2024 » (compatibilité). */
+export const EU24_CHART = VOTE_CHARTS.find((x) => x.eid === "EU24")!.forces;
 export const EU24_AUTRES_COLOR = "#9AA0A6";
+const NAT_URL: Record<string, string> = {
+  EU24: "https://www.resultats-elections.interieur.gouv.fr/europeennes2024/ensemble_geographique/index.html",
+  PR22T1: "https://www.resultats-elections.interieur.gouv.fr/presidentielle-2022/FE.html",
+  EU19: "https://www.interieur.gouv.fr/Elections/Les-resultats/Europeennes/elecresult__europeennes-2019/(path)/europeennes-2019/FE.html",
+  PR17T1: "https://www.interieur.gouv.fr/Elections/Les-resultats/Presidentielles/elecresult__presidentielle-2017/(path)/presidentielle-2017/FE.html",
+};
 
-export function europeennesChart(a: { exprimes: number; candidates: { label: string; voix: number }[] }, source: SourceRef): ChartSpec {
-  // Chaque liste est rattachée à une seule force (la première qui correspond).
+type VoteAgg = { exprimes: number; candidates: { label: string; voix: number }[] };
+
+export function voteChart(eid: string, a: VoteAgg, source: SourceRef, note?: string): ChartSpec | null {
+  const cfg = VOTE_CHARTS.find((x) => x.eid === eid);
+  if (!cfg || !a.exprimes) return null;
+  // Chaque liste ou candidat est rattaché à une seule force (la première qui correspond).
   const voix = new Map<string, number>();
   let autres = 0;
   for (const cand of a.candidates) {
-    const f = EU24_CHART.find((x) => FAMILIES.find((y) => y.id === x.id)?.match.EU24?.test(cand.label));
+    const f = cfg.forces.find((x) => FAMILIES.find((y) => y.id === x.id)?.match[eid]?.test(cand.label));
     if (f) voix.set(f.id, (voix.get(f.id) ?? 0) + cand.voix);
     else autres += cand.voix;
   }
-  const pctOf = (v: number) => (a.exprimes ? Math.round((1000 * v) / a.exprimes) / 10 : null);
-  const natAutres = Math.round(10 * (100 - EU24_CHART.reduce((s2, f) => s2 + f.national, 0))) / 10;
+  const pctOf = (v: number) => Math.round((1000 * v) / a.exprimes) / 10;
+  const natAutres = Math.round(10 * (100 - cfg.forces.reduce((s2, f) => s2 + f.national, 0))) / 10;
   return {
-    id: "lfi_chart_eu24",
-    title: "Européennes 2024",
+    id: cfg.id,
+    title: cfg.title,
     type: "refbar",
+    group: "lfi_votes",
+    tab: cfg.tab,
     xKey: "label",
     series: [
       { key: "value", label: "Commune" },
@@ -89,12 +142,28 @@ export function europeennesChart(a: { exprimes: number; candidates: { label: str
     colorKey: "color",
     unit: "%",
     data: [
-      ...EU24_CHART.map((f) => ({ label: f.label, value: pctOf(voix.get(f.id) ?? 0), ref: f.national, color: f.color })),
+      ...cfg.forces.map((f) => ({ label: f.label, value: pctOf(voix.get(f.id) ?? 0), ref: f.national, color: f.color })),
       { label: "Autres", value: pctOf(autres), ref: natAutres, color: EU24_AUTRES_COLOR },
     ],
-    sources: [source, { id: "elections_nat", name: "Ministère de l'Intérieur, résultats nationaux des élections européennes 2024", url: "https://www.resultats-elections.interieur.gouv.fr/europeennes2024/ensemble_geographique/index.html", retrievedAt: "2024-06-10" }],
-    note: "Part des voix (hors blancs et nuls) ; trait : score national (France entière).",
+    sources: [source, { id: "elections_nat", name: `Ministère de l'Intérieur, résultats nationaux — ${cfg.title}`, url: NAT_URL[eid], retrievedAt: VOTE_CHARTS_DATE }],
+    note: `Part des voix (hors blancs et nuls) ; trait : score national (France entière).${note ? ` ${note}` : ""}`,
   };
+}
+const VOTE_CHARTS_DATE = "2024-06-10";
+
+export function europeennesChart(a: VoteAgg, source: SourceRef): ChartSpec {
+  return voteChart("EU24", a, source)!;
+}
+
+/** Résultats d'une commune reconstitués à partir de ses bureaux de vote (scrutins sans fichier communal). */
+export function sumBureaux(rows: { exprimes: number; candidates: { label: string; voix: number }[] }[]): VoteAgg {
+  const cand = new Map<string, number>();
+  let exprimes = 0;
+  for (const r of rows) {
+    exprimes += r.exprimes;
+    for (const x of r.candidates) cand.set(x.label, (cand.get(x.label) ?? 0) + x.voix);
+  }
+  return { exprimes, candidates: [...cand].map(([label, voix]) => ({ label, voix })) };
 }
 
 /** Adresses du REU en majuscules : « 14 PLACE DE LA FRATERNITE 48000 mende » → « 14 Place de la Fraternite, 48000 Mende ». */
@@ -162,6 +231,27 @@ export function compareWords(a: number, b: number, more = "plus", less = "moins"
   if (r < 0.95) return `un peu ${less}`;
   return "autant";
 }
+
+/**
+ * Comparaison d'un score de vote à une référence, en mots, avec une seule
+ * règle pour toute la fiche (synthèse, « En bref ») : l'écart doit être net à
+ * la fois en rapport et en points pour être signalé. 6 % contre 4 % : « un peu
+ * plus » (2 points), pas « nettement plus » ; 15 % contre 14 % : « autant ».
+ */
+export function voteCompare(c: number, d: number): { dir: "plus" | "moins" | "autant"; words: string; net: boolean } {
+  const diff = c - d;
+  const r = d ? c / d : 2;
+  if (Math.abs(diff) < 1.5 || Math.abs(r - 1) < 0.08) return { dir: "autant", words: "autant", net: false };
+  const dir = diff > 0 ? "plus" : "moins";
+  const strong = Math.abs(diff) >= 3 && (r >= 1.2 || r <= 1 / 1.2);
+  if (!strong) return { dir, words: `un peu ${dir}`, net: false };
+  // « deux fois plus » seulement si l'écart dépasse aussi 5 points.
+  const w = compareWords(c, d, "plus", "moins");
+  return { dir, words: /fois/.test(w) && Math.abs(diff) < 5 ? `nettement ${dir}` : w, net: true };
+}
+
+/** Scores nationaux du vote LFI (% des exprimés), repère d'un « terrain favorable ». */
+export const LFI_NATIONAL = { EU24: 9.89, PR22T1: 21.95 };
 
 const pct = (v: number | null | undefined, d = 1) => (v == null || !Number.isFinite(v) ? "n.d." : fmtValue(v, "%", d));
 /** « 2 809 (9,8 %) » avec le pourcentage en gras, comme dans les fiches de référence. */
@@ -456,7 +546,17 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const d24 = depR(e24);
   const d22 = depR(p22);
   // Graphique systématique « Européennes 2024 » : % des exprimés par force politique, repère national.
-  if (c24 && e24) out.charts.push(europeennesChart(c24, e24.source));
+  // Graphiques par scrutin (onglets) : 2022 et 2024 au niveau communal, 2017 et 2019 reconstitués
+  // à partir des bureaux de vote de la commune.
+  for (const cfg of VOTE_CHARTS) {
+    const comm = cfg.eid === "EU24" ? c24 : cfg.eid === "PR22T1" ? com(p22) : null;
+    const bv = c.bureaux.find((b) => b.election.id === cfg.eid);
+    const src = cfg.eid === "EU24" ? e24?.source : cfg.eid === "PR22T1" ? p22?.source : bv?.source;
+    const agg = comm ?? (bv?.results.length ? sumBureaux(bv.results) : null);
+    if (!agg || !src) continue;
+    const ch = voteChart(cfg.eid, agg, src, comm ? undefined : "Total des bureaux de vote de la commune.");
+    if (ch) out.charts.push(ch);
+  }
   if (c24 || c22) {
     type Row = Record<string, string | number | null>;
     const line = (name: string, ins: number | null, l22: ReturnType<typeof score>, l24: ReturnType<typeof score>, par: number | null, a22: ReturnType<typeof abstention> | null, a24: ReturnType<typeof abstention> | null): Row => ({
@@ -1676,12 +1776,19 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
 
   // Synthèse : des messages, pas des comparaisons statistiques.
   const synth: Item[] = [];
-  const lfiStrong = !!(l24 && dl24 && l24.pctExprimes >= dl24.pctExprimes * 1.2);
-  const melStrong = !!(m22 && dm22 && m22.pctExprimes >= dm22.pctExprimes * 1.1);
+  // « Favorable » : nettement au-dessus du département ET au moins proche du niveau national
+  // (6 % contre 4 % dans un département où LFI est faible n'est pas un terrain favorable).
+  const cmp24 = l24 && dl24 ? voteCompare(l24.pctExprimes, dl24.pctExprimes) : null;
+  const cmp22 = m22 && dm22 ? voteCompare(m22.pctExprimes, dm22.pctExprimes) : null;
+  const lfiStrong = !!(cmp24?.net && cmp24.dir === "plus" && l24!.pctExprimes >= LFI_NATIONAL.EU24 * 0.9);
+  const melStrong = !!(cmp22?.net && cmp22.dir === "plus" && m22!.pctExprimes >= LFI_NATIONAL.PR22T1 * 0.9);
+  const lowAbove = !lfiStrong && !melStrong && cmp24?.dir === "plus" && l24!.pctExprimes < LFI_NATIONAL.EU24 * 0.9;
   if (lfiStrong || melStrong) {
-    const x = lfiStrong ? { c: l24!.pctExprimes, d: dl24!.pctExprimes, what: "aux européennes 2024" } : { c: m22!.pctExprimes, d: dm22!.pctExprimes, what: "pour J.-L. Mélenchon en 2022" };
-    synth.push({ text: `${B("Un terrain favorable")} : on y vote ${compareWords(x.c, x.d)} pour la France insoumise que dans le reste du département (${pp(x.c)} ${x.what}, contre ${pp(x.d)}).` });
-  } else if (perfMain?.dir === "superieur")
+    const x = lfiStrong ? { c: l24!.pctExprimes, d: dl24!.pctExprimes, what: "aux européennes 2024", w: cmp24!.words } : { c: m22!.pctExprimes, d: dm22!.pctExprimes, what: "pour J.-L. Mélenchon en 2022", w: cmp22!.words };
+    synth.push({ text: `${B("Un terrain favorable")} : on y vote ${x.w} pour la France insoumise que dans le reste du département (${pp(x.c)} ${x.what}, contre ${pp(x.d)}).` });
+  } else if (lowAbove)
+    synth.push({ text: `${B("Un vote insoumis encore faible")} : ${pp(l24!.pctExprimes)} aux européennes 2024, ${cmp24!.words} que dans le département (${pp(dl24!.pctExprimes)}) mais loin du niveau national (${pp(LFI_NATIONAL.EU24)}).` });
+  else if (perfMain?.dir === "superieur" && (!l24 || l24.pctExprimes >= LFI_NATIONAL.EU24 * 0.9))
     synth.push({ text: `${B("Un terrain favorable")} : on y vote davantage pour la France insoumise que dans les villes de même taille du département.` });
   else if (l24 && dl24 && m22 && dm22 && l24.pctExprimes < dl24.pctExprimes * 0.85 && m22.pctExprimes >= dm22.pctExprimes * 0.95)
     // Faible aux européennes, mais au niveau du département à la présidentielle : un électorat qui se mobilise surtout pour la présidentielle.
@@ -1806,17 +1913,17 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   {
     const parts: string[] = [];
     if (l24 && dl24) {
-      const d = gap(l24.pctExprimes, dl24.pctExprimes, "%").direction;
-      const w = d === "superieur" || d === "inferieur" ? compareWords(l24.pctExprimes, dl24.pctExprimes) : "autant";
-      const w2 = w === "autant" && d !== "superieur" && d !== "inferieur" ? w : w === "autant" ? (d === "superieur" ? "un peu plus" : "un peu moins") : w;
+      // Même règle que la synthèse (voteCompare) : jamais « autant » ici et « nettement plus » plus haut.
+      const v24 = voteCompare(l24.pctExprimes, dl24.pctExprimes);
+      const w2 = v24.words;
       // Les deux scrutins ne disent pas toujours la même chose : on le signale plutôt que de juxtaposer les chiffres.
-      const d22 = m22 && dm22 ? gap(m22.pctExprimes, dm22.pctExprimes, "%").direction : null;
-      const sameWay = !d22 || d22 === d || (d !== "superieur" && d !== "inferieur" && d22 !== "superieur" && d22 !== "inferieur");
+      const d22 = m22 && dm22 ? voteCompare(m22.pctExprimes, dm22.pctExprimes).dir : null;
+      const sameWay = !d22 || d22 === v24.dir;
       const p22 = m22 && dm22 ? `${pp(m22.pctExprimes)} pour J.-L. Mélenchon en 2022 (département : ${pp(dm22.pctExprimes)})` : "";
       parts.push(
         sameWay
           ? `On y vote ${B(`${w2} pour la France insoumise`)} que dans le reste du département : ${pp(l24.pctExprimes)} des voix aux européennes 2024 (département : ${pp(dl24.pctExprimes)})${p22 ? `, ${p22}` : ""}.`
-          : `Aux européennes 2024, on y vote ${B(`${w2} pour la France insoumise`)} que dans le reste du département (${pp(l24.pctExprimes)} des voix, contre ${pp(dl24.pctExprimes)}) ; ${d22 === "superieur" ? "c'est l'inverse" : d22 === "inferieur" ? "c'est l'inverse" : "l'écart disparaît"} à la présidentielle 2022 : ${p22}.`,
+          : `Aux européennes 2024, on y vote ${B(`${w2} pour la France insoumise`)} que dans le reste du département (${pp(l24.pctExprimes)} des voix, contre ${pp(dl24.pctExprimes)}) ; ${d22 === "autant" ? "l'écart disparaît" : v24.dir === "autant" ? `on y vote ${d22} qu'ailleurs` : "c'est l'inverse"} à la présidentielle 2022 : ${p22}.`,
       );
     }
     if (abstMain)

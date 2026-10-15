@@ -261,6 +261,9 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
       case "chart": {
         const c = r.charts.find((x) => x.id === b.chartId);
         if (!c) return null;
+        // Graphiques alternatifs (même groupe) : onglets, le graphique cité par le bloc ouvert par défaut.
+        const group = c.group ? r.charts.filter((x) => x.group === c.group) : [];
+        if (group.length > 1) return <ChartTabs key={key} charts={group} initial={c.id} cite={(s) => cit.cite(s)} />;
         return (
           <Figure key={key} title={c.title} src={c.sources.map((s) => cit.cite(s))} note={c.note}>
             <ChartView chart={c} />
@@ -613,6 +616,25 @@ function Figure({ title, children, src, note }: { title: string; children: React
         </div>
       )}
     </figure>
+  );
+}
+
+function ChartTabs({ charts, initial, cite }: { charts: Report["charts"]; initial: string; cite: (s: Report["charts"][number]["sources"][number]) => number }) {
+  const [id, setId] = useState(initial);
+  const c = charts.find((x) => x.id === id) ?? charts[0];
+  return (
+    <div className="my-5">
+      <div className="chart-tabs no-print" role="tablist" aria-label="Scrutin">
+        {charts.map((x) => (
+          <button key={x.id} type="button" role="tab" aria-selected={x.id === c.id} className="chart-tab" onClick={() => setId(x.id)}>
+            {x.tab ?? x.title}
+          </button>
+        ))}
+      </div>
+      <Figure title={c.title} src={c.sources.map(cite)} note={c.note}>
+        <ChartView chart={c} />
+      </Figure>
+    </div>
   );
 }
 

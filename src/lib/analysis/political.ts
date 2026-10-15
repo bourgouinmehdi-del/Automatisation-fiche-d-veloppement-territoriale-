@@ -32,12 +32,12 @@ export interface Family {
 export const FAMILIES: Family[] = [
   { id: "lfi", label: "LFI", match: { EU24: /^LFI\b|insoumise|aubry/i, PR22T1: /m[ée]lenchon/i, EU19: /^LFI\b|insoumise|aubry/i, PR17T1: /m[ée]lenchon/i } },
   { id: "nfp", label: "NFP (Union de la gauche)", match: { LG24T1: /^UG$|union de la gauche|nouveau front populaire/i } },
-  { id: "pcf", label: "PCF", match: { EU24: /^LCOM$|gauche unie|deffontaines/i, PR22T1: /roussel/i } },
-  { id: "ps", label: "PS / Place publique", match: { EU24: /^LUG$|r[ée]veil|glucksmann|place publique/i, PR22T1: /hidalgo/i, LG24T1: /^SOC$/i } },
-  { id: "eco", label: "Écologistes", match: { EU24: /^LVEC$|^LECO$|europe [ée]cologie|^les [ée]cologistes|toussaint/i, PR22T1: /jadot/i, LG24T1: /^ECO$/i } },
-  { id: "ens", label: "Ensemble (majorité présidentielle)", match: { EU24: /^LENS$|besoin d.europe|hayer/i, PR22T1: /macron/i, LG24T1: /^ENS$/i } },
-  { id: "lr", label: "LR", match: { EU24: /^LLR$|bellamy|la droite pour/i, PR22T1: /p[ée]cresse/i, LG24T1: /^LR$/i } },
-  { id: "rn", label: "RN (et alliés)", match: { EU24: /^LRN$|bardella|rassemblement national|france revient/i, PR22T1: /le pen/i, LG24T1: /^RN$|^UXD$/i } },
+  { id: "pcf", label: "PCF", match: { EU24: /^LCOM$|gauche unie|deffontaines/i, PR22T1: /roussel/i, EU19: /^LCOM$|brossat|europe des gens|communiste/i } },
+  { id: "ps", label: "PS / Place publique", match: { EU24: /^LUG$|r[ée]veil|glucksmann|place publique/i, PR22T1: /hidalgo/i, LG24T1: /^SOC$/i, EU19: /^LUG$|^LSOC$|envie d.europe|glucksmann|place publique/i, PR17T1: /hamon/i } },
+  { id: "eco", label: "Écologistes", match: { EU24: /^LVEC$|^LECO$|europe [ée]cologie|^les [ée]cologistes|toussaint/i, PR22T1: /jadot/i, LG24T1: /^ECO$/i, EU19: /^LVEC$|^LECO$|europe [ée]cologie|jadot/i } },
+  { id: "ens", label: "Ensemble (majorité présidentielle)", match: { EU24: /^LENS$|besoin d.europe|hayer/i, PR22T1: /macron/i, LG24T1: /^ENS$/i, EU19: /^LREM$|^LENS$|^LMDM$|renaissance|loiseau/i, PR17T1: /macron/i } },
+  { id: "lr", label: "LR", match: { EU24: /^LLR$|bellamy|la droite pour/i, PR22T1: /p[ée]cresse/i, LG24T1: /^LR$/i, EU19: /^LLR$|^LUD$|union (de la )?droite|bellamy/i, PR17T1: /fillon/i } },
+  { id: "rn", label: "RN (et alliés)", match: { EU24: /^LRN$|bardella|rassemblement national|france revient/i, PR22T1: /le pen/i, LG24T1: /^RN$|^UXD$/i, EU19: /^LRN$|prenez le pouvoir|bardella|rassemblement national/i, PR17T1: /le pen/i } },
   { id: "rec", label: "Reconquête", match: { EU24: /^LREC$|mar[ée]chal|reconqu[êe]te|france fi[èe]re/i, PR22T1: /zemmour/i, LG24T1: /^REC$/i } },
 ];
 

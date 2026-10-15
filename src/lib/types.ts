@@ -149,6 +149,9 @@ export interface ChartSpec {
   note?: string;
   /** Colonne portant la couleur de chaque ligne (graphique « refbar »). */
   colorKey?: string;
+  /** Graphiques alternatifs présentés en onglets (même groupe) ; `tab` : libellé de l'onglet. */
+  group?: string;
+  tab?: string;
 }
 
 /* ------------------------------------------------------------------ cartes */

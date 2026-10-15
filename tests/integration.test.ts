@@ -284,6 +284,30 @@ describe("chaîne de génération (API simulées)", () => {
     expect(detail.blocks.some((b) => b.type === "table" && b.tableId === "lfi_residences")).toBe(true);
   });
 
+  it("graphiques par scrutin en onglets (présidentielles 2017 et 2022, européennes 2019 et 2024)", async () => {
+    const g = report.charts.filter((c) => c.group === "lfi_votes");
+    expect(g.map((c) => c.tab)).toEqual(expect.arrayContaining(["Présidentielle 2022", "Européennes 2024"]));
+    for (const c of g) {
+      expect(c.type).toBe("refbar");
+      expect(c.data[c.data.length - 1].label).toBe("Autres");
+      const total = c.data.reduce((s, d) => s + Number(d.value), 0);
+      expect(total).toBeGreaterThan(99);
+      expect(total).toBeLessThan(101);
+    }
+    const p22 = g.find((c) => c.id === "lfi_chart_pr22");
+    if (p22) expect(p22.data.find((d) => d.label === "Mélenchon (LFI)")).toMatchObject({ ref: 21.95 });
+  });
+
+  it("comparaisons du vote en mots : une seule règle, jamais « autant » et « nettement plus » à la fois", async () => {
+    const { voteCompare } = await import("@/lib/report/lfi");
+    expect(voteCompare(6, 4)).toMatchObject({ dir: "plus", words: "un peu plus", net: false });
+    expect(voteCompare(15, 14)).toMatchObject({ dir: "autant" });
+    expect(voteCompare(22, 15)).toMatchObject({ dir: "plus", net: true });
+    expect(voteCompare(12, 6).words).toBe("deux fois plus");
+    expect(voteCompare(7, 3.5).words).toBe("nettement plus");
+    expect(voteCompare(8, 12)).toMatchObject({ dir: "moins", net: true });
+  });
+
   it("graphique « Européennes 2024 » dans le profil politique", async () => {
     const ch = report.charts.find((c) => c.id === "lfi_chart_eu24")!;
     expect(ch.type).toBe("refbar");

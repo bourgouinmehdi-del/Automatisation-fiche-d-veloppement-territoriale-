@@ -140,3 +140,9 @@ Le test d'intégration a permis de corriger un défaut réel (la règle « sans 
 
 - Requêtes INSEE regroupées par jeu de données (tous les territoires d'un coup) : 119 → 28 requêtes sur la fiche simulée de Compiègne, contenu strictement identique (empreinte comparée avec et sans regroupement). Repli automatique sur les requêtes individuelles ; `MELODI_BATCH=0` pour désactiver. **À confirmer** sur l'API réelle (`npm run check:sources`, ligne « INSEE requêtes regroupées »).
 - Syntaxe « FRANCE-FM » essayée en premier (évite des refus HTTP 400 à chaque redémarrage).
+
+### Profil politique (retour sur Ajaccio)
+
+- Une seule règle pour comparer le vote au département (`voteCompare`) : la synthèse et le « En bref » ne peuvent plus se contredire. L'écart doit être net en rapport et en points (6 % contre 4 % : « un peu plus » ; 15 % contre 14 % : « autant »).
+- « Un terrain favorable » exige aussi un vote proche du niveau national (au moins 90 % du score national LFI) ; sinon « Un vote insoumis encore faible » avec le score national en repère.
+- Graphique par scrutin en onglets : présidentielle 2017, européennes 2019, présidentielle 2022, européennes 2024 (2017 et 2019 reconstitués à partir des bureaux de vote de la commune). Le PDF garde les européennes 2024.
