@@ -1,4 +1,4 @@
-import { fmtNumber } from "../format";
+import { aNom, fmtNumber } from "../format";
 import type { StmtPoint } from "../collectors/emploi";
 import type { ChartSpec, DataTable, Finding, GeoRef, Indicator } from "../types";
 import type { Collected } from "./collect";
@@ -136,7 +136,7 @@ export function buildEmploi(c: Collected): EmploiOutput {
   });
   out.charts.push({
     id: "chart_demandeurs_nombre",
-    title: `Demandeurs d'emploi résidant à ${c.commune.nom}, fin de mois`,
+    title: `Demandeurs d'emploi résidant ${aNom(c.commune.nom)}, fin de mois`,
     type: "line",
     xKey: "mois",
     data: e.commune.map((p) => ({ mois: moisCourt(p.mois), n: p.n })),

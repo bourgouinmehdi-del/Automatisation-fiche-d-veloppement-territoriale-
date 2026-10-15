@@ -54,3 +54,20 @@ export function fmtDate(iso: string) {
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 }
+
+/** « à Compiègne », « au Lamentin », « aux Abymes », « à la Rochelle ». */
+export function aNom(nom: string): string {
+  if (/^Le /.test(nom)) return `au ${nom.slice(3)}`;
+  if (/^Les /.test(nom)) return `aux ${nom.slice(4)}`;
+  if (/^La /.test(nom)) return `à la ${nom.slice(3)}`;
+  if (/^L'/.test(nom)) return `à l'${nom.slice(2)}`;
+  return `à ${nom}`;
+}
+/** « de Compiègne », « du Lamentin », « des Abymes », « d'Ivry-sur-Seine ». */
+export function deNom(nom: string): string {
+  if (/^Le /.test(nom)) return `du ${nom.slice(3)}`;
+  if (/^Les /.test(nom)) return `des ${nom.slice(4)}`;
+  if (/^La /.test(nom)) return `de la ${nom.slice(3)}`;
+  if (/^L'/.test(nom)) return `de l'${nom.slice(2)}`;
+  return /^[aeiouyàâéèêëîïôûüœh]/i.test(nom) && !/^(Hy|Ha|He|Ho|Hu)/.test(nom) ? `d'${nom}` : `de ${nom}`;
+}

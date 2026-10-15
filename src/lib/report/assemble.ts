@@ -773,18 +773,21 @@ export function assemble(c: Collected): Assembled {
       id: "table_perimetre",
       title: c.query.scope === "custom" ? "Communes du territoire personnalisé" : `Communes de l'intercommunalité (${geos.epci?.name})`,
       theme: "identite",
+      // Grandes intercommunalités (Métropole du Grand Paris : 130 communes) : les 20 plus peuplées
+      // et la commune étudiée ; colonnes sans aucune donnée retirées.
       columns: [
         { key: "commune", label: "Commune" },
         { key: "code", label: "Code INSEE" },
-        { key: "population", label: "Population", align: "right", unit: "habitants" },
-        { key: "densite", label: "Densité (hab./km²)", align: "right" },
-        { key: "revenu", label: "Revenu médian (€/UC)", align: "right", unit: "€" },
-        { key: "pauvrete", label: "Taux de pauvreté (%)", align: "right", unit: "%" },
-        { key: "vacance", label: "Logements vacants (%)", align: "right", unit: "%" },
-      ],
-      rows: perimeterRows,
+        { key: "population", label: "Population", align: "right" as const, unit: "habitants" as const },
+        { key: "densite", label: "Densité (hab./km²)", align: "right" as const },
+        { key: "revenu", label: "Revenu médian (€/UC)", align: "right" as const, unit: "€" as const },
+        { key: "pauvrete", label: "Taux de pauvreté (%)", align: "right" as const, unit: "%" as const },
+        { key: "vacance", label: "Logements vacants (%)", align: "right" as const, unit: "%" as const },
+      ].filter((col) => ["commune", "code", "population"].includes(col.key) || perimeterRows.some((r) => r[col.key as keyof (typeof perimeterRows)[number]] != null)),
+      rows: perimeterRows.length > 25 ? perimeterRows.filter((r, i) => i < 20 || r.code === commune.code) : perimeterRows,
+      highlight: (perimeterRows.length > 25 ? perimeterRows.filter((r, i) => i < 20 || r.code === commune.code) : perimeterRows).map((r, i) => (r.code === commune.code ? i : -1)).filter((i) => i >= 0),
       sources: [c.popSource, ...(c.geoSource ? [c.geoSource] : []), ...(c.perimeterInsee[0]?.result.indicators[0] ? [c.perimeterInsee[0].result.indicators[0].source] : [])],
-      note: "Revenus et pauvreté : non diffusés pour les communes soumises au secret statistique.",
+      note: `${perimeterRows.length > 25 ? `20 communes les plus peuplées sur ${perimeterRows.length}, et ${commune.nom}. ` : ""}Revenus et pauvreté : non diffusés pour les communes soumises au secret statistique.`,
     });
     charts.push({
       id: "chart_perimetre_pop",
@@ -894,8 +897,9 @@ export function assemble(c: Collected): Assembled {
         })),
       ],
       sources: [c.popSource, ...(c.polesSource ? [c.polesSource] : [])],
-      note:
-        c.comparables.some((x) => x.densite != null)
+      note: c.comparablesScope?.startsWith("arrondissements")
+        ? "Sélection : arrondissements de Paris, Lyon et Marseille dont la population est à ±50 % de celle de l'arrondissement."
+        : c.comparables.some((x) => x.densite != null)
           ? c.comparablesScope
             ? `Sélection : la région comptant moins de 5 communes proches, la recherche a été élargie (${c.comparablesScope}) aux communes dont la population est à ±20 % et la densité comprise entre la moitié et le double de celle de la commune.`
             : "Sélection : communes de la même région dont la population est à ±30 % et la densité comprise entre la moitié et le double de celle de la commune."

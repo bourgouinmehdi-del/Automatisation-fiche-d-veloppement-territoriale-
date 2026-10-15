@@ -2,6 +2,7 @@ import { fmtNumber, fmtSigned, fmtValue } from "../format";
 import { evidenceId } from "../analysis/findings";
 import { rankOf } from "../analysis/stats";
 import { departementCommunes } from "../collectors/admin";
+import { plmInfo } from "../collectors/plm";
 import type { Block, ChartSpec, DataTable, Finding, GeoRef, Indicator, MapSpec, Section } from "../types";
 import type { Collected } from "./collect";
 
@@ -48,19 +49,20 @@ function sectionA(x: Ctx): Section {
   const dens = get(x, "densite", geos.commune);
   const densDep = get(x, "densite", geos.departement);
 
-  let t = `${commune.nom} (code INSEE ${commune.code}${commune.codesPostaux.length ? `, code${commune.codesPostaux.length > 1 ? "s" : ""} postal${commune.codesPostaux.length > 1 ? "aux" : ""} ${commune.codesPostaux.join(", ")}` : ""}) est une commune du département ${depArticle(commune.departement.nom)} (${commune.departement.code}), en région ${commune.region.nom}`;
-  if (commune.arrondissement) t += `, dans l'arrondissement de ${commune.arrondissement.nom}`;
+  const plm = plmInfo(commune.code);
+  let t = `${commune.nom} (code INSEE ${commune.code}${commune.codesPostaux.length ? `, code${commune.codesPostaux.length > 1 ? "s" : ""} postal${commune.codesPostaux.length > 1 ? "aux" : ""} ${commune.codesPostaux.join(", ")}` : ""}) est ${plm ? `un arrondissement municipal de ${plm.ville}` : `une commune du département ${depArticle(commune.departement.nom)} (${commune.departement.code})`}, en région ${commune.region.nom}`;
+  if (commune.arrondissement && !plm) t += `, dans l'arrondissement de ${commune.arrondissement.nom}`;
   t += ".";
   if (pop) {
-    t += ` Elle compte ${fmtValue(pop.value, "habitants")} (population municipale légale, millésime ${pop.year}).`;
-    const rank = rankOf(departementCommunes(commune.departement.code), (d) => d.population, (d) => d.code === commune.code);
+    t += ` ${plm ? "Il" : "Elle"} compte ${fmtValue(pop.value, "habitants")} (population municipale légale, millésime ${pop.year}).`;
+    const rank = plm ? null : rankOf(departementCommunes(commune.departement.code), (d) => d.population, (d) => d.code === commune.code);
     if (rank) t += ` Elle se classe au ${rank.rank === 1 ? "1er" : rank.rank + "e"} rang des ${fmtNumber(rank.of)} communes du département par la population.`;
   }
   if (commune.epci) {
     t += ` Elle est membre de ${commune.epci.nom}${popEpci ? ` (${fmtValue(popEpci.value, "habitants")})` : ""}`;
     if (pop && popEpci) t += `, dont elle regroupe ${fmtValue((100 * pop.value!) / popEpci.value!, "%")} de la population`;
     t += ".";
-  } else t += " Elle n'est rattachée à aucun EPCI à fiscalité propre dans le référentiel.";
+  } else if (!plm) t += " Elle n'est rattachée à aucun EPCI à fiscalité propre dans le référentiel.";
   if (commune.communesDeleguees.length)
     t += ` Commune nouvelle, elle regroupe les anciennes communes de ${commune.communesDeleguees.map((d) => d.nom).join(", ")} : les séries historiques peuvent intégrer ces changements de périmètre.`;
   blocks.push(para(t, [pop, popEpci]));

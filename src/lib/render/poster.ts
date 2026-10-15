@@ -199,7 +199,7 @@ export function posterMapSvg(map: MapSpec, width = 900): string {
     const w = Math.max(textW(c.t, c.size, true), c.sub ? textW(c.sub, 10) : 0);
     const h = c.sub ? 28 : 15;
     let placed: { b: Box; tx: number; ty: number } | null = null;
-    search: for (const dist of [26, 42, 62, 90])
+    search: for (const dist of [26, 42, 62, 90, 125, 165])
       for (const [dx, dy] of dirs) {
         const cx = c.xy[0] + dx * dist;
         const cy = c.xy[1] + dy * dist;
@@ -211,10 +211,8 @@ export function posterMapSvg(map: MapSpec, width = 900): string {
         placed = { b, tx: bx + w / 2, ty: by + 12 };
         break search;
       }
-    if (!placed) {
-      const b = { x: c.xy[0] - w / 2, y: c.xy[1] + 8, w, h };
-      placed = { b, tx: c.xy[0], ty: c.xy[1] + 20 };
-    }
+    // Aucune place libre : le symbole reste, sans étiquette (plutôt qu'un texte illisible).
+    if (!placed) continue;
     boxes.push(placed.b);
     // Trait de rappel : du point d'ancrage au bord le plus proche de l'étiquette.
     const ex = Math.max(placed.b.x, Math.min(c.xy[0], placed.b.x + placed.b.w));

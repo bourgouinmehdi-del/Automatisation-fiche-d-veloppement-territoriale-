@@ -384,7 +384,16 @@ export async function filterCsvFile(file: string, dep: string, label: string) {
   return f.result();
 }
 
-const normDep = (v: unknown) => String(v ?? "").trim().padStart(2, "0");
+/**
+ * Outre-mer : certains fichiers du ministère (présidentielle 2022, législatives)
+ * codent les départements « ZA » (Guadeloupe), « ZB » (Martinique), etc.
+ */
+export const DOM_ALIASES: Record<string, string> = { ZA: "971", ZB: "972", ZC: "973", ZD: "974", ZM: "976", ZS: "975", ZX: "977", ZW: "986", ZP: "987", ZN: "988" };
+const domAlias = (dep: string) => Object.entries(DOM_ALIASES).find(([, v]) => v === dep)?.[0];
+export const normDep = (v: unknown) => {
+  const s = String(v ?? "").trim().toUpperCase();
+  return DOM_ALIASES[s] ?? s.padStart(2, "0");
+};
 
 /** Code INSEE complet d'une ligne de résultats. */
 function rowCode(r: Record<string, unknown>, c: Columns, dep: string) {
@@ -424,6 +433,7 @@ async function departmentRowsFresh(http: TrackedHttp, e: ElectionConfig, dep: st
     let t = await tabularRows(http, res.id, { [c.cDep]: dep }, 150);
     // Certains fichiers écrivent « 1 » au lieu de « 01 ».
     if (!t.rows.length && dep.startsWith("0")) t = await tabularRows(http, res.id, { [c.cDep]: dep.slice(1) }, 150);
+    if (!t.rows.length && domAlias(dep)) t = await tabularRows(http, res.id, { [c.cDep]: domAlias(dep)! }, 150);
     if (!t.rows.length) throw new Error("aucune ligne");
     // L'API tabulaire perd les colonnes sans en-tête (blocs candidats 2 à N du
     // format 2022) : si un seul candidat est lisible, on bascule sur le fichier.

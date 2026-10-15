@@ -301,7 +301,7 @@ export function mapSvg(map: MapSpec, width = 720, height = 540): string {
         // Numéro de bureau de vote au centre de chaque contour.
         if (p.bv != null && l.valueProperty && labelOf.get(String(p.bv)) === f) {
           const c = path.centroid(f);
-          if (Number.isFinite(c[0])) labelsSvg += `<text x="${c[0].toFixed(1)}" y="${(c[1] + 3.5).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#111" stroke="#fff" stroke-width="2.5" paint-order="stroke" ${FONT}>${esc(p.bv)}</text>`;
+          if (Number.isFinite(c[0])) labelsSvg += `<text x="${c[0].toFixed(1)}" y="${(c[1] + 3.5).toFixed(1)}" text-anchor="middle" font-size="${labelOf.size > 40 ? 8 : 10}" font-weight="700" fill="#111" stroke="#fff" stroke-width="2.5" paint-order="stroke" ${FONT}>${esc(p.bvl ?? p.bv)}</text>`;
         }
         const fill = l.outlineOnly
           ? "none"
