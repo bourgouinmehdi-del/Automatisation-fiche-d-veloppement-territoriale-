@@ -10,6 +10,7 @@ import { isSmallSample } from "@/lib/analysis/stats";
 import { fmtDate, fmtValue } from "@/lib/format";
 import { cellText, Citations, inlineParts, sourceLabel } from "@/lib/render/cite";
 import ChartView from "./ChartView";
+import { useRole } from "./useRole";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false, loading: () => <div className="h-[420px] animate-pulse rounded-lg bg-[var(--line)]" /> });
 
@@ -31,6 +32,7 @@ function Rich({ text }: { text: string }) {
 }
 
 export default function ReportView({ report: r, locator, freshness, catalog }: { report: Report; locator: string | null; freshness: string; catalog: Record<string, SourceInfo> }) {
+  const role = useRole();
   const [showSources, setShowSources] = useState(false);
   const [regen, setRegen] = useState(false);
   const [active, setActive] = useState<string>(r.sections[0]?.id ?? "");
@@ -455,9 +457,11 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
               <a href={exp("json")}>JSON complet</a>
             </div>
           </details>
-          <button className="btn" onClick={regenerate} disabled={regen} title="Relance la collecte ; les données encore valides en cache ne sont pas retéléchargées">
-            {regen ? "Relance…" : "Régénérer"}
-          </button>
+          {role !== "lecteur" && (
+            <button className="btn" onClick={regenerate} disabled={regen} title="Relance la collecte ; les données encore valides en cache ne sont pas retéléchargées">
+              {regen ? "Relance…" : "Régénérer"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -661,6 +665,17 @@ function FieldNotes({ id, part, initial }: { id: string; part?: FieldNotePart; i
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
   const [open, setOpen] = useState(!!initial?.text);
   const dirty = text !== (initial?.text ?? "") && state !== "saving";
+  const role = useRole();
+  // Compte « lecteur » : notes affichées sans édition (rien si aucune note).
+  if (role === "lecteur") {
+    if (!initial?.text) return null;
+    return (
+      <div className="callout callout-terrain">
+        <div className="mb-1 font-semibold">{L.title}</div>
+        <div className="whitespace-pre-wrap">{initial.text}</div>
+      </div>
+    );
+  }
   async function save() {
     setState("saving");
     const res = await fetch(`/api/reports/${id}/notes`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, part }) });
@@ -715,6 +730,24 @@ function FieldPlaces({ id, initial }: { id: string; initial?: Report["fieldPlace
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
   const [dirty, setDirty] = useState(false);
   const [open, setOpen] = useState(!!initial?.items.length);
+  const role = useRole();
+  if (role === "lecteur") {
+    if (!initial?.items.length) return null;
+    return (
+      <div className="callout callout-terrain">
+        <div className="mb-1 font-semibold">Lieux d&apos;action signalés par les militants</div>
+        <ul className="list-disc pl-5 text-sm">
+          {initial.items.map((x, i) => (
+            <li key={i}>
+              <b>{x.nom || x.type}</b>
+              {x.horaires ? ` — ${x.horaires}` : ""}
+              {x.adresse ? ` (${x.adresse})` : ""}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
   const set = (i: number, k: keyof P, v: string) => {
     setItems((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
     setDirty(true);
@@ -776,7 +809,11 @@ function FieldPlaces({ id, initial }: { id: string; initial?: Report["fieldPlace
 }
 
 /** Lance la génération de la fiche détaillée d'une proposition de ciblage. */
-function GenerateButton({ codes, kind }: { codes: string[]; kind: "commune" | "groupement" }) {
+function GenerateButton(props: { codes: string[]; kind: "commune" | "groupement" }) {
+  return useRole() === "lecteur" ? null : <GenerateButtonInner {...props} />;
+}
+
+function GenerateButtonInner({ codes, kind }: { codes: string[]; kind: "commune" | "groupement" }) {
   const [busy, setBusy] = useState(false);
   async function go() {
     setBusy(true);

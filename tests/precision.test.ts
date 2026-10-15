@@ -69,3 +69,31 @@ describe("outre-mer", () => {
     expect(normDep("2A")).toBe("2A");
   });
 });
+
+describe("logements sociaux et population adulte", () => {
+  it("regroupe les logements en résidences et en ensembles", async () => {
+    const { groupRpls, toLonLat } = await import("@/lib/collectors/rpls");
+    // Lambert-93 et UTM 20 (Antilles).
+    const [lon, lat] = toLonLat(652000, 6862000, "2154")!;
+    expect(lon).toBeCloseTo(2.37, 1);
+    expect(lat).toBeCloseTo(48.83, 1);
+    const [lonM, latM] = toLonLat(715000, 1615000, "5490")!;
+    expect(lonM).toBeCloseTo(-61, 0);
+    expect(latM).toBeCloseTo(14.6, 0);
+    const row = (prog: string, num: string, voie: string, x: number, y: number) => ({ DEPCOM: "75113", NUMVOIE: num, TYPVOIE: "RUE", NOMVOIE: voie, COMPLGEO: prog, X: String(x), Y: String(y), EPSG: "2154" });
+    const rows = [
+      ...Array.from({ length: 30 }, () => row("CITE DES FLEURS", "2", "DES LILAS", 652000, 6862000)),
+      ...Array.from({ length: 20 }, () => row("", "10", "DES LILAS", 652050, 6862020)),
+      ...Array.from({ length: 5 }, () => row("", "3", "LOINTAINE", 655000, 6865000)),
+    ];
+    const g = groupRpls(rows);
+    expect(g.total).toBe(55);
+    expect(g.residences.map((r) => [r.nom, r.logements])).toEqual([["Cité des Fleurs", 30], ["10 Rue des Lilas", 20], ["3 Rue Lointaine", 5]]);
+    expect(g.ensembles[0]).toMatchObject({ nom: "Cité des Fleurs", logements: 50, residences: 2 });
+  });
+  it("compte les adultes (18 ans et plus) d'une ligne IRIS", async () => {
+    const { adultesOf } = await import("@/lib/collectors/adultes");
+    expect(adultesOf({ P21_POP: "1000", P21_POP0002: "40", P21_POP0305: "40", P21_POP0610: "60", P21_POP1117: "90", P21_POP_FR: "900" })).toEqual({ pop: 1000, adultes: 770, fr: 900, annee: "2021" });
+    expect(adultesOf({ P20_POP: "100", P20_POP0014: "20", P20_POP1519: "10" })?.adultes).toBe(74);
+  });
+});

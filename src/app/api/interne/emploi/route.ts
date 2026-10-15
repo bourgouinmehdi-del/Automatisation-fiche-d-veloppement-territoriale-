@@ -1,21 +1,23 @@
 import { Readable } from "node:stream";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { authEnabled, readSession, SESSION_COOKIE } from "@/lib/auth";
+import { authEnabled, can, readSession, SESSION_COOKIE } from "@/lib/auth";
 import { importStmt, removeStmt, stmtSummary } from "@/lib/collectors/emploi";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Route exclue du middleware (corps volumineux) : la session est vérifiée ici. */
-async function denied() {
+async function denied(need: "admin" | null = "admin") {
   if (!authEnabled()) return null;
   const jar = await cookies();
-  return readSession(jar.get(SESSION_COOKIE)?.value) ? null : NextResponse.json({ error: "Connexion requise" }, { status: 401 });
+  const user = readSession(jar.get(SESSION_COOKIE)?.value);
+  if (!user) return NextResponse.json({ error: "Connexion requise" }, { status: 401 });
+  return !need || can(user, need) ? null : NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
 }
 
 export async function GET() {
-  return (await denied()) ?? NextResponse.json(await stmtSummary());
+  return (await denied(null)) ?? NextResponse.json(await stmtSummary());
 }
 
 /**

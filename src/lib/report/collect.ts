@@ -29,6 +29,8 @@ import { InternalData, loadInternalData } from "../collectors/interne";
 import { loadStmt, type StmtSeries } from "../collectors/emploi";
 import { collectCirconscriptions, collectDepartementsVoisins, collectFondOsm, collectResidences, fitAspect, type Bbox, type Circo, type FondOsm, type Residence } from "../collectors/carto";
 import { rankBureaux } from "../analysis/political";
+import { collectRpls, type RplsResult } from "../collectors/rpls";
+import { collectAdultes, type AdultesDep } from "../collectors/adultes";
 import { plmInfo } from "../collectors/plm";
 import { collectIris, collectQpv, Quartier } from "../collectors/quartiers";
 import {
@@ -160,6 +162,10 @@ export interface Collected {
   }[];
   bvGeo?: BureauGeo & { source: SourceRef };
   interne: InternalData;
+  /** Adultes de nationalité française par IRIS (département) : estimation de la non-inscription. */
+  adultes?: AdultesDep & { source: SourceRef };
+  /** Logements sociaux (RPLS) : résidences et ensembles. */
+  rpls?: RplsResult & { source: SourceRef };
   /** Cartes « affiche » (commune) : fond OpenStreetMap et résidences étudiantes. */
   fond?: FondOsm & { bbox: Bbox; source: SourceRef };
   residences?: { list: Residence[]; source: SourceRef };
@@ -210,11 +216,13 @@ const STEP_ORDER = [
   "bpe",
   "services",
   "acces",
+  "rpls",
+  "adultes",
   "cartes",
 ];
 
 /** Nombre d'étapes suivies (identité, géographie, 18 étapes parallèles) + 3 étapes d'analyse. */
-export const PROGRESS_TOTAL = 2 + 19 + 3;
+export const PROGRESS_TOTAL = 2 + 21 + 3;
 
 export async function collect(
   query: ReportQuery,
@@ -819,6 +827,36 @@ export async function collect(
   };
 
   /* 14. Quartiers : QPV et IRIS */
+  /* Population adulte de nationalité française (IRIS) : non-inscription. */
+  const run_adultes = async () => {
+    if (!enabled("iris") || query.scope === "departement") return;
+    await ctx.step(
+      "iris",
+      "adultes",
+      async (http) => {
+        const a = await collectAdultes(http, commune.departement.code);
+        c.adultes = { ...a, source: ctx.ref("iris", a.url, a.retrievedAt, { vintage: a.annee ?? undefined }) };
+      },
+      { theme: "strategie", label: "Population adulte (estimation de la non-inscription)" },
+    );
+  };
+
+  /* Logements sociaux (RPLS) : résidences HLM et nombre de logements. */
+  const run_rpls = async () => {
+    if (!enabled("rpls") || query.scope === "departement") return;
+    await ctx.step(
+      "rpls",
+      "rpls",
+      async (http) => {
+        const plmR = plmInfo(commune.code);
+        const r = await collectRpls(http, commune.code, { parent: plmR?.parent, contour: commune.contour });
+        if (r.total) c.rpls = { ...r, source: ctx.ref("rpls", r.url, r.retrievedAt, { vintage: r.millesime ?? undefined }) };
+        else http.notes.push("Aucun logement social recensé dans la commune");
+      },
+      { theme: "logement", label: "Résidences de logements sociaux (RPLS)" },
+    );
+  };
+
   const run_quartiers = async () => {
     const quartiers: NonNullable<Collected["quartiers"]> = {
       qpv: [],
@@ -1186,6 +1224,8 @@ export async function collect(
       run_municipales,
     ),
     track("bpe", "Équipements (BPE)", run_bpe),
+    track("rpls", "Logements sociaux (RPLS)", run_rpls),
+    track("adultes", "Population adulte (inscription sur les listes)", run_adultes),
     track("acces", "Temps de trajet routiers (OSRM)", run_acces),
   ]);
   /* Cartes « affiche » : fond de plan et résidences étudiantes (commune),
@@ -1236,6 +1276,8 @@ export async function collect(
     }
     for (const q of c.quartiers?.qpv ?? []) if (q.geometry) corners(q.geometry);
     for (const r of c.residences?.list ?? []) pts.push([r.lon, r.lat]);
+    // Grands ensembles HLM (100 logements et plus) : zones de porte-à-porte de la carte.
+    for (const e of (c.rpls?.ensembles ?? []).filter((x) => x.logements >= 100).slice(0, 8)) pts.push([e.lon, e.lat]);
     const inBox = (lon: number, lat: number) => lon >= cb[0] && lon <= cb[2] && lat >= cb[1] && lat <= cb[3];
     for (const f of c.equipments?.features ?? []) if (f.properties?.category === "marche") pts.push(f.geometry.coordinates as [number, number]);
     for (const st of c.stations?.stations ?? []) if (st.lon != null && st.lat != null && inBox(st.lon, st.lat)) pts.push([st.lon, st.lat]);

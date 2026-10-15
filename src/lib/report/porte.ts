@@ -75,6 +75,15 @@ export function buildPorte(c: Collected, ranked: BvRow[], labels: Map<string, st
       type: "paragraph",
       text: `**${fmtNumber(b.inscrits)} électeurs inscrits** pour ${fmtNumber(inside.length)} adresses dans ${fmtNumber(streets.length)} rues${place ? ` ; lieu de vote : ${place}` : ""}. Vote LFI aux européennes 2024 : ${pp(b.lfiPctExp)} des voix${b.lfi2PctExp != null ? ` (Mélenchon 2022 : ${pp(b.lfi2PctExp)})` : ""} ; **${fmtNumber(b.abstN)} inscrits n'ont pas voté** (${pp(b.abstPct)}).`,
     });
+    // Résidences HLM du bureau (RPLS) : souvent les immeubles où frapper en premier.
+    const hlm = (c.rpls?.residences ?? [])
+      .filter((r) => r.logements >= 10 && r.lon >= bb[0] && r.lon <= bb[2] && r.lat >= bb[1] && r.lat <= bb[3] && turf.booleanPointInPolygon([r.lon, r.lat], poly as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>))
+      .slice(0, 6);
+    if (hlm.length)
+      blocks.push({
+        type: "paragraph",
+        text: `**Résidences HLM du bureau** : ${hlm.map((r) => `${r.nom === r.adresse ? r.adresse : `${r.nom} (${r.adresse})`}, ${fmtNumber(r.logements)} logements`).join(" ; ")}.`,
+      });
     // Carte : le bureau, ses voisins en gris clair, les adresses et le lieu de vote.
     const pad = 0.0015;
     const others = geo.features.filter((f) => f !== poly);

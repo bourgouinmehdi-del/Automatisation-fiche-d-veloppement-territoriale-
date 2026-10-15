@@ -61,7 +61,9 @@ export function communePoster(
   const pts = <T extends Lieu>(xs: T[]) => xs.filter((x) => x.lon != null && x.lat != null);
   const markets = pts(o.markets);
   const gares = pts(o.gares);
-  if (!qpv.length && !prioPolys.length && !res.length && !markets.length && !gares.length) return null;
+  // Ensembles HLM (RPLS) : les plus grands, dans l'emprise de la carte (8 au plus).
+  const ens = (c.rpls?.ensembles ?? []).filter((e) => e.logements >= 50).slice(0, 8);
+  if (!qpv.length && !prioPolys.length && !res.length && !markets.length && !gares.length && !ens.length) return null;
   const bbox = c.fond?.bbox ?? (turf.bbox(contour) as [number, number, number, number]);
   const geoSrc: SourceRef = c.geoSource ?? { id: "geoapi", name: "geo.api.gouv.fr", url: "https://geo.api.gouv.fr", retrievedAt: new Date().toISOString() };
   const fc = (features: GeoJSON.Feature[]): GeoJSON.FeatureCollection => ({ type: "FeatureCollection", features });
@@ -142,7 +144,52 @@ export function communePoster(
       source: c.bvGeo!.source,
     });
   }
-  if (qpv.length)
+  // Avec le répertoire des logements sociaux, les ensembles HLM sont les zones de porte-à-porte ;
+  // les quartiers prioritaires passent en simple contour.
+  if (qpv.length && ens.length)
+    layers.push({
+      id: "qpv",
+      label: "Quartiers prioritaires",
+      kind: "polygons",
+      data: fc(qpv.map((q) => ({ type: "Feature", geometry: q.geometry!, properties: { nom: quartierLabel(q.nom) } }))),
+      style: { fill: "none", stroke: POSTER.violet, strokeWidth: 1.6, dash: "6 3" },
+      legendItem: { label: "Quartier prioritaire", swatch: "dash" },
+      visible: true,
+      source: c.quartiers!.sources[0],
+    });
+  if (ens.length) {
+    const blob = (e: (typeof ens)[number]): GeoJSON.Geometry | null => {
+      try {
+        const pts = turf.featureCollection(e.points.map((p) => turf.point(p)));
+        const hull = e.points.length >= 3 ? turf.convex(pts) : null;
+        const base = hull ?? (e.points.length === 2 ? turf.lineString(e.points) : turf.point(e.points[0]));
+        // Zone arrondie autour des immeubles (≈ 45 m).
+        return turf.buffer(base as GeoJSON.Feature, 0.045, { units: "kilometers" })?.geometry ?? null;
+      } catch {
+        return null;
+      }
+    };
+    layers.push({
+      id: "hlm",
+      label: "Résidences HLM",
+      kind: "polygons",
+      data: fc(
+        ens
+          .map((e) => ({ e, g: blob(e) }))
+          .filter((x) => x.g)
+          .map(({ e, g }) => ({ type: "Feature" as const, geometry: g!, properties: { nom: short(e.nom), sub: `~${fmtNumber(Math.round(e.logements / 10) * 10)} logements` } })),
+      ),
+      style: { fill: POSTER.jaune, stroke: POSTER.charbon, strokeWidth: 1 },
+      labelMode: "callout",
+      labelProperty: "nom",
+      sublabelProperty: "sub",
+      labelColor: POSTER.jauneTexte,
+      legendItem: { label: "Résidences HLM (porte-à-porte)", swatch: "fill" },
+      visible: true,
+      source: c.rpls!.source,
+    });
+  }
+  if (qpv.length && !ens.length)
     layers.push({
       id: "qpv",
       label: "Quartiers prioritaires",
@@ -218,6 +265,6 @@ export function communePoster(
       scaleBar: true,
     },
     layers,
-    note: "Porte-à-porte : quartiers prioritaires, bureaux de vote prioritaires et résidences étudiantes ; tractage : marchés et gares.",
+    note: `Porte-à-porte : ${ens.length ? "ensembles de logements sociaux (répertoire RPLS), " : "quartiers prioritaires, "}bureaux de vote prioritaires et résidences étudiantes ; tractage : marchés et gares.`,
   };
 }

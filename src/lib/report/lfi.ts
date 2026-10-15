@@ -10,6 +10,7 @@ import { MISSING_COLOR, SEQ_COLORS } from "./assemble";
 import { buildPorte } from "./porte";
 import { plmInfo } from "../collectors/plm";
 import { communePoster, gareNom, perDay } from "./affiche";
+import { buildInscription } from "./inscription";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
 import { NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
@@ -347,6 +348,24 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   );
   const ranked: BvRow[] = bvRef ? rankBureaux(bvRef.results, bvSecond?.results ?? null, labels) : [];
   const prio = ranked.filter((b) => b.priorite === 1);
+  // Bureau de vote contenant un point (contours des bureaux).
+  const bvPolys = (c.bvGeo?.features ?? []).map((f) => ({ bv: String(f.properties?.bv), f, bb: turf.bbox(f) }));
+  const bvAt = (lon: number, lat: number) => {
+    for (const p of bvPolys) {
+      if (lon < p.bb[0] || lon > p.bb[2] || lat < p.bb[1] || lat > p.bb[3]) continue;
+      try {
+        if (turf.booleanPointInPolygon([lon, lat], p.f as GeoJSON.Feature<GeoJSON.Polygon>)) return p.bv;
+      } catch {
+        /* géométrie invalide */
+      }
+    }
+    return null;
+  };
+  // Logements sociaux (RPLS) par résidence et par bureau de vote.
+  const hlm = (c.rpls?.residences ?? []).map((r) => ({ ...r, bv: bvPolys.length ? bvAt(r.lon, r.lat) : null }));
+  const hlmByBv = new Map<string, number>();
+  for (const r of hlm) if (r.bv) hlmByBv.set(r.bv, (hlmByBv.get(r.bv) ?? 0) + r.logements);
+  const hasHlm = hlm.length > 0 && hlmByBv.size > 0;
 
   // Quartiers (QPV, IRIS) rattachés aux bureaux de vote.
   const qAll: Quartier[] = [...(c.quartiers?.qpv ?? []), ...(c.quartiers?.iris ?? [])];
@@ -715,13 +734,16 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
             { key: "bv", label: "Bureau" },
             ...(hasLabels ? [{ key: "libelle", label: "Lieu de vote", wide: true }] : []),
             ...(qMatch.length ? [{ key: "quartier", label: "Quartier" }] : []),
-            { key: "inscrits", label: "Électeurs inscrits", align: "right" as const },
+            // 7 colonnes au plus : les inscrits cèdent la place aux logements sociaux.
+            ...(hasHlm ? [] : [{ key: "inscrits", label: "Électeurs inscrits", align: "right" as const }]),
             { key: "lfi", label: "Vote LFI 2024", align: "right" as const },
             ...(second ? [{ key: "mel", label: "Vote Mélenchon 2022", align: "right" as const }] : []),
             { key: "abstn", label: "N'ont pas voté en 2024", align: "right" as const },
+            ...(hasHlm ? [{ key: "hlm", label: "Logements sociaux", align: "right" as const }] : []),
           ],
           rows: [
             ...prioRows.map((b) => ({
+              hlm: fmtNumber(hlmByBv.get(b.bv) ?? 0),
               bv: dv(b.bv),
               libelle: labels.get(b.bv) ?? "",
               quartier: quartierOf(b.bv) ? quartierLabel(quartierOf(b.bv)!.nom) : "",
@@ -731,6 +753,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
               abstn: `${fmtNumber(b.abstN)} (${pp(b.abstPct)})`,
             })),
             {
+              hlm: c.rpls ? fmtNumber(c.rpls.total) : "",
               bv: hasLabels ? "" : "**Ensemble**",
               libelle: `**Ensemble ${deNom(commune.nom)}**`,
               quartier: "",
@@ -1457,9 +1480,42 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const porteMsg = prio.length
     ? `porte-à-porte dans ${prio.length > 1 ? "les bureaux" : "le bureau"} ${joinFr(prio.map((p) => dv(p.bv)))} (${fmtNumber(prio.reduce((n, p) => n + p.abstN, 0))} électeurs inscrits qui n'ont pas voté)`
     : "";
+  /* Résidences HLM (RPLS) : d'abord celles des bureaux prioritaires, puis les plus grandes. */
+  const prioBvSet = new Set(prio.map((p) => p.bv));
+  const hlmRank = [...hlm].filter((r) => r.logements >= 10).sort((a, b) => Number(!!(b.bv && prioBvSet.has(b.bv))) - Number(!!(a.bv && prioBvSet.has(a.bv))) || b.logements - a.logements);
+  const hlmCols = [
+    { key: "nom", label: "Résidence", wide: true },
+    { key: "adresse", label: "Adresse" },
+    { key: "logements", label: "Logements", align: "right" as const },
+    ...(bvPolys.length ? [{ key: "bv", label: "Bureau de vote" }] : []),
+  ];
+  const hlmRow = (r: (typeof hlm)[number]) => ({ nom: r.nom === r.adresse ? "—" : r.nom, adresse: r.adresse, logements: fmtNumber(r.logements), bv: r.bv ? `${dv(r.bv)}${prioBvSet.has(r.bv) ? " (prioritaire)" : ""}` : "" });
+  if (hlmRank.length && c.rpls) {
+    out.tables.push({
+      id: "lfi_hlm",
+      title: "Résidences HLM à cibler en porte-à-porte",
+      theme: "strategie",
+      columns: hlmCols,
+      rows: hlmRank.slice(0, 8).map(hlmRow),
+      highlight: hlmRank.slice(0, 8).map((r, i) => (r.bv && prioBvSet.has(r.bv) ? i : -1)).filter((i) => i >= 0),
+      sources: [c.rpls.source],
+      note: `Logements des bailleurs sociaux (${fmtNumber(c.rpls.total)} dans la commune), regroupés par résidence. Liste complète en annexe.`,
+    });
+    out.tables.push({
+      id: "lfi_hlm_tout",
+      title: "Toutes les résidences de logements sociaux (10 logements et plus)",
+      theme: "strategie",
+      columns: hlmCols,
+      rows: [...hlmRank].sort((a, b) => b.logements - a.logements).slice(0, 60).map(hlmRow),
+      sources: [c.rpls.source],
+      note: `Répertoire des logements locatifs des bailleurs sociaux${c.rpls.millesime ? ` (au 1er janvier ${c.rpls.millesime.slice(0, 4)})` : ""} : un logement par ligne, regroupés par nom de programme ou par adresse.${hlmRank.length > 60 ? ` 60 plus grandes résidences sur ${hlmRank.length}.` : ""}`,
+    });
+  }
+  const hlmTop = hlmRank.filter((r) => r.nom !== r.adresse || r.logements >= 40).slice(0, 2);
+  const hlmMsg = hlmTop.length ? `, en commençant par ${hlmTop.length > 1 ? "les résidences HLM" : "la résidence HLM"} ${joinFr(hlmTop.map((r) => `${r.nom === r.adresse ? r.adresse : r.nom} (${fmtNumber(r.logements)} logements)`))}` : "";
   const planIntro =
     porteMsg || lieuxMsg.length
-      ? `${B("Priorité")} : ${porteMsg ? `${porteMsg}${lieuxMsg.length ? `, complété par des tractages ${joinFr(lieuxMsg)}` : ""}` : `tractages ${joinFr(lieuxMsg)}`}.`
+      ? `${B("Priorité")} : ${porteMsg ? `${porteMsg}${hlmMsg}${lieuxMsg.length ? `, complété par des tractages ${joinFr(lieuxMsg)}` : ""}` : `tractages ${joinFr(lieuxMsg)}`}.`
       : "";
 
   // Carte « affiche » : porte-à-porte et tractage sur fond de plan.
@@ -1524,6 +1580,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (parrains != null && parrains > 0) glance.push({ label: "Parrains et marraines", value: fmtNumber(parrains), detail: lfiVoix24 ? `pour ${fmtNumber(lfiVoix24)} électeurs LFI en 2024` : undefined, tone: parrainsRatio ? (parrainsRatio.r1 > parrainsRatio.r2 * 1.2 ? "up" : parrainsRatio.r1 < parrainsRatio.r2 * 0.8 ? "down" : "neutral") : "neutral" });
   if (prio.length && ranked.length > 3) glance.push({ label: prio.length > 1 ? "Bureaux de vote à cibler" : "Bureau de vote à cibler", value: joinFr(prio.map((p) => dv(p.bv))), detail: `sur ${ranked.length} bureaux` });
 
+  // Non-inscription (estimation) : adultes français recensés et inscrits.
+  const insc = buildInscription(c, ranked, dv, c24?.inscrits ?? null, d24?.inscrits ?? null);
+  out.indicators.push(...insc.indicators);
+  out.tables.push(...insc.tables);
+
   // Synthèse : des messages, pas des comparaisons statistiques.
   const synth: Item[] = [];
   const lfiStrong = !!(l24 && dl24 && l24.pctExprimes >= dl24.pctExprimes * 1.2);
@@ -1540,6 +1601,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     synth.push({ text: `${B("Un terrain difficile")} : on y vote moins pour la France insoumise que dans le reste du département ${l24 && dl24 ? `(${pp(l24.pctExprimes)} aux européennes 2024, contre ${pp(dl24.pctExprimes)}${m22 && dm22 ? ` ; ${pp(m22.pctExprimes)} pour J.-L. Mélenchon en 2022, contre ${pp(dm22.pctExprimes)}` : ""})` : ""}.` });
   if (abstMain?.dir === "superieur")
     synth.push({ text: `${B("Des électeurs à aller chercher")} : ${oneInV(abstMain.c, "électeur", "n'a pas voté", "n'ont pas voté")} aux européennes 2024 (${pp(abstMain.c)}, contre ${pp(abstMain.d)} dans le département).` });
+  if (insc.ficheText && insc.commune) synth.push({ text: `${B("Des habitants à inscrire")} : environ ${fmtNumber(Math.round(insc.commune.ecart / 100) * 100)} adultes de nationalité française absents des listes de la commune.` });
   if (parrainsRatio && parrainsRatio.r1 < parrainsRatio.r2 * 0.8) synth.push({ text: `${B("Peu de soutiens déclarés")} au regard du vote : il faudra accueillir et encadrer de nouveaux militants.` });
   else if (interneFourni && !groupes.length) synth.push({ text: `${B("Pas encore de groupe d'action")} dans la commune ni aux alentours : tout est à construire.` });
   if (prio.length && ranked.length <= 3) synth.push({ text: `${B("Où aller en priorité")} : toute la commune (${ranked.length} ${ranked.length > 1 ? "bureaux" : "bureau"} de vote), en commençant par le bureau ${dv(prio[0].bv)}${labels.has(prio[0].bv) ? ` (${prio[0].label})` : ""}.` });
@@ -1714,6 +1776,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (out.maps.some((m) => m.id === "lfi_map_bv_participation")) blocks.push({ type: "mapPair", mapIds: ["lfi_map_bv", "lfi_map_bv_participation"], title: `Vote insoumis (à gauche) et participation (à droite) par bureau de vote aux européennes 2024 : plus la couleur est rouge, plus le chiffre est élevé` });
     else blocks.push({ type: "map", mapId: "lfi_map_bv" });
     if (has("lfi_bureaux_prio")) blocks.push({ type: "table", tableId: "lfi_bureaux_prio" });
+    if (insc.ficheText) blocks.push({ type: "paragraph", text: insc.ficheText });
     prose(ouEvo.slice(0, 1));
     // Détail : classement complet, présidentielle 2022, évolution par bureau.
     detail.push({ type: "heading", text: "Classement de tous les bureaux de vote" });
@@ -1734,17 +1797,20 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const otherHyps = [...hyps.slice(2), ...ids.spread];
   if (otherHyps.length) detail.push({ type: "heading", text: "Autres questions à vérifier" }, { type: "findings", ids: otherHyps, style: "prose" });
   if (has("lfi_quartiers")) detail.push({ type: "heading", text: "Profil des quartiers" }, { type: "table", tableId: "lfi_quartiers" });
+  if (has("lfi_inscription")) detail.push({ type: "heading", text: "Inscription sur les listes électorales" }, ...(insc.commune ? [{ type: "paragraph" as const, text: `Environ ${fmtNumber(Math.round(insc.commune.adultesFr / 100) * 100)} adultes de nationalité française recensés pour ${fmtNumber(insc.commune.inscrits)} électeurs inscrits, soit ${Math.round(insc.commune.taux)} inscrits pour 100 adultes${insc.departement ? ` (département : ${Math.round(insc.departement.taux)})` : ""}.` }] : []), { type: "table", tableId: "lfi_inscription" });
   if (c.emploi?.commune.length) detail.push({ type: "heading", text: "Demandeurs d'emploi" }, { type: "table", tableId: "table_demandeurs" }, { type: "chart", chartId: "chart_demandeurs" });
 
   blocks.push({ type: "heading", text: "Actions recommandées" });
   if (planIntro) blocks.push({ type: "paragraph", text: planIntro });
   if (affiche) blocks.push({ type: "map", mapId: "lfi_affiche" });
   if (has("lfi_plan")) blocks.push({ type: "table", tableId: "lfi_plan" });
+  if (has("lfi_hlm")) blocks.push({ type: "table", tableId: "lfi_hlm" });
   else blocks.push({ type: "note", text: "Aucun lieu d'action identifié automatiquement (marchés, gares, commerces, établissements) : à compléter avec les militants locaux." });
   if (access.length) blocks.push({ type: "paragraph", text: `${B("Accès")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
   // Détail : toutes les pistes et tous les lieux repérés.
   if (actionGroups.length) detail.push({ type: "heading", text: "Toutes les pistes d'action" }, { type: "actions", groups: actionGroups });
   if (has("lfi_lieux")) detail.push({ type: "table", tableId: "lfi_lieux" });
+  if (has("lfi_hlm_tout")) detail.push({ type: "heading", text: "Logements sociaux" }, { type: "table", tableId: "lfi_hlm_tout" });
   blocks.push({ type: "fieldPlaces" });
   blocks.push({ type: "fieldNotes", part: "actions" });
 

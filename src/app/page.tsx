@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useRole } from "@/components/useRole";
 
 interface Candidate {
   code: string;
@@ -38,6 +39,9 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<Listed[]>([]);
+  const role = useRole();
+  const [refus, setRefus] = useState<string | null>(null);
+  useEffect(() => setRefus(new URLSearchParams(window.location.search).get("refus")), []);
 
   useEffect(() => {
     fetch("/api/reports")
@@ -93,6 +97,10 @@ export default function Home() {
       </h1>
       <p className="mb-8 text-lg text-[var(--ink-2)]">Entrez une commune : l&apos;outil prépare en quelques minutes une fiche d&apos;action de quelques pages, à partir des données publiques.</p>
 
+      {refus && <p className="mb-4 rounded-lg border border-[#e7b4b3] bg-[#fdf0ef] p-3 text-sm text-[#a12a29]">{refus}.</p>}
+      {role === "lecteur" ? (
+        <p className="card p-5 text-[var(--ink-2)]">Votre compte permet de consulter et de télécharger les fiches déjà générées, ci-dessous. Pour en générer de nouvelles, demandez un accès « éditeur » aux administrateurs.</p>
+      ) : (
       <div className="card p-5">
         <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-[var(--accent-soft)] p-1 text-sm font-semibold" role="tablist">
           {[
@@ -176,6 +184,7 @@ export default function Home() {
         </button>
         {error && <p className="mt-2 text-sm text-[#a12a29]">{error}</p>}
       </div>
+      )}
 
       {recent.length > 0 && (
         <section className="mt-10">

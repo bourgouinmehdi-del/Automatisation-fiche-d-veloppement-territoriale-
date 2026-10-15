@@ -4,6 +4,9 @@
  * sur les sources réelles en octobre 2026 ; les valeurs sont arbitraires.
  */
 import { gzipSync, strToU8, zipSync } from "fflate";
+import proj4 from "proj4";
+
+proj4.defs("EPSG:2154", "+proj=lcc +lat_0=46.5 +lon_0=3 +lat_1=49 +lat_2=44 +x_0=700000 +y_0=6600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs");
 
 const LON0 = 2.8;
 const LAT0 = 49.4;
@@ -123,6 +126,22 @@ function muniRow(code: string, dep: string, tour: 1 | 2) {
 export function mockExtra(url: URL): Response | null {
   const h = url.host;
   const p = url.pathname;
+  // Logements sociaux (RPLS, API DiDo) : une grande résidence dans le bureau 2, deux petites ailleurs.
+  if (h === "data.statistiques.developpement-durable.gouv.fr" && /\/datafiles\/[^/]+$/.test(p)) return json({ millesimes: [{ millesime: "2024-01" }, { millesime: "2025-01" }] });
+  if (h === "data.statistiques.developpement-durable.gouv.fr" && p.endsWith("/csv")) {
+    const com = (url.searchParams.get("DEPCOM") ?? "").replace(/^eq:/, "");
+    if (com !== "60159") return new Response("DEPCOM;NUMVOIE\n", { status: 200 });
+    const l93 = (lon: number, lat: number) => proj4("WGS84", "EPSG:2154", [LON0 + lon, LAT0 + lat]).map((v) => v.toFixed(1));
+    const lines = ["DEPCOM;NUMVOIE;INDREP;TYPVOIE;NOMVOIE;COMPLGEO;PLG_QP24;X;Y;EPSG;CONSTRUCT"];
+    const add = (n: number, num: string, voie: string, prog: string, qp: string, lon: number, lat: number) => {
+      const [x, y] = l93(lon, lat);
+      for (let i = 0; i < n; i++) lines.push(`60159;${num};;RUE;${voie};${prog};${qp};${x};${y};2154;1968`);
+    };
+    add(320, "12", "DES ROSES", "LES MUSICIENS", "QN06099M", 0.02, 0.01);
+    add(180, "4", "DES ROSES", "CLOS DES ROSES", "QN06099M", 0.0206, 0.0104);
+    add(24, "7", "DU MARCHE", "", "", 0.005, 0.03);
+    return new Response(lines.join("\n"), { status: 200, headers: { "Content-Type": "text/csv" } });
+  }
   // Cartes « affiche » : circonscriptions (deux moitiés du département fictif) et départements voisins.
   if (h === "www.data.gouv.fr" && p === "/api/1/datasets/contours-geographiques-des-circonscriptions-legislatives/")
     return json({ resources: [{ id: "circ-p10", title: "circonscriptions-legislatives-p10.geojson", format: "geojson", filesize: 1000, url: "https://static.data.gouv.fr/circonscriptions-legislatives-p10.geojson" }] });
@@ -191,7 +210,18 @@ export function mockExtra(url: URL): Response | null {
     if (p.includes("estimations-demographiques_2022_QPV2024")) return bin(qpvRp());
     if (p.includes("BASE_TD_FILO_IRIS")) return bin(irisCsv("IRIS;LIBIRIS;COM;DISP_MED21;DISP_TP6021", (c, i) => `${c};Iris ${i};60159;${[16000, 21000, 25000, 27000][i]};${[33, 18, 11, 8][i]}`));
     if (p.includes("base-ic-evol-struct-pop"))
-      return bin(irisCsv("IRIS;COM;P21_POP;P21_POP0002;P21_POP0305;P21_POP0610;P21_POP1117;P21_POP1824;P21_POP0014;P21_POP1529;P21_POP6074;P21_POP75P", (c, i) => `${c};60159;1000;40;40;60;90;${[200, 100, 80, 60][i]};180;${[300, 200, 160, 140][i]};${[150, 200, 220, 260][i]};${[80, 90, 100, 120][i]}`));
+      // Effectifs ×12 (parts inchangées) et nationalité : base de l'estimation de la non-inscription ;
+      // une ligne pour Beauvais (même département), où l'on est presque tous inscrits.
+      return bin(
+        zip({
+          "base.csv": [
+            "IRIS;COM;P21_POP;P21_POP0002;P21_POP0305;P21_POP0610;P21_POP1117;P21_POP1824;P21_POP0014;P21_POP1529;P21_POP6074;P21_POP75P;P21_POP_FR",
+            ...IRIS.map(([c], i) => [c, "60159", 1000, 40, 40, 60, 90, [200, 100, 80, 60][i], 180, [300, 200, 160, 140][i], [150, 200, 220, 260][i], [80, 90, 100, 120][i], 850].map((v, j) => (j < 2 ? v : Number(v) * 12)).join(";")),
+            "600570101;60057;60000;2400;2400;3600;5400;6000;10800;12000;9000;4800;58000",
+            "999990101;99999;1;1",
+          ].join("\n"),
+        }),
+      );
     if (p.includes("base-ic-logement")) return bin(irisCsv("IRIS;COM;P21_RP;P21_RP_LOC;P21_RP_LOCHLMV", (c, i) => `${c};60159;400;${[300, 200, 150, 100][i]};${[220, 60, 30, 10][i]}`));
     if (p.includes("base-ic-activite-residents")) return bin(irisCsv("IRIS;COM;P21_ACT1564;P21_CHOM1564", (c, i) => `${c};60159;500;${[110, 70, 50, 40][i]}`));
     if (p.includes("BPE25")) return bin(bpeZip());

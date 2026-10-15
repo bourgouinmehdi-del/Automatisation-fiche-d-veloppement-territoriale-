@@ -263,6 +263,35 @@ describe("chaîne de génération (API simulées)", () => {
     expect(fiche.blocks.slice(iAct).some((b) => b.type === "map" && b.mapId === "lfi_affiche")).toBe(true);
   });
 
+  it("logements sociaux (RPLS) : résidences, bureaux, carte, porte-à-porte", async () => {
+    const t = report.tables.find((x) => x.id === "lfi_hlm")!;
+    expect(t.rows[0]).toMatchObject({ nom: "Les Musiciens", logements: expect.stringMatching(/^320$/) });
+    expect(String(t.rows[0].bv)).toMatch(/prioritaire/);
+    const prioT = report.tables.find((x) => x.id === "lfi_bureaux_prio")!;
+    expect(prioT.columns.map((c) => c.key)).toContain("hlm");
+    const m = report.maps.find((x) => x.id === "lfi_affiche")!;
+    const hl = m.layers.find((l) => l.id === "hlm")!;
+    // Les deux résidences voisines (moins de 120 m) forment un seul ensemble de 500 logements.
+    expect(hl.data.features).toHaveLength(1);
+    expect(hl.data.features[0].properties?.sub).toBe("~500 logements");
+    expect(m.layers.find((l) => l.id === "qpv")?.style?.fill).toBe("none");
+    const fiche = report.sections[0];
+    expect(fiche.blocks.some((b) => b.type === "paragraph" && /en commençant par les résidences HLM Les Musiciens \(320 logements\)/.test(b.text))).toBe(true);
+    const porte = report.sections.find((s) => s.id === "PORTE")!;
+    expect(porte.blocks.some((b) => b.type === "paragraph" && /Résidences HLM du bureau/.test(b.text))).toBe(true);
+  });
+
+  it("non-inscription : estimation commune et par bureau", () => {
+    const fiche = report.sections[0];
+    const p = fiche.blocks.find((b) => b.type === "paragraph" && /Des habitants absents des listes électorales/.test(b.text)) as { text: string } | undefined;
+    expect(p?.text).toMatch(/environ 2\s?900 adultes de nationalité française/);
+    const ind = report.indicators.find((i) => i.id === "taux_inscription_estime" && i.geo.level === "commune")!;
+    expect(ind.value).toBeGreaterThan(85);
+    expect(ind.value).toBeLessThan(95);
+    const t = report.tables.find((x) => x.id === "lfi_inscription");
+    expect(t?.rows.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("fiche en langage courant : pas de jargon, tableau du vote court", async () => {
     const { renderReportHtml } = await import("@/lib/render/html");
     const html = renderReportHtml(report, { sectionIds: ["LFI"] });
