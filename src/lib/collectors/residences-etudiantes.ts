@@ -3,6 +3,7 @@ import path from "node:path";
 import * as turf from "@turf/turf";
 import { internalDir } from "./interne";
 import { readXlsx, sheetObjects } from "./xlsx";
+import type { TrackedHttp } from "./context";
 import embedded from "./data/residences-etudiantes.json";
 
 /**
@@ -144,4 +145,48 @@ export function residencesOf(list: ResidenceEtudiante[], commune: { nom: string;
   }
   const nom = simple(commune.nom);
   return list.filter((r) => simple(r.ville) === nom && (!commune.codesPostaux?.length || commune.codesPostaux.includes(r.cp)));
+}
+
+/** Coordonnées arrondies au centième (≈ 1 km) : cas des fiches du Crous dans le catalogue. */
+const imprecise = (v: number) => (String(v).split(".")[1]?.length ?? 0) <= 3;
+
+/**
+ * Résidences d'une commune, positions précisées par la Base adresse nationale
+ * quand celles du catalogue sont arrondies : les candidates sont cherchées
+ * autour de la commune (2 km) puis rattachées par le code INSEE de l'adresse.
+ */
+export async function residencesOfGeocoded(
+  http: TrackedHttp,
+  list: ResidenceEtudiante[],
+  commune: { code: string; nom: string; codesPostaux?: string[]; contour?: GeoJSON.Geometry | null },
+): Promise<ResidenceEtudiante[]> {
+  let near = list;
+  if (commune.contour && /Polygon/.test(commune.contour.type)) {
+    const bb = turf.bbox(turf.feature(commune.contour as GeoJSON.Polygon));
+    const m = 0.02;
+    near = list.filter((r) => r.lon >= bb[0] - m && r.lon <= bb[2] + m && r.lat >= bb[1] - m && r.lat <= bb[3] + m);
+  } else near = residencesOf(list, commune);
+  const out: ResidenceEtudiante[] = [];
+  for (const r of near) {
+    let x = r;
+    let citycode: string | null = null;
+    if (imprecise(r.lat) || imprecise(r.lon)) {
+      try {
+        const g = await http.json<{ features?: GeoJSON.Feature<GeoJSON.Point, { citycode?: string; score?: number }>[] }>(
+          `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(`${r.adresse} ${r.cp} ${r.ville}`)}&postcode=${r.cp}&limit=1`,
+          { minIntervalMs: 120, retries: 1 },
+        );
+        const f = g.data?.features?.[0];
+        if (f && (f.properties?.score ?? 0) >= 0.4) {
+          x = { ...r, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] };
+          citycode = f.properties?.citycode ?? null;
+        }
+      } catch {
+        http.partial = true;
+      }
+    }
+    const inside = citycode ? citycode === commune.code : residencesOf([x], commune).length > 0;
+    if (inside) out.push(x);
+  }
+  return out;
 }

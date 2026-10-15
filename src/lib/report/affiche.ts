@@ -229,7 +229,7 @@ export function communePoster(
       labelProperty: "nom",
       sublabelProperty: "sub",
       labelColor: RESIDENCE_RED,
-      legendItem: { label: "Résidence Crous ou foyer de jeunes travailleurs (porte-à-porte)", swatch: "circle" },
+      legendItem: { label: "Résidence Crous / foyer jeunes travailleurs", swatch: "circle" },
       visible: true,
       source: c.residences!.source,
     });

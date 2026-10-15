@@ -224,7 +224,9 @@ export function posterMapSvg(map: MapSpec, width = 900): string {
 
   // Légende encadrée (deux colonnes).
   const items = layers.filter((l) => l.legendItem).map((l) => ({ l, it: l.legendItem! }));
-  const cols = items.length > 4 ? 3 : 2;
+  // Trois colonnes si les libellés y tiennent (≈ 6,2 px par caractère à 11,5 px), sinon deux, sinon une.
+  const longest = Math.max(0, ...items.map(({ it }) => it.label.length)) * 6.2 + 44;
+  const cols = [items.length > 4 ? 3 : 2, 2, 1].find((n) => frameW / n >= longest) ?? 1;
   const rows = Math.ceil(items.length / cols);
   const legY = fy + frameH + 16;
   const legH = items.length ? 26 + rows * 26 : 0;

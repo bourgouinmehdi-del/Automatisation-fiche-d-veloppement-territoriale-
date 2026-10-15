@@ -12,6 +12,7 @@ interface Candidate {
   departement: string;
   departementNom: string;
   population: number | null;
+  interco?: { nom: string; communes: number } | null;
 }
 
 interface Listed {
@@ -25,7 +26,7 @@ interface Listed {
 
 const SCOPES = [
   { id: "commune", label: "Commune", field: "Code postal, code INSEE ou nom de la commune", go: "Générer la fiche" },
-  { id: "epci", label: "Intercommunalité", field: "Une commune de l'intercommunalité", go: "Générer la fiche" },
+  { id: "epci", label: "Intercommunalité", field: "Une commune de l'intercommunalité", go: "Générer le ciblage de l'intercommunalité" },
   { id: "circonscription", label: "Circonscription", field: "Une commune de la circonscription", go: "Générer le ciblage de la circonscription" },
   { id: "departement", label: "Département", field: "Une commune du département", go: "Générer le ciblage du département" },
   { id: "custom", label: "Territoire personnalisé", field: "Commune principale du territoire", go: "Générer la fiche" },
@@ -184,6 +185,21 @@ export default function Home() {
         )}
         {q.trim().length >= 5 && cands.length === 0 && !error && <p className="mt-3 text-sm msg-err">Aucune commune trouvée.</p>}
 
+        {scope === "epci" && selected && (() => {
+          const i = cands.find((c) => c.code === selected)?.interco;
+          return (
+            <p className={`mt-4 text-sm ${i ? "" : "msg-err"}`}>
+              {i ? (
+                <>
+                  Intercommunalité : <span className="font-semibold">{i.nom}</span> ({i.communes} communes)
+                </>
+              ) : (
+                "Cette commune n'appartient à aucune intercommunalité."
+              )}
+            </p>
+          );
+        })()}
+
         {scope === "circonscription" && selected && (
           <div className="mt-4 text-sm">
             {circoErr ? (
@@ -223,7 +239,7 @@ export default function Home() {
           />
         )}
 
-        <button className="btn btn-primary mt-5 w-full justify-center py-3 text-base" disabled={!selected || busy || (scope === "circonscription" && !circo)} onClick={generate}>
+        <button className="btn btn-primary mt-5 w-full justify-center py-3 text-base" disabled={!selected || busy || (scope === "circonscription" && !circo) || (scope === "epci" && !cands.find((c) => c.code === selected)?.interco)} onClick={generate}>
           {busy ? "Lancement…" : cfg.go}
         </button>
         {error && <p className="mt-2 text-sm msg-err">{error}</p>}

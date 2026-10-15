@@ -1901,7 +1901,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (actionGroups.length) detail.push({ type: "heading", text: "Toutes les pistes d'action" }, { type: "actions", groups: actionGroups });
   if (has("lfi_lieux")) detail.push({ type: "table", tableId: "lfi_lieux" });
   if (has("lfi_hlm_tout")) detail.push({ type: "heading", text: "Logements sociaux" }, { type: "table", tableId: "lfi_hlm_tout" });
-  if (has("lfi_residences")) detail.push({ type: "heading", text: "Résidences étudiantes et foyers de jeunes travailleurs" }, { type: "table", tableId: "lfi_residences" });
+  if (has("lfi_residences")) detail.push({ type: "table", tableId: "lfi_residences" });
   blocks.push({ type: "fieldPlaces" });
   blocks.push({ type: "fieldNotes", part: "actions" });
 

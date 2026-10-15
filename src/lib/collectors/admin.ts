@@ -50,6 +50,8 @@ let _ref: {
   byCode: Map<string, RawCommune>;
   epcis: RawEpci[];
   epciByCommune: Map<string, RawEpci>;
+  /** Établissements publics territoriaux de la Métropole du Grand Paris. */
+  eptByCommune: Map<string, RawEpci>;
   departements: Map<string, RawNamed>;
   regions: Map<string, RawNamed>;
   arrondissements: Map<string, RawNamed>;
@@ -72,12 +74,19 @@ export function referentiel() {
   }
   const epciByCommune = new Map<string, RawEpci>();
   for (const e of epcis) for (const m of e.membres) epciByCommune.set(m.code, e);
+  const eptByCommune = new Map<string, RawEpci>();
+  try {
+    for (const e of load<RawEpci[]>("ept.json")) for (const m of e.membres) eptByCommune.set(m.code, e);
+  } catch {
+    /* référentiel sans EPT */
+  }
   const toMap = (arr: RawNamed[]) => new Map(arr.map((x) => [x.code, x]));
   _ref = {
     communes,
     byCode,
     epcis,
     epciByCommune,
+    eptByCommune,
     departements: toMap(load<RawNamed[]>("departements.json")),
     regions: toMap(load<RawNamed[]>("regions.json")),
     arrondissements: toMap(load<RawNamed[]>("arrondissements.json")),
@@ -200,6 +209,18 @@ export function epciMembers(epciCode: string) {
   const e = r.epcis.find((x) => x.code === epciCode);
   if (!e) return [];
   return e.membres.map((m) => ({ code: m.code, nom: m.nom, population: r.byCode.get(m.code)?.population ?? null }));
+}
+
+/**
+ * Intercommunalité « de travail » d'une commune : son établissement public
+ * territorial (EPT) dans la Métropole du Grand Paris — ex. Ivry-sur-Seine →
+ * Grand-Orly Seine Bièvre —, sinon son EPCI à fiscalité propre.
+ */
+export function intercoOf(code: string): { code: string; nom: string; type: string; membres: { code: string; nom: string; population: number | null }[] } | null {
+  const r = referentiel();
+  const e = r.eptByCommune.get(code) ?? r.epciByCommune.get(code);
+  if (!e) return null;
+  return { code: e.code, nom: e.nom, type: r.eptByCommune.has(code) ? "EPT" : e.type, membres: e.membres.map((m) => ({ code: m.code, nom: m.nom, population: r.byCode.get(m.code)?.population ?? null })) };
 }
 
 export function epciInfo(epciCode: string) {

@@ -75,7 +75,7 @@ export async function listReports() {
         nom:
           r.query.scope === "departement"
             ? `Ciblage ${r.commune.departement.nom}`
-            : r.query.scope === "circonscription"
+            : r.query.scope === "circonscription" || r.query.scope === "epci"
               ? `Ciblage ${r.perimeter.label}`
             : r.commune.nom,
         departement: r.commune.departement.nom,

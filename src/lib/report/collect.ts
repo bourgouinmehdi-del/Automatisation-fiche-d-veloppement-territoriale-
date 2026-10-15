@@ -6,6 +6,7 @@ import {
   departementGeo,
   epciInfo,
   epciMembers,
+  intercoOf,
   enrichCommune,
   franceCentres,
   franceCommunes,
@@ -27,7 +28,7 @@ import {
 import { BureauGeo, collectBureauxGeo } from "../collectors/bureaux-geo";
 import { InternalData, loadInternalData } from "../collectors/interne";
 import { loadStmt, type StmtSeries } from "../collectors/emploi";
-import { CATALOGUE_URL, isPorteAPorte, loadCatalogue, residencesOf, type ResidenceEtudiante } from "../collectors/residences-etudiantes";
+import { CATALOGUE_URL, isPorteAPorte, loadCatalogue, residencesOf, residencesOfGeocoded, type ResidenceEtudiante } from "../collectors/residences-etudiantes";
 import { circoCommunes, circoLabel, collectCirconscriptions, collectDepartementsVoisins, collectFondOsm, fitAspect, type Bbox, type Circo, type FondOsm, type Residence } from "../collectors/carto";
 import { rankBureaux } from "../analysis/political";
 import { collectRpls, type RplsResult } from "../collectors/rpls";
@@ -227,7 +228,7 @@ const STEP_ORDER = [
 
 /** Nombre d'étapes suivies (identité, géographie, 18 étapes parallèles) + 3 étapes d'analyse. */
 /** Périmètres de ciblage (comparaison des communes d'un territoire) plutôt que fiche communale. */
-export const territorial = (s: Scope) => s === "departement" || s === "circonscription";
+export const territorial = (s: Scope) => s === "departement" || s === "circonscription" || s === "epci";
 
 export const PROGRESS_TOTAL = 2 + 21 + 3;
 
@@ -315,12 +316,11 @@ export async function collect(
       { code: commune.code, nom: commune.nom, population: commune.population },
     ],
   };
-  if (query.scope === "epci" && commune.epci) {
-    focus = { level: "epci", code: commune.epci.code, name: commune.epci.nom };
-    perimeter = {
-      label: commune.epci.nom,
-      communes: epciMembers(commune.epci.code),
-    };
+  const interco = query.scope === "epci" ? intercoOf(commune.code) : null;
+  if (interco) {
+    // Intercommunalité : EPT dans la Métropole du Grand Paris, sinon EPCI.
+    focus = { level: "epci", code: interco.code, name: interco.nom };
+    perimeter = { label: interco.nom, communes: interco.membres };
   } else if (territorial(query.scope)) {
     focus = {
       level: "departement",
@@ -342,6 +342,9 @@ export async function collect(
     };
   }
 
+  const extraDeps = territorial(query.scope)
+    ? [...new Set(perimeter.communes.map((m) => communeFromReferentiel(m.code)?.departement.code).filter((d): d is string => !!d && d !== commune.departement.code))]
+    : [];
   const sum = (arr: { population: number | null }[]) =>
     arr.reduce((s, c) => s + (c.population ?? 0), 0);
   const populations: Collected["populations"] = [];
@@ -416,6 +419,11 @@ export async function collect(
       c.geoSource = ctx.ref("geoapi", e.url, e.retrievedAt);
       const dep = await departementGeo(http, commune.departement.code);
       c.depFeatures = dep.fc ?? undefined;
+      // Intercommunalité à cheval sur plusieurs départements (ex. Grand-Orly Seine Bièvre : 91 et 94).
+      for (const d of extraDeps) {
+        const x = await departementGeo(http, d).catch(() => null);
+        if (x?.fc && c.depFeatures) c.depFeatures.features.push(...x.fc.features);
+      }
       const contour = await departementContour(
         http,
         commune.departement.code,
@@ -1032,6 +1040,14 @@ export async function collect(
               commune.code,
               commune.departement.code,
             );
+            // Communes du périmètre situées dans un autre département : résultats ajoutés au détail par commune.
+            const depRes = r.find((x) => x.level === "departement");
+            for (const d of extraDeps) {
+              const first = perimeter.communes.find((m) => communeFromReferentiel(m.code)?.departement.code === d);
+              if (!first || !depRes?.byCommune) continue;
+              const x = await collectElection(http, e, first.code, d);
+              depRes.byCommune.push(...(x.find((y) => y.level === "departement")?.byCommune ?? []));
+            }
             return {
               results: r,
               source: ctx.ref("elections", r[0].sourceUrl, r[0].retrievedAt, {
@@ -1259,9 +1275,10 @@ export async function collect(
       return;
     }
     // Résidences étudiantes et foyers de jeunes travailleurs (catalogue « Mon Logement Étudiant »).
-    await ctx.step("residences_etudiantes", "cartes:residences", async () => {
+    await ctx.step("residences_etudiantes", "cartes:residences", async (http) => {
       const cat = await loadCatalogue();
-      const list = residencesOf(cat.list, commune);
+      // Positions du catalogue parfois arrondies (≈ 1 km) : précisées par la Base adresse nationale.
+      const list = enabled("ban") ? await residencesOfGeocoded(http, cat.list, commune) : residencesOf(cat.list, commune);
       c.residences = {
         list: list.map((r) => ({ ...r, porte: isPorteAPorte(r) })),
         source: ctx.ref("residences_etudiantes", CATALOGUE_URL, cat.retrievedAt || new Date().toISOString(), {

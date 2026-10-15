@@ -7,7 +7,7 @@ import { FIELD_NOTE_LABELS } from "@/lib/types";
 import type { SourceInfo } from "@/lib/collectors/catalog";
 import { KIND_LABELS } from "@/lib/analysis/findings";
 import { isSmallSample } from "@/lib/analysis/stats";
-import { fmtDate, fmtValue } from "@/lib/format";
+import { fmtDate, fmtValue, territoryName } from "@/lib/format";
 import { cellText, Citations, inlineParts, sourceLabel } from "@/lib/render/cite";
 import ChartView from "./ChartView";
 import { useRole } from "./useRole";
@@ -43,7 +43,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
   const failed = r.runs.filter((x) => x.status === "failed");
   const hasFiche = r.sections.some((s) => s.id === "LFI");
   const hasCiblage = r.sections.some((s) => s.id === "CIBLAGE");
-  const terrName = r.query.scope === "circonscription" ? r.perimeter.label.replace(/^./, (x) => x.toUpperCase()) : r.commune.departement.nom;
+  const terrName = territoryName(r);
   // L'outil s'ouvre sur la fiche seule ; le détail (bureaux, quartiers, porte-à-porte,
   // diagnostic A à I) est replié et s'affiche à la demande.
   const isMain = (id: string) => id === "LFI" || id === "CIBLAGE";
@@ -393,7 +393,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
     s.id === "LFI" || s.id === "CIBLAGE" ? (
       <section key={s.id} id={`part-${s.id}`} className="card fiche mb-8 scroll-mt-20 overflow-hidden">
         <div className="fiche-band">
-          <div className="fiche-kind">{s.id === "CIBLAGE" ? "Propositions de ciblage du département" : "Proposition de ciblage"}</div>
+          <div className="fiche-kind">{s.id === "CIBLAGE" ? `Propositions de ciblage ${r.query.scope === "circonscription" ? "de la circonscription" : r.query.scope === "epci" ? "de l'intercommunalité" : "du département"}` : "Proposition de ciblage"}</div>
           <div className="display iso-soft mt-3 text-5xl leading-none">{s.id === "CIBLAGE" ? terrName : r.commune.nom}</div>
         </div>
         <div className="p-5 md:p-8">{s.blocks.map(renderBlock)}</div>
@@ -415,7 +415,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         <div>
           <h1 className="text-4xl font-bold">{hasCiblage ? terrName : r.commune.nom}</h1>
           <div className="mt-1 text-sm text-[var(--ink-2)]">
-            {hasCiblage ? (r.query.scope === "circonscription" ? `Ciblage de la circonscription, ${r.commune.departement.nom} (${r.commune.departement.code})` : `Ciblage du département (${r.commune.departement.code}), ${r.commune.region.nom}`) : `${r.commune.departement.nom} (${r.commune.departement.code}), ${r.commune.region.nom}${r.commune.epci ? `. ${r.commune.epci.nom}` : ""}. Code INSEE ${r.commune.code}`}
+            {hasCiblage ? (r.query.scope === "circonscription" ? `Ciblage de la circonscription, ${r.commune.departement.nom} (${r.commune.departement.code})` : r.query.scope === "epci" ? `Ciblage de l'intercommunalité (${r.perimeter.communes.length} communes)` : `Ciblage du département (${r.commune.departement.code}), ${r.commune.region.nom}`) : `${r.commune.departement.nom} (${r.commune.departement.code}), ${r.commune.region.nom}${r.commune.epci ? `. ${r.commune.epci.nom}` : ""}. Code INSEE ${r.commune.code}`}
           </div>
           <div className="mt-1 text-xs text-[var(--muted)]">
             Version {r.version}, générée le {fmtDate(r.updatedAt)}. Fraîcheur des données : {freshness}

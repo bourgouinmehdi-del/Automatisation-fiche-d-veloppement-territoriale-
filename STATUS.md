@@ -129,3 +129,9 @@ Le test d'intégration a permis de corriger un défaut réel (la règle « sans 
 | Lien « CSV » des tableaux retiré | ✅ (CSV complet toujours dans « Plus ») |
 | Résidences Crous / FJT : porte-à-porte, carte, annexe | ✅ catalogue intégré (1 584 résidences, relevé du 5 septembre 2026), remplaçable depuis « Données internes » |
 | Graphique « Européennes 2024 » dans le profil politique | ✅ part des voix par force (ordre et couleurs de la charte), trait = score national |
+
+### Suite (retour sur Ivry et nouveau PDF de Compiègne)
+
+- « Intercommunalité » produisait la fiche de la commune : c'est désormais un ciblage des communes de l'intercommunalité, avec l'EPT pour les communes du Grand Paris (Ivry → Grand-Orly Seine Bièvre) et les communes situées dans un autre département.
+- Résidences : positions du catalogue arrondies (≈ 1 km) précisées par la Base adresse nationale, rattachement à la commune par le code INSEE de l'adresse ; titre en double dans l'annexe supprimé ; libellé de légende raccourci et légende de la carte « affiche » sur moins de colonnes si un libellé ne tient pas.
+- OpenStreetMap : 492 équipements dans le PDF de Compiègne du 15 octobre, correctif confirmé.

@@ -180,6 +180,10 @@ Choisir « Ciblage d'un département » sur la page d'accueil (ou `npm run gener
 - score : surperformance LFI (européennes 2024, % des inscrits) par rapport aux communes de taille comparable du département (35 %), écart d'abstention au département (25 %), ratio parrains / voix (20 %, si fourni), volume de voix LFI (20 %) ; pénalité pour les territoires déjà couverts par un groupe de 20 membres ou plus ; les deux plus grandes villes restent hors ciblage ;
 - sorties : liste des territoires proposés, carte du département, une page par proposition (raisons, tableau Inscrits / LFI P22 / LFI E24 / Parrains / Abstention), classement complet avec la nuance de la majorité municipale ; bouton « Générer la fiche » pour chaque proposition (fiche communale, ou territoire personnalisé pour un groupement) ; export « PDF ciblage ».
 
+### Ciblage d'une intercommunalité
+
+Bouton « Intercommunalité » : ciblage des communes membres (chaque commune de 500 habitants et plus, toutes si l'intercommunalité est très rurale), même score que le ciblage départemental, sans plafond par intercommunalité ni ville écartée d'office. Dans la Métropole du Grand Paris, l'intercommunalité retenue est l'**établissement public territorial** (ex. Ivry-sur-Seine → Grand-Orly Seine Bièvre, 24 communes), pas la métropole. Une intercommunalité à cheval sur deux départements (Grand-Orly : Val-de-Marne et Essonne) est traitée en entier : résultats et contours des deux départements.
+
 ### Ciblage d'une circonscription
 
 Bouton « Circonscription » de l'accueil : même méthode que le ciblage départemental, limitée aux communes de la circonscription législative (contours data.gouv.fr). Une commune est retenue dès que 20 % de sa surface, ou son centre, est dans la circonscription ; les communes partagées sont signalées sous le classement (résultats de toute la commune). Les comparaisons (communes de taille comparable, moyennes) restent départementales et aucune grande ville n'est écartée d'office. Cartes et titres sont centrés sur la circonscription.

@@ -72,6 +72,23 @@ describe("ciblage départemental", () => {
     expect(circoCommunes([sq(0, 1)], { geometry: sq(0.9, 2).geometry as GeoJSON.Polygon }).has("X")).toBe(false);
   }, 180000);
 
+  it("intercommunalité : EPT dans le Grand Paris, ciblage des seules communes membres", async () => {
+    const { intercoOf, referentiel } = await import("@/lib/collectors/admin");
+    expect(intercoOf("94041")).toMatchObject({ nom: "Grand-Orly Seine Bièvre", type: "EPT" });
+    expect(intercoOf("94041")!.membres.map((m) => m.code)).toEqual(expect.arrayContaining(["94041", "91027"]));
+    expect(intercoOf("60159")).toMatchObject({ code: "200067965" });
+    const { buildReport } = await import("@/lib/report/build");
+    const r = await buildReport({ codeInsee: "60159", scope: "epci" });
+    const nom = intercoOf("60159")!.nom;
+    expect(r.perimeter.label).toBe(nom);
+    expect(r.sections[0]).toMatchObject({ id: "CIBLAGE", title: `Développement territorial — ${nom}` });
+    const membres = new Set(intercoOf("60159")!.membres.map((m) => m.nom));
+    const classement = r.tables.find((t) => t.id === "ciblage_classement")!;
+    expect(classement.rows.length).toBeGreaterThan(0);
+    for (const row of classement.rows) expect(membres.has(String(row.nom))).toBe(true);
+    expect(referentiel().eptByCommune.size).toBeGreaterThan(100);
+  }, 180000);
+
   it("carte « affiche » : groupes d'action, ciblages, circonscriptions, départements voisins", async () => {
     const m = dep.maps.find((x) => x.id === "ciblage_affiche")!;
     expect(m.poster?.title).toBe("État des groupes d'action et propositions de ciblage");
