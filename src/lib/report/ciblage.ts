@@ -110,6 +110,10 @@ export function buildCiblage(c: Collected): CiblageOutput {
   if (!d24?.byCommune?.length) return out;
   const by24 = new Map(d24.byCommune.map((x) => [x.code, x as Agg]));
   const by22 = new Map((d22?.byCommune ?? []).map((x) => [x.code, x as Agg]));
+  // Abstention : législatives 2024 (forte participation, plus représentative) si disponibles.
+  const dLg = el("LG24T1")?.results.find((r) => r.level === "departement");
+  const byLg = new Map((dLg?.byCommune ?? []).map((x) => [x.code, x as Agg]));
+  const abstLabel = dLg?.byCommune?.length ? "législatives 2024" : "européennes 2024";
   const depCommunes = ref.communes.filter((x) => x.departement === dep.code && x.type === "commune-actuelle" && by24.has(x.code));
   // Périmètre « circonscription » : seules les communes de la circonscription sont classées,
   // les comparaisons (communes de taille comparable, moyennes) restent départementales.
@@ -139,7 +143,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
   const lfiPct = (a: Agg | null | undefined, eid: string) => (a ? (score(eid, a, "lfi")?.pctInscrits ?? null) : null);
   const lfiVoix = (a: Agg | null | undefined, eid: string) => (a ? (score(eid, a, "lfi")?.voix ?? 0) : 0);
   const depLfi24 = lfiPct(d24, "EU24");
-  const depAbst24 = abstention(d24).pct;
+  const depAbst24 = dLg?.byCommune?.length ? abstention(dLg).pct : abstention(d24).pct;
   const depParrains = [...c.interne.parrains.entries()].filter(([k]) => k.startsWith(dep.code)).reduce((s, [, v]) => s + v, 0);
   const hasParrains = depParrains > 0;
   const depRatio = hasParrains ? depParrains / (lfiVoix(d24, "EU24") || 1) : null;
@@ -178,7 +182,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       lfi22: lfiPct(a22, "PR22T1"),
       voix24: v24,
       overperf: l24 != null && exp != null ? l24 - exp : null,
-      abst24: abstention(a24).pct,
+      abst24: byLg.size && codes.every((k) => byLg.has(k)) ? abstention(merge(codes.map((k) => byLg.get(k)!))).pct : abstention(a24).pct,
       abst22: a22 ? abstention(a22).pct : null,
       parrains: par,
       ratio: par != null && v24 ? par / v24 : null,
@@ -307,7 +311,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
     }
     if (u.abst24 != null) {
       const d = u.abst24 - depAbst24;
-      if (d >= 3) raisons.push(`${B("Abstention nettement plus élevée")} que dans le département (${pct(u.abst24)} contre ${pct(depAbst24)} aux européennes) : marge de progression chez les abstentionnistes.`);
+      if (d >= 3) raisons.push(`${B("Abstention nettement plus élevée")} que dans le département (${pct(u.abst24)} contre ${pct(depAbst24)} aux ${abstLabel}) : marge de progression chez les abstentionnistes.`);
       else if (d <= -3) raisons.push(`Abstention plus faible que dans le département (${pct(u.abst24)}).`);
     }
     if (u.ratio != null && depRatio) {
@@ -334,7 +338,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       { key: "pop", label: "Population", align: "right" },
       { key: "lfi", label: "LFI E24 (% ins.)", align: "right" },
       { key: "surperf", label: "Écart aux comparables (pts)", align: "right" },
-      { key: "abst", label: "Abstention E24", align: "right" },
+      { key: "abst", label: abstLabel === "législatives 2024" ? "Abstention L24" : "Abstention E24", align: "right" },
       ...(hasParrains ? [{ key: "ratio", label: "Parrains / 100 voix", align: "right" as const }] : []),
       ...(c.interne.files.length ? [{ key: "groupe", label: "Groupe d'action" }] : []),
       ...(c.municipalDep ? [{ key: "mairie", label: "Mairie (2026)" }] : []),
@@ -354,7 +358,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
     })),
     highlight: ranked.slice(0, 20).map((u, i) => (chosen.includes(u) ? i : -1)).filter((i) => i >= 0),
     sources: [...src, ...(hasParrains || c.interne.files.length ? [interneSrc] : []), ...(c.municipalDep ? [c.municipalDep.source] : [])],
-    note: `${bigCities.length ? `Les deux communes les plus peuplées (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) restent hors ciblage. ` : ""}${partagees.length ? `Communes partagées avec une autre circonscription (résultats de toute la commune) : ${partagees.map((x) => `${x.nom} (${Math.round(100 * (shares!.get(x.code) ?? 0))} % de sa surface)`).join(", ")}. ` : ""}Score : moyenne pondérée de scores z calculés entre les territoires — surperformance LFI par rapport aux communes de taille comparable (${Math.round(w.o * 100)} %), écart d'abstention au département (${Math.round(w.a * 100)} %)${hasParrains ? `, ratio parrains / voix (${Math.round(w.r * 100)} %)` : ""}, volume de voix LFI (${Math.round(w.v * 100)} %) ; −1 pour les territoires déjà couverts par un groupe de 20 membres ou plus. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
+    note: `${bigCities.length ? `Les deux communes les plus peuplées (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) restent hors ciblage. ` : ""}${partagees.length ? `Communes partagées avec une autre circonscription (résultats de toute la commune) : ${partagees.map((x) => `${x.nom} (${Math.round(100 * (shares!.get(x.code) ?? 0))} % de sa surface)`).join(", ")}. ` : ""}Score : moyenne pondérée de scores z calculés entre les territoires — surperformance LFI par rapport aux communes de taille comparable (${Math.round(w.o * 100)} %), écart d'abstention au département aux ${abstLabel} (${Math.round(w.a * 100)} %)${hasParrains ? `, ratio parrains / voix (${Math.round(w.r * 100)} %)` : ""}, volume de voix LFI (${Math.round(w.v * 100)} %) ; −1 pour les territoires déjà couverts par un groupe de 20 membres ou plus. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
   });
 
   // Carte des cibles.

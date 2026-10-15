@@ -93,6 +93,8 @@ describe("utilitaires", () => {
     expect(pickResource([{ id: "d", title: "resultats-par-niveau-burvot-t1-france-entiere.txt", format: "txt" }], "bureau")?.id).toBe("d");
   });
   it("traduit les horaires OpenStreetMap", () => {
-    expect(frenchHours("We,Sa 08:00-13:00")).toBe("mer., sam. 08:00-13:00");
+    expect(frenchHours("We,Sa 08:00-13:00")).toBe("mercredi et samedi, 8 h – 13 h");
+    expect(frenchHours("Tu-Sa 08:00-19:00; Mo,Su off")).toBe("du mardi au samedi, 8 h – 19 h");
+    expect(frenchHours("Mo-Fr 08:00-12:00,14:00-18:30; PH off")).toBe("du lundi au vendredi, 8 h – 12 h et 14 h – 18 h 30");
   });
 });

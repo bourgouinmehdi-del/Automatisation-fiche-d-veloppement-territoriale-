@@ -180,7 +180,8 @@ export interface MapLayer {
    */
   style?: { fill?: string; stroke?: string; strokeWidth?: number; dash?: string; symbol?: "circle" | "diamond" | "dot"; size?: number };
   /** Étiquettes : « callout » (texte décalé et trait de rappel), « caps » (capitales grises au centre). */
-  labelMode?: "callout" | "caps";
+  /** « number » : pastille numérotée sur la carte, nom et détail dans la liste sous la carte. */
+  labelMode?: "callout" | "caps" | "number";
   sublabelProperty?: string;
   labelColor?: string;
   /** Entrée de la légende encadrée (cartes « affiche »). */

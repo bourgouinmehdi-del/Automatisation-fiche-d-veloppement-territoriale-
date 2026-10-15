@@ -146,3 +146,9 @@ Le test d'intégration a permis de corriger un défaut réel (la règle « sans 
 - Une seule règle pour comparer le vote au département (`voteCompare`) : la synthèse et le « En bref » ne peuvent plus se contredire. L'écart doit être net en rapport et en points (6 % contre 4 % : « un peu plus » ; 15 % contre 14 % : « autant »).
 - « Un terrain favorable » exige aussi un vote proche du niveau national (au moins 90 % du score national LFI) ; sinon « Un vote insoumis encore faible » avec le score national en repère.
 - Graphique par scrutin en onglets : présidentielle 2017, européennes 2019, présidentielle 2022, européennes 2024 (2017 et 2019 reconstitués à partir des bureaux de vote de la commune). Le PDF garde les européennes 2024.
+
+### Abstention et carte des actions
+
+- Abstention de référence : législatives 2024, 1er tour (participation nationale de 66,7 %, plus représentative que les européennes) pour la synthèse, les chiffres clés, le tableau du vote, le classement et les cartes des bureaux, et le ciblage départemental ; repli sur les européennes 2024 si les législatives manquent ou si les bureaux ne s'apparient pas (±25 % d'inscrits).
+- Carte « Propositions de ciblage » : pastilles numérotées sur la carte et liste « Où agir » sous la carte (groupée par type d'action, détail sur deux lignes) au lieu d'étiquettes qui se chevauchaient ; horaires OpenStreetMap en clair (« du mardi au samedi, 8 h – 19 h »).
+- Plan d'action : colonnes « Pourquoi » (chiffre ou public visé) et « Quand » (créneau adapté : samedi matin et début de soirée pour le porte-à-porte, heure de pointe mesurée pour la gare, sorties de cours, ouverture des services publics).

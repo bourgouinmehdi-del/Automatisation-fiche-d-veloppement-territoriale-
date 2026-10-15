@@ -262,11 +262,12 @@ describe("chaîne de génération (API simulées)", () => {
     expect(m.poster?.kicker).toBe("Compiègne");
     const ids = m.layers.map((l) => l.id);
     expect(ids).toEqual(expect.arrayContaining(["voisins", "commune", "voies", "fer", "limite", "bv_prio", "qpv", "residences", "tractage"]));
-    expect(m.layers.find((l) => l.id === "residences")!.data.features[0].properties).toMatchObject({ nom: "Roberval", sub: "Crous, 385 logements" });
+    expect(m.layers.find((l) => l.id === "residences")!.data.features[0].properties).toMatchObject({ nom: "Roberval" });
+    expect(m.layers.find((l) => l.id === "residences")!.data.features[0].properties?.sub).toMatch(/^Résidence du Crous · 385 logements/);
     expect(m.layers.find((l) => l.id === "tractage")!.data.features.some((f) => /voyageurs\/jour/.test(f.properties?.sub))).toBe(true);
     const { mapSvg } = await import("@/lib/render/svg");
     const svg = mapSvg(m);
-    for (const t of ["COMPIÈGNE", "Propositions de ciblage : porte-à-porte et tractage", "Roberval", "#F91616", "Lieu de tractage (marché, gare)", "Limite communale"]) expect(svg).toContain(t);
+    for (const t of ["COMPIÈGNE", "Propositions de ciblage : porte-à-porte et tractage", "Roberval", "#F91616", "Tractage : marché, gare", "OÙ AGIR", "Limite communale"]) expect(svg).toContain(t);
     const fiche = report.sections[0];
     const iAct = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Actions recommandées");
     expect(fiche.blocks.slice(iAct).some((b) => b.type === "map" && b.mapId === "lfi_affiche")).toBe(true);
@@ -275,7 +276,10 @@ describe("chaîne de génération (API simulées)", () => {
   it("résidences Crous et foyers de jeunes travailleurs : porte-à-porte systématique et annexe", async () => {
     const plan = report.tables.find((t) => t.id === "lfi_plan")!;
     const porte = plan.rows.filter((r) => r.action === "Porte-à-porte").map((r) => String(r.ou));
-    expect(porte).toEqual(expect.arrayContaining(["Roberval (résidence du Crous)", "Picardie (foyer de jeunes travailleurs)"]));
+    expect(porte.some((o) => o.startsWith("Roberval (résidence du Crous), 1 Rue Bachaga Boualem"))).toBe(true);
+    expect(porte.some((o) => o.startsWith("Picardie (foyer de jeunes travailleurs)"))).toBe(true);
+    expect(plan.columns.map((c) => c.label)).toEqual(["Action", "Où", "Pourquoi", "Quand", "Bureau"]);
+    for (const r of plan.rows) expect(String(r.quand)).not.toBe("");
     const annexe = report.tables.find((t) => t.id === "lfi_residences")!;
     expect(annexe.columns.map((c) => c.label)).toEqual(["Nom", "Type", "Gestionnaire", "Nombre de logements", "Adresse"]);
     const logements = annexe.rows.map((r) => Number(String(r.logements).replace(/\D/g, "")) || -1);
@@ -333,7 +337,7 @@ describe("chaîne de génération (API simulées)", () => {
     const hl = m.layers.find((l) => l.id === "hlm")!;
     // Les deux résidences voisines (moins de 120 m) forment un seul ensemble de 500 logements.
     expect(hl.data.features).toHaveLength(1);
-    expect(hl.data.features[0].properties?.sub).toBe("~500 logements");
+    expect(hl.data.features[0].properties?.sub).toBe("environ 500 logements sociaux");
     expect(m.layers.find((l) => l.id === "qpv")?.style?.fill).toBe("none");
     const fiche = report.sections[0];
     expect(fiche.blocks.some((b) => b.type === "paragraph" && /en commençant par les résidences HLM Les Musiciens \(320 logements\)/.test(b.text))).toBe(true);

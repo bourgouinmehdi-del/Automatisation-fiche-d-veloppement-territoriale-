@@ -1309,7 +1309,7 @@ export async function collect(
     const ref = c.bureaux.find((b) => b.election.id === "EU24") ?? c.bureaux.find((b) => b.election.id === "PR22T1");
     const sec = c.bureaux.find((b) => b.election.id === "PR22T1" && b !== ref);
     if (ref && c.bvGeo?.features.length) {
-      const prio = new Set(rankBureaux(ref.results, sec?.results ?? null, new Map()).filter((b) => b.priorite === 1).map((b) => b.bv));
+      const prio = new Set(rankBureaux(ref.results, sec?.results ?? null, new Map(), c.bureaux.find((b) => b.election.id === "LG24T1")?.results).filter((b) => b.priorite === 1).map((b) => b.bv));
       for (const f of c.bvGeo.features) if (prio.has(String(f.properties?.bv))) corners(f);
     }
     for (const q of c.quartiers?.qpv ?? []) if (q.geometry) corners(q.geometry);

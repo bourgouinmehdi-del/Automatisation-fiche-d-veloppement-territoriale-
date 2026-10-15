@@ -77,6 +77,16 @@ function swatch(kind: string, x: number, y: number, l: MapLayer) {
   return symbolSvg(kind, x + 12, y, 12, fill, stroke);
 }
 
+/** Pastille numérotée (cercle, ou losange pour les lieux de tractage). */
+function badgeSvg(shape: string, x: number, y: number, r: number, color: string, n: number) {
+  const fs = n >= 10 ? r * 1.05 : r * 1.25;
+  const sh =
+    shape === "diamond"
+      ? `<path d="M${x.toFixed(1)} ${(y - r * 1.3).toFixed(1)}L${(x + r * 1.3).toFixed(1)} ${y.toFixed(1)}L${x.toFixed(1)} ${(y + r * 1.3).toFixed(1)}L${(x - r * 1.3).toFixed(1)} ${y.toFixed(1)}Z" fill="${color}" stroke="#fff" stroke-width="1.6"/>`
+      : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${color}" stroke="#fff" stroke-width="1.6"/>`;
+  return `${sh}<text x="${x.toFixed(1)}" y="${(y + fs * 0.36).toFixed(1)}" text-anchor="middle" font-size="${fs.toFixed(1)}" font-weight="800" fill="#fff" ${FONT}>${n}</text>`;
+}
+
 /** Barre d'échelle : longueur « ronde » d'environ 110 px. */
 function scaleBar(proj: GeoProjection, x: number, y: number) {
   const a = proj.invert!([x, y]);
@@ -127,6 +137,7 @@ export function posterMapSvg(map: MapSpec, width = 900): string {
       const dash = (p._dash as string) ?? st.dash;
       if (l.kind === "points") {
         if (st.symbol === undefined && !l.legendItem) continue;
+        if (l.labelMode === "number") continue; // pastille numérotée, dessinée avec les étiquettes
         const xy = f.geometry?.type === "Point" ? proj(f.geometry.coordinates as [number, number]) : null;
         if (xy) body += symbolSvg(st.symbol ?? "circle", +xy[0].toFixed(1), +xy[1].toFixed(1), st.size ?? 14, st.fill ?? l.color ?? POSTER.jaune, st.stroke ?? POSTER.charbon);
         continue;
@@ -222,6 +233,40 @@ export function posterMapSvg(map: MapSpec, width = 900): string {
     if (c.sub) labels += `<text x="${placed.tx.toFixed(1)}" y="${(placed.ty + 14).toFixed(1)}" text-anchor="middle" font-size="10" fill="${POSTER.charbon}" stroke="#fff" stroke-width="2.5" paint-order="stroke" ${FONT}>${esc(c.sub)}</text>`;
   }
 
+  // Pastilles numérotées : un numéro par lieu, détaillé dans la liste « Où agir » sous la carte.
+  type Num = { n: number; t: string; sub: string; color: string; shape: string; group: string };
+  const nums: Num[] = [];
+  let counter = 0;
+  const badgeBoxes: Box[] = [];
+  for (const l of layers.filter((x) => x.labelMode === "number" && x.labelProperty)) {
+    const color = l.labelColor ?? POSTER.violet;
+    const shape = l.kind === "points" ? (l.style?.symbol ?? "circle") : "circle";
+    for (const f of l.data.features) {
+      const p = (f.properties ?? {}) as Record<string, unknown>;
+      const a = anchorOf(f);
+      const xy0 = a ? proj(a) : null;
+      if (!xy0) continue;
+      const n = ++counter;
+      nums.push({ n, t: String(p[l.labelProperty!] ?? ""), sub: l.sublabelProperty ? String(p[l.sublabelProperty] ?? "") : "", color, shape, group: l.legendItem?.label ?? l.label });
+      // Décalage en spirale si une autre pastille occupe déjà la place, avec trait de rappel.
+      const r = 10.5;
+      let xy: [number, number] = [xy0[0], xy0[1]];
+      for (let k = 0; k < 24; k++) {
+        const ang = k * 0.9;
+        const d = k === 0 ? 0 : 14 + k * 3;
+        const cand: [number, number] = [xy0[0] + Math.cos(ang) * d, xy0[1] + Math.sin(ang) * d];
+        const b = { x: cand[0] - r - 1, y: cand[1] - r - 1, w: 2 * r + 2, h: 2 * r + 2 };
+        if (!badgeBoxes.some((x) => overlap(x, b))) {
+          xy = cand;
+          badgeBoxes.push(b);
+          break;
+        }
+      }
+      if (xy[0] !== xy0[0] || xy[1] !== xy0[1]) labels += `<line x1="${xy0[0].toFixed(1)}" y1="${xy0[1].toFixed(1)}" x2="${xy[0].toFixed(1)}" y2="${xy[1].toFixed(1)}" stroke="${POSTER.charbon}" stroke-width="1"/><circle cx="${xy0[0].toFixed(1)}" cy="${xy0[1].toFixed(1)}" r="2.2" fill="${POSTER.charbon}"/>`;
+      labels += badgeSvg(shape, xy[0], xy[1], r, color, n);
+    }
+  }
+
   // Légende encadrée (deux colonnes).
   const items = layers.filter((l) => l.legendItem).map((l) => ({ l, it: l.legendItem! }));
   // Trois colonnes si les libellés y tiennent (≈ 6,2 px par caractère à 11,5 px), sinon deux, sinon une.
@@ -240,7 +285,67 @@ export function posterMapSvg(map: MapSpec, width = 900): string {
       legend += swatch(it.swatch, x, y, l) + `<text x="${x + 34}" y="${y + 4}" font-size="11.5" fill="${POSTER.charbon}" ${FONT}>${esc(it.label)}</text>`;
     });
   }
-  const footY = legY + legH + 18;
+  // Liste « Où agir » : lieux numérotés, regroupés par type d'action, sur deux colonnes.
+  let key = "";
+  let keyH = 0;
+  if (nums.length) {
+    const keyY = legY + legH + (legH ? 14 : 0);
+    const cols2 = nums.length > 5 ? 2 : 1;
+    const colW = frameW / cols2;
+    const maxChars = Math.floor((colW - 46) / 6.3);
+    const cut = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1).replace(/[\s,;—-]+\S*$/, "")}…` : t);
+    type Line = { kind: "group"; text: string } | { kind: "item"; it: Num };
+    const lines: Line[] = [];
+    for (const it of nums) {
+      const last = [...lines].reverse().find((x) => x.kind === "group") as { kind: "group"; text: string } | undefined;
+      if (!last || last.text !== it.group) lines.push({ kind: "group", text: it.group });
+      lines.push({ kind: "item", it });
+    }
+    // Détail sur deux lignes au plus (coupure aux espaces) plutôt que tronqué.
+    const subMax = Math.floor((colW - 46) / 5.7);
+    const wrap = (t: string): string[] => {
+      if (t.length <= subMax) return [t];
+      const cutAt = t.lastIndexOf(" ", subMax);
+      const a = t.slice(0, cutAt > subMax * 0.5 ? cutAt : subMax).trim();
+      return [a, cut(t.slice(a.length).trim(), subMax)];
+    };
+    const hOf = (x: Line) => (x.kind === "group" ? 24 : x.it.sub ? 22 + 13 * wrap(x.it.sub).length : 22);
+    const total = lines.reduce((s2, x) => s2 + hOf(x), 0);
+    // Coupure de colonne au plus près de la moitié, jamais juste après un intitulé de groupe.
+    let acc = 0;
+    let split = lines.length;
+    if (cols2 === 2)
+      for (let i = 0; i < lines.length; i++) {
+        acc += hOf(lines[i]);
+        if (acc >= total / 2 && lines[i].kind === "item") {
+          split = i + 1;
+          break;
+        }
+      }
+    const colLines = cols2 === 2 ? [lines.slice(0, split), lines.slice(split)] : [lines];
+    const colH = colLines.map((cl) => cl.reduce((s2, x) => s2 + hOf(x), 0));
+    keyH = 40 + Math.max(...colH);
+    key += `<rect x="${fx}" y="${keyY}" width="${frameW}" height="${keyH}" fill="#fff" stroke="${POSTER.charbon}" stroke-width="1.2"/>`;
+    key += `<text x="${fx + 18}" y="${keyY + 24}" font-size="14" font-weight="800" fill="${POSTER.violet}" ${TITLE_FONT}>OÙ AGIR</text>`;
+    colLines.forEach((cl, ci) => {
+      let y = keyY + 44;
+      const x = fx + 18 + ci * colW;
+      for (const ln of cl) {
+        if (ln.kind === "group") {
+          key += `<text x="${x}" y="${y + 6}" font-size="10" font-weight="700" letter-spacing="0.5" fill="#6f6b62" ${FONT}>${esc(ln.text.toUpperCase())}</text>`;
+          y += 24;
+          continue;
+        }
+        const it = ln.it;
+        key += badgeSvg(it.shape, x + 10, y, 9.5, it.color, it.n);
+        key += `<text x="${x + 28}" y="${y + 4}" font-size="11.5" font-weight="700" fill="${POSTER.charbon}" ${FONT}>${esc(cut(it.t, maxChars))}</text>`;
+        if (it.sub) wrap(it.sub).forEach((ln2, k) => (key += `<text x="${x + 28}" y="${y + 18 + 13 * k}" font-size="10.5" fill="#52514e" ${FONT}>${esc(ln2)}</text>`));
+        y += hOf(ln);
+      }
+    });
+    keyH += legH ? 14 : 0;
+  }
+  const footY = legY + legH + keyH + 18;
   const height = footY + 10;
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${esc(`${P.kicker} — ${P.title}`)}">`;
   s += `<rect width="100%" height="100%" fill="#fff"/>`;
@@ -251,7 +356,7 @@ export function posterMapSvg(map: MapSpec, width = 900): string {
   s += `<defs><clipPath id="${clip}"><rect x="${fx}" y="${fy}" width="${frameW}" height="${frameH}"/></clipPath></defs>`;
   s += `<g clip-path="url(#${clip})"><rect x="${fx}" y="${fy}" width="${frameW}" height="${frameH}" fill="${POSTER.hors}"/>${body}${labels}${P.scaleBar ? scaleBar(proj, fx + 40, fy + frameH - 40) : ""}</g>`;
   s += `<rect x="${fx}" y="${fy}" width="${frameW}" height="${frameH}" fill="none" stroke="${POSTER.charbon}" stroke-width="1.5"/>`;
-  s += legend;
+  s += legend + key;
   if (P.footnote) s += `<text x="${pad}" y="${footY}" font-size="10" fill="#52514e" ${FONT}>${esc(P.footnote)}</text>`;
   s += `<text x="${width - pad}" y="${footY}" text-anchor="end" font-size="10" fill="#52514e" ${FONT}>${esc(P.source)}</text>`;
   return s + "</svg>";

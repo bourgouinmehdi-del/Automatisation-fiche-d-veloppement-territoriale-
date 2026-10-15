@@ -186,6 +186,8 @@ export interface BvRow {
   lfi2PctExp: number | null;
   lfi2Voix: number | null;
   abst2Pct: number | null;
+  /** Scrutin de l'abstention (législatives 2024 si les bureaux s'apparient, sinon le scrutin principal). */
+  abstSrc?: string;
   potentiel: number;
   type: BvType;
   /** Profil lisible : vote LFI en tiers (fort / moyen / faible) et abstention par rapport à la médiane. */
@@ -205,14 +207,19 @@ function profilOf(lfi: number, abst: number, t1: number, t2: number, mA: number)
  * les effectifs d'inscrits restent proches (±25 %), faute de quoi le découpage
  * est présumé avoir changé.
  */
-export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, labels: Map<string, string>): BvRow[] {
+export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, labels: Map<string, string>, abstRef?: BureauResult[] | null): BvRow[] {
   const eid = ref[0]?.election.id;
   const sid = second?.[0]?.election.id;
+  // Abstention d'un autre scrutin (législatives 2024, forte participation) si chaque bureau
+  // s'y retrouve avec un nombre d'inscrits comparable (±25 %) ; sinon celle du scrutin principal,
+  // pour ne pas mélanger deux scrutins dans le classement.
+  const match = (b: BureauResult) => abstRef?.find((x) => x.bv === b.bv && b.inscrits && Math.abs(x.inscrits - b.inscrits) / b.inscrits <= 0.25);
+  const useAlt = !!abstRef?.length && ref.every((b) => match(b));
   const all = ref
     .map((b) => {
       const s = score(eid, b, "lfi");
       if (!s) return null;
-      const ab = abstention(b);
+      const ab = useAlt ? abstention(match(b)!) : abstention(b);
       const sb = second?.find((x) => x.bv === b.bv);
       const same = sb && Math.abs(sb.inscrits - b.inscrits) / b.inscrits <= 0.25;
       const s2 = same && sid ? score(sid, sb!, "lfi") : null;
@@ -229,6 +236,7 @@ export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, 
         lfi2PctExp: s2?.pctExprimes ?? null,
         lfi2Voix: s2?.voix ?? null,
         abst2Pct: same ? abstention(sb!).pct : null,
+        abstSrc: (useAlt ? abstRef![0].election.id : eid) as string,
       };
     })
     .filter((x): x is NonNullable<typeof x> => !!x);
@@ -292,6 +300,37 @@ export function familyPerformance(electionId: string, com: Agg, dep: Agg) {
 /** Libellés OSM d'horaires traduits (ex. « We,Sa 08:00-13:00 » → « mer., sam. 08:00-13:00 »). */
 export function frenchHours(oh: string | null | undefined): string {
   if (!oh) return "";
+  const raw = oh.trim();
+  if (/^24\/7$/.test(raw)) return "tous les jours, 24 h/24";
+  if (/^sunrise-sunset$/.test(raw)) return "du lever au coucher du soleil";
+  const D = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+  const NAMES = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+  const hour = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return m ? `${h} h ${String(m).padStart(2, "0")}` : `${h} h`;
+  };
+  // Règles simples « Tu-Sa 08:00-19:00; Mo,Su off » → « du mardi au samedi, 8 h – 19 h ».
+  const parts: string[] = [];
+  for (const rule of raw.split(/\s*;\s*/).filter(Boolean)) {
+    if (/^PH\s+(off|closed)$/.test(rule)) continue;
+    const m = rule.match(/^((?:(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?,?)+)\s+(off|closed|(?:\d{1,2}:\d{2}-\d{1,2}:\d{2},?\s*)+)$/);
+    if (!m) return frenchHoursRaw(raw);
+    if (/off|closed/.test(m[2])) continue;
+    const days = m[1].split(",").filter(Boolean).map((d) => {
+      const [a, b] = d.split("-");
+      const i = D.indexOf(a);
+      if (!b) return NAMES[i];
+      const j = D.indexOf(b);
+      return j - i === 1 ? `${NAMES[i]} et ${NAMES[j]}` : j === 6 && i === 0 ? "tous les jours" : `du ${NAMES[i]} au ${NAMES[j]}`;
+    });
+    const times = m[2].split(",").map((x) => x.trim()).filter(Boolean).map((x) => x.split("-").map(hour).join(" – "));
+    const dayTxt = days.length > 1 ? `${days.slice(0, -1).join(", ")} et ${days[days.length - 1]}` : days[0];
+    parts.push(`${dayTxt}, ${times.join(" et ")}`);
+  }
+  return parts.join(" ; ");
+}
+
+function frenchHoursRaw(oh: string): string {
   const days: Record<string, string> = { Mo: "lun.", Tu: "mar.", We: "mer.", Th: "jeu.", Fr: "ven.", Sa: "sam.", Su: "dim.", PH: "jours fériés" };
   return oh
     .replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su|PH)\b/g, (d) => days[d])

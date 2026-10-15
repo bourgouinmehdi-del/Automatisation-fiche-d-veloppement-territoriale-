@@ -132,15 +132,18 @@ export function communePoster(
         prioPolys.map((p) => {
           const bv = String(p.properties?.bv);
           const r = byBv.get(bv)!;
-          return { type: "Feature", geometry: p.geometry, properties: { nom: short(`Bureau ${(o.dv ?? String)(bv)}${o.labels.has(bv) ? ` — ${o.labels.get(bv)}` : ""}`, 40), sub: `${fmtNumber(r.abstN)} inscrits n'ont pas voté` } };
+          return { type: "Feature", geometry: p.geometry, properties: {
+              nom: `Bureau ${(o.dv ?? String)(bv)}${o.labels.has(bv) ? ` — ${o.labels.get(bv)}` : ""}`,
+              sub: `${fmtNumber(r.abstN)} inscrits n'ont pas voté${r.abstSrc === "LG24T1" ? " aux législatives 2024" : ""} · LFI ${fmtNumber(Math.round(r.lfiPctExp))} % aux européennes`,
+            } };
         }),
       ),
       style: { fill: "#fbe3a2", stroke: POSTER.jauneTexte, strokeWidth: 1.4 },
-      labelMode: "callout",
+      labelMode: "number",
       labelProperty: "nom",
       sublabelProperty: "sub",
       labelColor: POSTER.jauneTexte,
-      legendItem: { label: "Bureau de vote prioritaire (porte-à-porte)", swatch: "fill" },
+      legendItem: { label: "Porte-à-porte : bureau de vote prioritaire", swatch: "fill" },
       visible: true,
       source: c.bvGeo!.source,
     });
@@ -178,14 +181,14 @@ export function communePoster(
         ens
           .map((e) => ({ e, g: blob(e) }))
           .filter((x) => x.g)
-          .map(({ e, g }) => ({ type: "Feature" as const, geometry: g!, properties: { nom: short(e.nom), sub: `~${fmtNumber(Math.round(e.logements / 10) * 10)} logements` } })),
+          .map(({ e, g }) => ({ type: "Feature" as const, geometry: g!, properties: { nom: /^\d|^(rue|avenue|allée|square|place|boulevard|chemin|impasse|cours|quai|bd)\b/i.test(e.nom) ? `Logements sociaux, ${e.nom}` : `Résidence ${e.nom.replace(/^r[ée]sidence\s+/i, "")}`, sub: `environ ${fmtNumber(Math.round(e.logements / 10) * 10)} logements sociaux` } })),
       ),
       style: { fill: POSTER.jaune, stroke: POSTER.charbon, strokeWidth: 1 },
-      labelMode: "callout",
+      labelMode: "number",
       labelProperty: "nom",
       sublabelProperty: "sub",
-      labelColor: POSTER.jauneTexte,
-      legendItem: { label: "Résidences HLM (porte-à-porte)", swatch: "fill" },
+      labelColor: POSTER.charbon,
+      legendItem: { label: "Porte-à-porte : logements sociaux", swatch: "fill" },
       visible: true,
       source: c.rpls!.source,
     });
@@ -203,10 +206,10 @@ export function communePoster(
         })),
       ),
       style: { fill: POSTER.jaune, stroke: POSTER.charbon, strokeWidth: 1 },
-      labelMode: "callout",
+      labelMode: "number",
       labelProperty: "nom",
       sublabelProperty: "sub",
-      labelColor: POSTER.jauneTexte,
+      labelColor: POSTER.charbon,
       legendItem: { label: "Quartier prioritaire (porte-à-porte)", swatch: "fill" },
       visible: true,
       source: c.quartiers!.sources[0],
@@ -219,23 +222,23 @@ export function communePoster(
       data: fc(
         res.map((r) =>
           turf.point([r.lon, r.lat], {
-            nom: short(r.nom),
-            sub: [/foyer de jeunes/i.test(r.categorie) ? "foyer de jeunes travailleurs" : "Crous", r.logements ? `${fmtNumber(r.logements)} logements` : ""].filter(Boolean).join(", "),
+            nom: r.nom,
+            sub: [/foyer de jeunes/i.test(r.categorie) ? "Foyer de jeunes travailleurs" : "Résidence du Crous", r.logements ? `${fmtNumber(r.logements)} logements` : "", r.adresse].filter(Boolean).join(" · "),
           }),
         ),
       ),
       style: { fill: RESIDENCE_RED, stroke: "#ffffff", symbol: "circle", size: 15 },
-      labelMode: "callout",
+      labelMode: "number",
       labelProperty: "nom",
       sublabelProperty: "sub",
       labelColor: RESIDENCE_RED,
-      legendItem: { label: "Résidence Crous / foyer jeunes travailleurs", swatch: "circle" },
+      legendItem: { label: "Porte-à-porte : résidence Crous, foyer", swatch: "circle" },
       visible: true,
       source: c.residences!.source,
     });
   const tract = [
-    ...markets.map((m) => ({ nom: short(m.nom), sub: /à (compléter|vérifier)/.test(m.infos) || !m.infos ? "jours et horaires à vérifier" : short(m.infos, 40), lon: m.lon!, lat: m.lat! })),
-    ...gares.map((g) => ({ nom: gareNom(g.nom), sub: g.voyageurs ? perDay(g.voyageurs) : "", lon: g.lon!, lat: g.lat! })),
+    ...markets.map((m) => ({ nom: /^march[ée]$/i.test(m.nom.trim()) ? "Marché" : m.nom, sub: /à (compléter|vérifier)/.test(m.infos) || !m.infos ? "Marché · jours et horaires à confirmer en mairie" : `Marché · ${m.infos}`, lon: m.lon!, lat: m.lat! })),
+    ...gares.map((g) => ({ nom: gareNom(g.nom), sub: g.voyageurs ? `${perDay(g.voyageurs)}, surtout aux heures de pointe` : "Aux heures de pointe", lon: g.lon!, lat: g.lat! })),
   ].filter((t) => t.lon >= bbox[0] && t.lon <= bbox[2] && t.lat >= bbox[1] && t.lat <= bbox[3]);
   if (tract.length)
     layers.push({
@@ -243,12 +246,12 @@ export function communePoster(
       label: "Lieux de tractage",
       kind: "points",
       data: fc(tract.map((t) => turf.point([t.lon, t.lat], { nom: t.nom, sub: t.sub }))),
-      style: { fill: POSTER.jaune, stroke: POSTER.charbon, symbol: "diamond", size: 17 },
-      labelMode: "callout",
+      style: { fill: POSTER.violet, stroke: "#ffffff", symbol: "diamond", size: 17 },
+      labelMode: "number",
       labelProperty: "nom",
       sublabelProperty: "sub",
-      labelColor: POSTER.jauneTexte,
-      legendItem: { label: "Lieu de tractage (marché, gare)", swatch: "diamond" },
+      labelColor: POSTER.violet,
+      legendItem: { label: "Tractage : marché, gare", swatch: "diamond" },
       visible: true,
       source: c.equipments?.source ?? c.stations?.source ?? geoSrc,
     });
