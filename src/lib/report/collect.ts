@@ -29,6 +29,7 @@ import { InternalData, loadInternalData } from "../collectors/interne";
 import { loadStmt, type StmtSeries } from "../collectors/emploi";
 import { collectCirconscriptions, collectDepartementsVoisins, collectFondOsm, collectResidences, fitAspect, type Bbox, type Circo, type FondOsm, type Residence } from "../collectors/carto";
 import { rankBureaux } from "../analysis/political";
+import { plmInfo } from "../collectors/plm";
 import { collectIris, collectQpv, Quartier } from "../collectors/quartiers";
 import {
   collectMunicipales,
@@ -416,6 +417,8 @@ export async function collect(
             surface?: number;
           };
           if (p.code === commune.code || !f.geometry) continue;
+          // Arrondissement : la ville qui le contient n'est pas une « commune limitrophe ».
+          if (plmInfo(commune.code)?.parent === p.code) continue;
           const fb = turf.bbox(f);
           if (fb[0] > bb[2] || fb[2] < bb[0] || fb[1] > bb[3] || fb[3] < bb[1])
             continue;
@@ -446,6 +449,7 @@ export async function collect(
           .filter(
             (x) =>
               x.code !== commune.code &&
+              x.code !== plmInfo(commune.code)?.parent &&
               (x.population ?? 0) >= 20000 &&
               x.centre,
           )
@@ -562,13 +566,23 @@ export async function collect(
       .map((x) => ({ ...x, densite: densityByCode.get(x.code) ?? null }));
     const targetDens = densityByCode.get(commune.code) ?? null;
     let comps = comparableCommunes(candidates, commune, 0.3, 40);
+    // Arrondissement : comparé aux autres arrondissements de Paris, Lyon et Marseille
+    // (une grande ville entière n'a ni la densité ni le profil d'un arrondissement).
+    const plmC = plmInfo(commune.code);
+    if (plmC) {
+      const arrs = referentiel()
+        .communes.filter((x) => x.type === "arrondissement-municipal" && x.code !== commune.code)
+        .map((x) => ({ code: x.code, nom: x.nom, population: x.population ?? null, departement: x.departement ?? "", region: x.region ?? "", densite: densityByCode.get(x.code) ?? null }));
+      comps = comparableCommunes(arrs, commune, 0.5, 8);
+      c.comparablesScope = "arrondissements de Paris, Lyon et Marseille";
+    }
     if (targetDens != null)
       comps = comps.filter(
         (x) =>
           x.densite == null ||
           (x.densite >= targetDens * 0.5 && x.densite <= targetDens * 2),
       );
-    if (comps.length < 5) {
+    if (comps.length < 5 && !plmC) {
       // Élargissement national : France métropolitaine pour une commune métropolitaine,
       // outre-mer pour une commune d'outre-mer (contextes non comparables).
       const dom = (code: string) => code.startsWith("97");
@@ -816,7 +830,26 @@ export async function collect(
         "qpv",
         "quartiers:qpv",
         async (http) => {
-          const q = await collectQpv(http, commune.code);
+          let q = await collectQpv(http, commune.code);
+          // Arrondissement de Paris, Lyon ou Marseille : QPV parfois référencés au code de la
+          // ville ; on garde ceux qui recoupent le contour de l'arrondissement.
+          const plmQ = plmInfo(commune.code);
+          if (plmQ && !q.quartiers.length && commune.contour) {
+            const city = await collectQpv(http, plmQ.parent);
+            const arr = turf.feature(commune.contour as GeoJSON.Polygon);
+            const inArr = city.quartiers.filter((x) => {
+              try {
+                if (!x.geometry) return false;
+                const g = turf.feature(x.geometry as GeoJSON.Polygon);
+                if (!turf.booleanIntersects(arr, g)) return false;
+                const inter = turf.intersect(turf.featureCollection([arr, g]) as never) as GeoJSON.Feature<GeoJSON.Polygon> | null;
+                return !!inter && turf.area(inter) > 0.3 * turf.area(g);
+              } catch {
+                return false;
+              }
+            });
+            q = { ...city, quartiers: inArr };
+          }
           quartiers.qpv = q.quartiers;
           http.notes.push(...q.notes);
           if (q.quartiers.length) {

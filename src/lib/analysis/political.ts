@@ -138,18 +138,27 @@ export function prettyBvLabel(raw: string): string {
     [/\bmat\b\.?/gi, "maternelle"],
     [/\bprim\b\.?/gi, "primaire"],
     [/\belem\b\.?/gi, "élémentaire"],
+    [/\belementaire\b/gi, "élémentaire"],
+    [/\bmaternel\b/gi, "maternelle"],
+    [/\bhotel de ville\b/gi, "hôtel de ville"],
+    [/\bcentre social\b/gi, "centre social"],
+    [/\bcite\b/gi, "cité"],
+    [/\bsalle polyvalente\b/gi, "salle polyvalente"],
     [/\bgr(p)?\b\.?\s+scol(aire)?\b\.?/gi, "groupe scolaire"],
     [/\bscol\b\.?/gi, "scolaire"],
+    [/\bsco\b\.?/gi, "scolaire"],
+    [/\bbat\b\.?(?=\s)/gi, "bât."],
     [/\bbibiliotheque|bibliotheque\b/gi, "bibliothèque"],
     [/\bcollege\b/gi, "collège"],
     [/\blycee\b/gi, "lycée"],
     [/\bmairie\b/gi, "mairie"],
     [/\bgymnase\b/gi, "gymnase"],
   ];
-  let s = raw.trim().replace(/\s+/g, " ");
+  // Numéro du bureau répété en tête du libellé (« 22 école… », « BV 3 - … »).
+  let s = raw.trim().replace(/\s+/g, " ").replace(/^(bv|bureau( de vote)?)?\s*n?°?\s*\d{1,4}\s*[-–:.]?\s+(?=\D)/i, "");
   for (const [re, rep] of abbr) s = s.replace(re, rep);
   const small = new Set(["de", "du", "des", "la", "le", "les", "l", "d", "et", "à", "au", "aux", "sur", "en"]);
-  const lowerWords = new Set(["école", "maternelle", "primaire", "élémentaire", "groupe", "scolaire", "bibliothèque", "collège", "lycée", "salle", "salles", "mairie", "gymnase", "centre", "espace", "maison", "rencontres"]);
+  const lowerWords = new Set(["école", "maternelle", "primaire", "élémentaire", "groupe", "scolaire", "bibliothèque", "collège", "lycée", "salle", "salles", "mairie", "gymnase", "centre", "espace", "maison", "rencontres", "professionnel", "polyvalente", "social", "quartier", "hôtel", "ville", "médiathèque", "bât."]);
   s = s
     .split(" ")
     .map((w, i) => {
@@ -186,7 +195,7 @@ export interface BvRow {
 
 /** Profil d'un bureau : tiers de la part LFI des exprimés, abstention au-dessus ou en dessous de la médiane. */
 function profilOf(lfi: number, abst: number, t1: number, t2: number, mA: number) {
-  const l = lfi >= t2 ? "LFI fort" : lfi > t1 ? "LFI moyen" : "LFI faible";
+  const l = lfi >= t2 ? "LFI fort" : lfi > t1 || t1 === -Infinity ? "LFI moyen" : "LFI faible";
   return `${l}, ${abst >= mA ? "abstention forte" : "participation forte"}`;
 }
 
@@ -243,8 +252,10 @@ export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, 
   const mA = median(base.map((b) => b.abstPct))!;
   const sortedL = base.map((b) => b.lfiPctExp).sort((x, y) => x - y);
   const q = (p: number) => sortedL[Math.min(sortedL.length - 1, Math.floor(p * sortedL.length))];
-  const t1 = q(1 / 3);
-  const t2 = q(2 / 3);
+  // Écarts faibles entre bureaux (moins de 4 points) : tiers sans signification.
+  const flat = sortedL[sortedL.length - 1] - sortedL[0] < 4;
+  const t1 = flat ? -Infinity : q(1 / 3);
+  const t2 = flat ? Infinity : q(2 / 3);
   const withPot = base.map((b, i) => {
     const highL = b.lfiPctExp >= mL;
     const highA = b.abstPct >= mA;
@@ -253,9 +264,9 @@ export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, 
   });
   const sorted = [...withPot].sort((a, b) => b.potentiel - a.potentiel);
   const n = sorted.length;
-  // Priorité 1 resserrée (au plus 4 bureaux, un quart des bureaux) pour rester actionnable ;
-  // priorité 2 jusqu'à la moitié des bureaux.
-  const p1 = Math.max(1, Math.min(4, Math.ceil(n / 4)));
+  // Priorité 1 proportionnée à la taille (1 bureau jusqu'à 3, 2 jusqu'à 8, 3 jusqu'à 20,
+  // 4 jusqu'à 40, 5 jusqu'à 70, 6 au-delà) pour rester actionnable ; priorité 2 jusqu'à la moitié.
+  const p1 = n <= 3 ? 1 : n <= 8 ? 2 : n <= 20 ? 3 : n <= 40 ? 4 : n <= 70 ? 5 : 6;
   const p2 = Math.max(p1, Math.ceil(n / 2));
   return [
     ...sorted.map((b, i) => ({ ...b, priorite: (i < p1 ? 1 : i < p2 ? 2 : 3) as 1 | 2 | 3 })),

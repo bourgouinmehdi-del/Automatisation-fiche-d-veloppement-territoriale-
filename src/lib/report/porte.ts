@@ -45,7 +45,7 @@ export function streetsOf(adresses: Adresse[]) {
     .sort((a, b) => b.adresses - a.adresses || a.voie.localeCompare(b.voie, "fr"));
 }
 
-export function buildPorte(c: Collected, ranked: BvRow[], labels: Map<string, string>, placeOf: (bv: string) => string): PorteOutput {
+export function buildPorte(c: Collected, ranked: BvRow[], labels: Map<string, string>, placeOf: (bv: string) => string, dv: (bv: string) => string = (x) => x): PorteOutput {
   const out: PorteOutput = { section: null, tables: [], maps: [] };
   const geo = c.bvGeo;
   const adr = c.adresses;
@@ -68,7 +68,7 @@ export function buildPorte(c: Collected, ranked: BvRow[], labels: Map<string, st
     if (!inside.length) continue;
     const streets = streetsOf(inside);
     const label = labels.get(b.bv);
-    const title = `Bureau ${b.bv}${label ? ` — ${label}` : ""}`;
+    const title = `Bureau ${dv(b.bv)}${label ? ` — ${label}` : ""}`;
     const place = placeOf(b.bv);
     blocks.push({ type: "heading", text: `Porte-à-porte : ${title}` });
     blocks.push({
@@ -88,14 +88,14 @@ export function buildPorte(c: Collected, ranked: BvRow[], labels: Map<string, st
       bbox: [bb[0] - pad, bb[1] - pad, bb[2] + pad, bb[3] + pad],
       layers: [
         { id: "voisins", label: "Autres bureaux", kind: "polygons", data: turf.featureCollection(others) as GeoJSON.FeatureCollection, color: "#ece6d6", visible: true, source: src },
-        { id: "bureau", label: `Bureau ${b.bv}`, kind: "polygons", data: turf.featureCollection([{ ...poly, properties: { ...poly.properties, nom: title } }]) as GeoJSON.FeatureCollection, color: "#c9adff", visible: true, source: src },
+        { id: "bureau", label: `Bureau ${dv(b.bv)}`, kind: "polygons", data: turf.featureCollection([{ ...poly, properties: { ...poly.properties, nom: title } }]) as GeoJSON.FeatureCollection, color: "#c9adff", visible: true, source: src },
         { id: "adresses", label: "Adresses", kind: "points", data: turf.featureCollection(pts) as GeoJSON.FeatureCollection, color: "#4c0297", visible: true, source: adr.source },
         ...(vote.length ? [{ id: "vote", label: "Lieu de vote", kind: "points" as const, data: turf.featureCollection(vote) as GeoJSON.FeatureCollection, color: "#d1271c", visible: true, source: src }] : []),
       ],
       legend: {
         title: "Légende",
         categories: [
-          { label: `Bureau ${b.bv}`, color: "#c9adff" },
+          { label: `Bureau ${dv(b.bv)}`, color: "#c9adff" },
           { label: "Adresse", color: "#4c0297" },
           ...(vote.length ? [{ label: "Lieu de vote", color: "#d1271c" }] : []),
         ],

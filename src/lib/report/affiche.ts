@@ -34,16 +34,30 @@ export function perDay(voyageursAn: number): string {
   return `~${fmtNumber(Math.round(d / mag) * mag)} voyageurs/jour`;
 }
 
+/** « Gare d'Ivry-sur-Seine », « Gare de Compiègne », « Gare de Paris Austerlitz ». */
+export function gareNom(nom: string): string {
+  if (/^gare\b/i.test(nom)) return nom;
+  return `Gare ${/^[aeiouyàâéèêëîïôûüœ]/i.test(nom) ? "d'" : "de "}${nom}`;
+}
+
 export function communePoster(
   c: Collected,
-  o: { prio: BvRow[]; labels: Map<string, string>; markets: Lieu[]; gares: (Lieu & { voyageurs?: number | null })[] },
+  o: { prio: BvRow[]; labels: Map<string, string>; markets: Lieu[]; gares: (Lieu & { voyageurs?: number | null })[]; dv?: (bv: string) => string },
 ): MapSpec | null {
   const { commune } = c;
   if (!commune.contour) return null;
   const contour = turf.feature(commune.contour as GeoJSON.Polygon, { nom: commune.nom });
   const qpv = (c.quartiers?.qpv ?? []).filter((q) => q.geometry);
   const prioPolys = (c.bvGeo?.features ?? []).filter((f) => o.prio.some((p) => p.bv === String(f.properties?.bv)));
-  const res = c.residences?.list ?? [];
+  // Résidences : les plus utiles d'abord (Crous, puis nombre de logements connu, puis nommées),
+  // six au plus ; les « résidences étudiantes » sans nom ne s'affichent que faute de mieux.
+  const all = c.residences?.list ?? [];
+  const named = all.filter((r) => !/^r[ée]sidence [ée]tudiante$|^r[ée]sidence du crous$/i.test(r.nom));
+  const res = (named.length >= 2 ? named : all)
+    .map((r) => ({ ...r, w: (r.crous ? 4 : 0) + (r.logements ? 2 : 0) + (named.includes(r) ? 1 : 0) }))
+    .sort((a, b) => b.w - a.w || (b.logements ?? 0) - (a.logements ?? 0))
+    .slice(0, 6);
+  const short = (t: string, n = 34) => (t.length > n ? `${t.slice(0, n - 1).replace(/\s+\S*$/, "")}…` : t);
   const pts = <T extends Lieu>(xs: T[]) => xs.filter((x) => x.lon != null && x.lat != null);
   const markets = pts(o.markets);
   const gares = pts(o.gares);
@@ -115,7 +129,7 @@ export function communePoster(
         prioPolys.map((p) => {
           const bv = String(p.properties?.bv);
           const r = byBv.get(bv)!;
-          return { type: "Feature", geometry: p.geometry, properties: { nom: `Bureau ${bv}${o.labels.has(bv) ? ` — ${o.labels.get(bv)}` : ""}`, sub: `${fmtNumber(r.abstN)} inscrits n'ont pas voté` } };
+          return { type: "Feature", geometry: p.geometry, properties: { nom: short(`Bureau ${(o.dv ?? String)(bv)}${o.labels.has(bv) ? ` — ${o.labels.get(bv)}` : ""}`, 40), sub: `${fmtNumber(r.abstN)} inscrits n'ont pas voté` } };
         }),
       ),
       style: { fill: "#fbe3a2", stroke: POSTER.jauneTexte, strokeWidth: 1.4 },
@@ -137,7 +151,7 @@ export function communePoster(
         qpv.map((q) => ({
           type: "Feature",
           geometry: q.geometry!,
-          properties: { nom: quartierLabel(q.nom), sub: q.stats.hlm != null ? `${Math.round(q.stats.hlm)} % de logements sociaux` : q.stats.population ? `${fmtNumber(Math.round(q.stats.population / 100) * 100)} habitants` : "quartier prioritaire" },
+          properties: { nom: short(quartierLabel(q.nom).replace(/^./, (x) => x.toUpperCase())), sub: q.stats.hlm != null ? `${Math.round(q.stats.hlm)} % de logements sociaux` : q.stats.population ? `${fmtNumber(Math.round(q.stats.population / 100) * 100)} habitants` : "" },
         })),
       ),
       style: { fill: POSTER.jaune, stroke: POSTER.charbon, strokeWidth: 1 },
@@ -154,7 +168,15 @@ export function communePoster(
       id: "residences",
       label: "Résidences étudiantes",
       kind: "points",
-      data: fc(res.map((r) => turf.point([r.lon, r.lat], { nom: r.nom, sub: r.logements ? `${fmtNumber(r.logements)} logements` : r.crous ? "résidence du Crous" : "résidence étudiante" }))),
+      data: fc(
+        res.map((r) =>
+          turf.point([r.lon, r.lat], {
+            nom: short(r.nom),
+            // Sous-titre seulement s'il apprend quelque chose (nombre de logements, gestionnaire).
+            sub: r.logements ? `${fmtNumber(r.logements)} logements` : r.crous && !/crous/i.test(r.nom) ? "résidence du Crous" : /foyer|coallia|adoma/i.test(r.nom) ? "foyer" : "",
+          }),
+        ),
+      ),
       style: { fill: POSTER.jaune, stroke: POSTER.charbon, symbol: "circle", size: 15 },
       labelMode: "callout",
       labelProperty: "nom",
@@ -165,8 +187,8 @@ export function communePoster(
       source: c.residences!.source,
     });
   const tract = [
-    ...markets.map((m) => ({ nom: m.nom, sub: /à compléter/.test(m.infos) || !m.infos ? "jours et horaires à vérifier" : m.infos, lon: m.lon!, lat: m.lat! })),
-    ...gares.map((g) => ({ nom: /^gare\b/i.test(g.nom) ? g.nom : `Gare de ${g.nom}`, sub: g.voyageurs ? perDay(g.voyageurs) : "", lon: g.lon!, lat: g.lat! })),
+    ...markets.map((m) => ({ nom: short(m.nom), sub: /à (compléter|vérifier)/.test(m.infos) || !m.infos ? "jours et horaires à vérifier" : short(m.infos, 40), lon: m.lon!, lat: m.lat! })),
+    ...gares.map((g) => ({ nom: gareNom(g.nom), sub: g.voyageurs ? perDay(g.voyageurs) : "", lon: g.lon!, lat: g.lat! })),
   ].filter((t) => t.lon >= bbox[0] && t.lon <= bbox[2] && t.lat >= bbox[1] && t.lat <= bbox[3]);
   if (tract.length)
     layers.push({
