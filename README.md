@@ -106,6 +106,16 @@ Les textes acceptent une mise en évidence minimale (`**gras**`), rendue dans l'
 
 **Accès réservé** : dès que la variable `AUTH_USERS` est renseignée, toutes les pages et API exigent une connexion (identifiant et mot de passe ; session de 30 jours ; 10 tentatives par quart d'heure). Pour ajouter une personne : `npm run mot-de-passe -- prenom.nom` (le mot de passe est saisi puis chiffré), copier la ligne affichée dans `AUTH_USERS` sur Railway (comptes séparés par `;`), et définir une fois `AUTH_SECRET` (longue chaîne aléatoire). Retirer une ligne de `AUTH_USERS` coupe l'accès de la personne immédiatement. Bouton « Déconnexion » dans l'en-tête.
 
+**Rôles** : variable `AUTH_ROLES`, par exemple `marie:admin;paul:lecteur`.
+
+| Rôle | Peut |
+|---|---|
+| `admin` | tout, y compris déposer et supprimer les données internes (page « Données internes ») |
+| `editeur` | générer et régénérer des fiches, saisir les retours du terrain et les lieux signalés |
+| `lecteur` | consulter et télécharger les fiches existantes |
+
+Un compte absent de `AUTH_ROLES` est `editeur`. Tant qu'aucun `admin` n'est déclaré, tous les comptes restent administrateurs (aucun accès perdu lors de la mise à jour).
+
 **Retours du terrain** : sous l'en-tête de la fiche et sous chaque partie (population, situation politique, actions), un encadré permet d'ajouter un retour qualitatif ; il est conservé à la régénération et repris dans le PDF et le Word. Les lieux d'action (marchés, associations…) se saisissent dans l'encadré dédié.
 
 **Fiche synthétique** : le profil sociodémographique s'ouvre sur une phrase en langage courant, suivie d'un tableau limité aux indicateurs qui distinguent vraiment la commune du département (7 au plus) et de 2 ou 3 phrases qualitatives ; le profil politique s'ouvre sur un « En bref ». Le détail reste dans le diagnostic complet.
@@ -140,6 +150,11 @@ Les textes acceptent une mise en évidence minimale (`**gras**`), rendue dans l'
 Exemples dans `docs/exemples-interne/`. Uniquement des agrégats par commune : aucun nom de personne.
 
 **Garde-fous** : uniquement des agrégats publics (commune, bureau de vote) ; aucune donnée individuelle ; aucune variable d'origine ou de nationalité ; explications présentées comme hypothèses.
+
+### Logements sociaux et inscription sur les listes
+
+- **Résidences HLM** : répertoire des logements locatifs des bailleurs sociaux ([RPLS, SDES](https://www.data.gouv.fr/datasets/donnees-detaillees-au-logement-du-repertoire-des-logements-locatifs-des-bailleurs-sociaux-rpls)), interrogé commune par commune (API DiDo). Les logements sont regroupés par résidence (nom du programme ou adresse), puis en ensembles (résidences à moins de 120 m). La fiche liste les résidences à cibler (bureaux prioritaires d'abord), la carte dessine les ensembles avec leur nombre de logements, le tableau des bureaux prioritaires indique les logements sociaux de chaque bureau, et chaque feuille de porte-à-porte cite les résidences du bureau.
+- **Non-inscription (estimation)** : adultes de nationalité française du recensement (INSEE, IRIS) comparés aux inscrits des européennes 2024, pour la commune et le département ; par bureau, la population de chaque IRIS est répartie selon les adresses (un logement social comptant comme une adresse). L'écart regroupe les non-inscrits et les inscrits ailleurs : la fiche ne le signale que s'il dépasse nettement celui du département.
 
 ### Cartes « affiche »
 

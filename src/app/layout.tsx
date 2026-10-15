@@ -4,7 +4,7 @@ import "@fontsource-variable/stack-sans-text";
 import "./globals.css";
 import "leaflet/dist/leaflet.css";
 import { cookies } from "next/headers";
-import { authEnabled, readSession, SESSION_COOKIE } from "@/lib/auth";
+import { authEnabled, readSession, roleOf, SESSION_COOKIE } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Fiches territoriales",
@@ -27,9 +27,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </span>
             </a>
             <nav className="site-nav flex gap-3 text-right text-xs sm:gap-5 sm:text-sm">
-              <a href="/donnees-internes">
-                Données internes
-              </a>
+              {roleOf(user) === "admin" && <a href="/donnees-internes">Données internes</a>}
               <a href="/methodologie">
                 Méthodologie et sources
               </a>

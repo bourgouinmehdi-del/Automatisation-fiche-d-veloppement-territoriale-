@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { authEnabled, readSession, SESSION_COOKIE } from "@/lib/auth";
+import { authEnabled, can, readSession, requiredRole, SESSION_COOKIE } from "@/lib/auth";
 
 /**
  * Toutes les pages et API exigent une session lorsque des comptes sont
@@ -10,7 +10,17 @@ export function middleware(req: NextRequest) {
   if (!authEnabled()) return NextResponse.next();
   const { pathname, search } = req.nextUrl;
   if (pathname === "/login" || pathname.startsWith("/api/auth/")) return NextResponse.next();
-  if (readSession(req.cookies.get(SESSION_COOKIE)?.value)) return NextResponse.next();
+  const user = readSession(req.cookies.get(SESSION_COOKIE)?.value);
+  if (user) {
+    const need = requiredRole(req.method, pathname);
+    if (!need || can(user, need)) return NextResponse.next();
+    const msg = need === "admin" ? "Réservé aux administrateurs" : "Votre compte permet seulement de consulter les fiches";
+    if (pathname.startsWith("/api/")) return NextResponse.json({ error: msg }, { status: 403 });
+    const url = req.nextUrl.clone();
+    url.pathname = "/";
+    url.search = `?refus=${encodeURIComponent(msg)}`;
+    return NextResponse.redirect(url);
+  }
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Connexion requise" }, { status: 401 });
   const url = req.nextUrl.clone();
   url.pathname = "/login";

@@ -83,6 +83,49 @@ export function readSession(token: string | undefined | null): string | null {
   }
 }
 
+/* ------------------------------------------------------------------ rôles */
+
+/**
+ * Rôles, déclarés dans AUTH_ROLES (« marie:admin;paul:lecteur ») :
+ *  - admin   : tout, y compris déposer et supprimer les données internes ;
+ *  - editeur : générer et régénérer des fiches, saisir les retours du terrain ;
+ *  - lecteur : consulter et télécharger les fiches.
+ * Un compte absent de AUTH_ROLES est « editeur ». Sans aucun admin déclaré,
+ * tous les comptes sont admin (comportement antérieur, aucun accès perdu).
+ * Sans authentification (usage local), tout est permis.
+ */
+export type Role = "admin" | "editeur" | "lecteur";
+const RANK: Record<Role, number> = { lecteur: 0, editeur: 1, admin: 2 };
+
+function roles(): Map<string, Role> {
+  const m = new Map<string, Role>();
+  for (const entry of (process.env.AUTH_ROLES ?? "").split(/[;\n,]/)) {
+    const [login, role] = entry.split(":").map((x) => x?.trim().toLowerCase());
+    if (login && (role === "admin" || role === "editeur" || role === "éditeur" || role === "lecteur")) m.set(login, role === "éditeur" ? "editeur" : (role as Role));
+  }
+  return m;
+}
+
+export function roleOf(login: string | null): Role {
+  if (!authEnabled()) return "admin";
+  if (!login) return "lecteur";
+  const m = roles();
+  if (![...m.values()].includes("admin")) return "admin";
+  return m.get(login.toLowerCase()) ?? "editeur";
+}
+
+export const can = (login: string | null, need: Role) => RANK[roleOf(login)] >= RANK[need];
+
+/** Rôle requis pour une requête (méthode et chemin) ; null = simple session. */
+export function requiredRole(method: string, pathname: string): Role | null {
+  const write = !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
+  if (pathname.startsWith("/donnees-internes")) return "admin";
+  if (pathname.startsWith("/api/interne")) return write ? "admin" : null;
+  if (pathname.startsWith("/api/reports") && write) return "editeur";
+  if (pathname.startsWith("/generation")) return "editeur";
+  return null;
+}
+
 /* Limite des tentatives de connexion : 10 par quart d'heure et par adresse. */
 const attempts = new Map<string, { n: number; since: number }>();
 export function tooManyAttempts(ip: string): boolean {

@@ -53,6 +53,15 @@ export const SOURCES: Record<string, SourceInfo> = {
     limits:
       "Mutations à titre onéreux uniquement ; hors Alsace-Moselle et Mayotte ; prix au m² calculés sur les ventes d'un seul local d'habitation avec surface bâtie renseignée. Petits effectifs instables.",
   },
+  rpls: {
+    id: "rpls",
+    name: "Répertoire des logements locatifs des bailleurs sociaux (RPLS, SDES)",
+    producer: "Service des données et études statistiques (ministère de la Transition écologique)",
+    homepage: "https://www.data.gouv.fr/datasets/donnees-detaillees-au-logement-du-repertoire-des-logements-locatifs-des-bailleurs-sociaux-rpls",
+    license: "Licence Ouverte 2.0",
+    access: "API DiDo, interrogée commune par commune (un enregistrement par logement).",
+    limits: "Logements des bailleurs sociaux au 1er janvier ; regroupement en résidences par nom de programme ou adresse, puis en ensembles (résidences à moins de 120 m).",
+  },
   circonscriptions: {
     id: "circonscriptions",
     name: "Contours géographiques des circonscriptions législatives (data.gouv.fr)",
