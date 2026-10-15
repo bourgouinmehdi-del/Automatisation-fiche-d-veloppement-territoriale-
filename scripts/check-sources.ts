@@ -12,7 +12,7 @@
 import { TrackedHttp } from "../src/lib/collectors/context";
 import { enrichCommune, communeFromReferentiel } from "../src/lib/collectors/admin";
 import { DATASETS } from "../src/lib/collectors/insee-indicators";
-import { loadDataset } from "../src/lib/collectors/insee";
+import { loadDataset, MELODI } from "../src/lib/collectors/insee";
 import { collectDvf } from "../src/lib/collectors/dvf";
 import { collectEquipments } from "../src/lib/collectors/osm";
 import { collectEntreprises, collectRisques, collectSchools, collectStations } from "../src/lib/collectors/public-apis";
@@ -78,6 +78,17 @@ async function main() {
       return `GEO=${d.geo}, ${d.observations.length} observations`;
     });
   }
+  // Regroupement des territoires dans une seule requête Melodi (accélération des fiches).
+  await check("INSEE requêtes regroupées", async () => {
+    const geos = [`COM-${c.code}`, `DEP-${c.departement.code}`, `REG-${c.region.code}`];
+    const r = await h().json<{ observations?: { dimensions?: Record<string, string> }[] }>(
+      `${MELODI}/data/DS_FILOSOFI_CC?${geos.map((g) => `GEO=${g}`).join("&")}&maxResult=10000`,
+      { noCache: true, retries: 0 },
+    );
+    const got = new Set((r.data?.observations ?? []).map((o) => o.dimensions?.GEO));
+    if (geos.filter((g) => got.has(g)).length < 2) throw new Error(`un seul territoire renvoyé (${[...got].join(", ")}) : regroupement inactif, fiches plus lentes mais complètes`);
+    return `${geos.filter((g) => got.has(g)).length}/3 territoires dans une seule requête : regroupement actif`;
+  });
   // Indicateurs effectivement calculés pour la commune.
   await check("Indicateurs INSEE calculés", async () => {
     const r = await collectInsee(new CollectContext(), h(), "COM", c.code, { level: "commune", code: c.code, name: c.nom });

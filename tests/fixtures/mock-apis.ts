@@ -229,6 +229,9 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 }
 
+/** Territoires demandés à chaque requête Melodi « data » (contrôle du regroupement). */
+export const melodiCalls: string[][] = [];
+
 export function mockFetch(): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
@@ -248,10 +251,12 @@ export function mockFetch(): typeof fetch {
       const m = p.match(/\/melodi\/(data|range)\/(\w+)/);
       if (m?.[1] === "range") return RANGE[m[2]] ? json(RANGE[m[2]]) : json({}, 404);
       if (m?.[1] === "data") {
-        const geo = url.searchParams.get("GEO") ?? "";
-        if (!/^(COM|EPCI|DEP|REG)-|^FRANCE-F$/.test(geo)) return json({ observations: [] });
-        const o = melodi(m[2], geo);
-        return o ? json({ observations: o, paging: { isLast: true } }) : json({ message: "not found" }, 404);
+        // Plusieurs territoires possibles (paramètre GEO répété), comme l'API réelle.
+        const geos = url.searchParams.getAll("GEO");
+        melodiCalls.push(geos);
+        const obs = geos.filter((geo) => /^(COM|EPCI|DEP|REG)-|^FRANCE-FM?$/.test(geo)).flatMap((geo) => melodi(m[2], geo) ?? []);
+        if (!obs.length && geos.some((geo) => /^(COM|EPCI|DEP|REG)-|^FRANCE-FM?$/.test(geo)) && !melodi(m[2], "COM-60159")) return json({ message: "not found" }, 404);
+        return json({ observations: obs, paging: { isLast: true } });
       }
     }
     if (h === "files.data.gouv.fr") {

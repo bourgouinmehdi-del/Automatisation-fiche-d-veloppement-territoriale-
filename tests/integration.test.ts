@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import { mockFetch } from "./fixtures/mock-apis";
+import { melodiCalls, mockFetch } from "./fixtures/mock-apis";
 import type { Report } from "@/lib/types";
 
 const dir = path.join(os.tmpdir(), `fiche-test-${process.pid}`);
@@ -45,6 +45,15 @@ afterAll(async () => {
 const ind = (id: string, level = "commune") => report.indicators.find((i) => i.id === id && i.geo.level === level);
 
 describe("chaîne de génération (API simulées)", () => {
+  it("INSEE : territoires demandés ensemble (moins de requêtes), sans perte de données", () => {
+    const grouped = melodiCalls.filter((g) => g.length > 1);
+    expect(grouped.length).toBeGreaterThan(0);
+    // Sans regroupement : une requête par jeu et par territoire.
+    const territoires = melodiCalls.reduce((n, g) => n + g.length, 0);
+    expect(melodiCalls.length).toBeLessThan(territoires * 0.6);
+    for (const lvl of ["commune", "epci", "departement", "region"]) expect(report.indicators.some((i) => i.geo.level === lvl && i.id === "revenu_median")).toBe(true);
+  });
+
   it("toutes les sources simulées sont interrogées avec succès", () => {
     const failed = report.runs.filter((r) => r.status === "failed");
     expect(failed.map((f) => `${f.step}: ${f.message}`)).toEqual([]);

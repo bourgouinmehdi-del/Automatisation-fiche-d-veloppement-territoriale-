@@ -46,7 +46,8 @@ import { collectRoutes, Route } from "../collectors/routes";
 import { config } from "../config";
 import { Adresse, collectAdresses } from "../collectors/ban";
 import { rssMb } from "../runtime";
-import { collectInsee, InseeResult } from "../collectors/insee-indicators";
+import { collectInsee, DATASETS, InseeResult } from "../collectors/insee-indicators";
+import { prefetchMelodi } from "../collectors/insee";
 import {
   collectCycleways,
   collectEquipments,
@@ -529,6 +530,10 @@ export async function collect(
         [geos.region, "REG"],
         [geos.france, "FRANCE"],
       ];
+    // Requêtes regroupées (tous les territoires d'un coup, jeu par jeu) : moins d'attente imposée par l'API.
+    await ctx.step("insee_melodi", "insee:regroupement", (http) =>
+      prefetchMelodi(http, DATASETS, kinds.filter(([g]) => !!g).map(([g, kind]) => ({ kind, code: g!.code }))),
+    );
     for (const [g, kind] of kinds) {
       if (!g) continue;
       const res = await ctx.step(
@@ -554,6 +559,7 @@ export async function collect(
           : [];
     if (perimeterList.length > 1 && perimeterList.length <= 40) {
       await ctx.step("insee_melodi", "insee:perimetre", async (http) => {
+        await prefetchMelodi(http, ["DS_FILOSOFI_CC", "DS_RP_LOGEMENT_PRINC"], perimeterList.filter((m) => m.code !== commune.code).map((m) => ({ kind: "COM" as const, code: m.code })));
         for (const m of perimeterList) {
           const g: GeoRef = { level: "commune", code: m.code, name: m.nom };
           try {
@@ -632,6 +638,7 @@ export async function collect(
       }));
     if (c.comparables.length) {
       await ctx.step("insee_melodi", "insee:comparables", async (http) => {
+        await prefetchMelodi(http, ["DS_FILOSOFI_CC", "DS_RP_EMPLOI_LR_PRINC", "DS_RP_LOGEMENT_PRINC"], c.comparables.map((cp) => ({ kind: "COM" as const, code: cp.code })));
         for (const cp of c.comparables) {
           try {
             cp.result = await collectInsee(

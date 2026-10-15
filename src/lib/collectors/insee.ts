@@ -1,6 +1,7 @@
 import { config } from "../config";
 import { plmInfo } from "./plm";
 import { HttpError } from "../http";
+import { cacheKey, isFresh, readCacheMeta, writeCache } from "../cache";
 import type { TrackedHttp } from "./context";
 
 /**
@@ -43,7 +44,7 @@ export interface MelodiDataset {
   labels: Map<string, Map<string, string>>;
 }
 
-type GeoKind = "COM" | "EPCI" | "DEP" | "REG" | "FRANCE";
+export type GeoKind = "COM" | "EPCI" | "DEP" | "REG" | "FRANCE";
 
 /** Syntaxe de code géographique qui a fonctionné, par type de territoire (les arrondissements à part). */
 const preferredFormat = new Map<string, number>();
@@ -52,7 +53,8 @@ const fmtKey = (kind: GeoKind, code: string) => (kind === "COM" && plmInfo(code)
 export function geoCandidates(kind: GeoKind, code: string): string[] {
   // Le code « France » de Melodi n'est pas documenté de façon stable : plusieurs
   // syntaxes sont essayées (« FRANCE-F » est refusé avec un HTTP 400 en 2026).
-  if (kind === "FRANCE") return ["FRANCE-1", "FRANCE-FE", "FRANCE-FM", "FRANCE-F", "FE-1", "PAYS-FRA", "FRA-1", "FR-1"];
+  // « FRANCE-FM » (France métropolitaine et DOM) est la syntaxe acceptée en octobre 2026 : essayée en premier.
+  if (kind === "FRANCE") return ["FRANCE-FM", "FRANCE-1", "FRANCE-FE", "FRANCE-F", "FE-1", "PAYS-FRA", "FRA-1", "FR-1"];
   const years = ["2025", "2024", "2026", "2023"];
   // Arrondissements municipaux (Paris, Lyon, Marseille) : niveau « ARM » dans Melodi.
   if (kind === "COM" && plmInfo(code)) return ["ARM", "COM"].flatMap((k) => [`${k}-${code}`, ...years.map((y) => `${y}-${k}-${code}`)]);
@@ -93,7 +95,7 @@ export async function loadDataset(
   const candidates = pref != null ? [all[pref]] : all;
   let refused = 0;
   for (const geo of candidates) {
-    const firstUrl = `${MELODI}/data/${datasetId}?GEO=${encodeURIComponent(geo)}&maxResult=10000`;
+    const firstUrl = singleUrl(datasetId, geo);
     let url: string | null = firstUrl;
     const obs: MelodiObservation[] = [];
     let retrievedAt = "";
@@ -131,6 +133,99 @@ export async function loadDataset(
   // est en cause, pas le jeu de données (évite de multiplier les requêtes).
   if (kind === "FRANCE" && pref == null && refused === candidates.length) preferredFormat.set(fmtKey(kind, code), -1);
   return null;
+}
+
+/**
+ * Regroupement des requêtes : l'API Melodi est limitée à 30 requêtes par
+ * minute, et une fiche interroge une dizaine de jeux pour une vingtaine de
+ * territoires (commune, intercommunalité, département, région, France,
+ * communes du périmètre et communes comparables). Les territoires sont
+ * demandés ensemble, jeu par jeu (paramètre GEO répété), puis les
+ * observations sont réparties par territoire et enregistrées dans le cache
+ * sous l'adresse de la requête individuelle : `loadDataset` les y retrouve
+ * sans nouvelle requête. Les mêmes données sont obtenues, en bien moins de
+ * requêtes.
+ *
+ * Sécurités : un territoire absent de la réponse groupée est simplement
+ * redemandé seul par `loadDataset` (aucune perte) ; si l'API refuse le
+ * regroupement ou ne renvoie qu'un territoire, il est désactivé pour la
+ * suite du processus.
+ */
+let batchSupported: boolean | null = null;
+const BATCH_SIZE = 25;
+const singleUrl = (datasetId: string, geo: string) => `${MELODI}/data/${datasetId}?GEO=${encodeURIComponent(geo)}&maxResult=10000`;
+
+export function resetMelodiBatch() {
+  batchSupported = null;
+}
+
+export async function prefetchMelodi(http: TrackedHttp, datasetIds: readonly string[], geos: { kind: GeoKind; code: string }[]): Promise<void> {
+  if (batchSupported === false || config.offline || process.env.MELODI_BATCH === "0") return;
+  // Syntaxe de code connue, sinon la première (validée sur l'API réelle) ; un territoire absent de
+  // la réponse groupée est redemandé seul avec toutes les syntaxes.
+  const codes = [
+    ...new Set(
+      geos
+        .map(({ kind, code }) => {
+          const pref = preferredFormat.get(fmtKey(kind, code));
+          if (pref === -1) return null;
+          return geoCandidates(kind, code)[pref ?? 0];
+        })
+        .filter((g): g is string => !!g),
+    ),
+  ];
+  if (codes.length < 2) return;
+  for (const datasetId of datasetIds) {
+    // Territoires déjà en cache (fiche précédente) : rien à demander.
+    const todo: string[] = [];
+    for (const g of codes) {
+      const meta = await readCacheMeta(cacheKey(singleUrl(datasetId, g)));
+      if (!meta || !isFresh({ ...meta, body: "" })) todo.push(g);
+    }
+    for (let i = 0; i < todo.length && (batchSupported as boolean | null) !== false; i += BATCH_SIZE) {
+      const chunk = todo.slice(i, i + BATCH_SIZE);
+      if (chunk.length < 2) break;
+      let url: string | null = `${MELODI}/data/${datasetId}?${chunk.map((g) => `GEO=${encodeURIComponent(g)}`).join("&")}&maxResult=10000`;
+      const byGeo = new Map<string, RawObs[]>();
+      let retrievedAt = new Date().toISOString();
+      let pages = 0;
+      try {
+        while (url && pages < 50) {
+          const r: { data: RawPage | null; retrievedAt: string } = await http.json<RawPage>(url, { minIntervalMs: MIN_INTERVAL(), allow404: true, timeoutMs: 60000, retries: 1, noCache: true });
+          retrievedAt = r.retrievedAt;
+          pages++;
+          for (const o of r.data?.observations ?? []) {
+            const g = o.dimensions?.GEO;
+            if (!g) continue;
+            if (!byGeo.has(g)) byGeo.set(g, []);
+            byGeo.get(g)!.push(o);
+          }
+          const next = r.data?.paging?.next;
+          url = next && !r.data?.paging?.isLast ? (next.startsWith("http") ? next : MELODI + next) : null;
+        }
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 400) batchSupported = false;
+        return; // repli : requêtes individuelles
+      }
+      // Pagination interrompue : réponse incomplète, on ne garde rien.
+      if (url) continue;
+      const got = chunk.filter((g) => byGeo.get(g)?.length);
+      if (got.length <= 1 && batchSupported === null) {
+        // Premier essai et un seul territoire renvoyé : paramètre répété ignoré par l'API, regroupement désactivé.
+        batchSupported = false;
+        return;
+      }
+      batchSupported = true;
+      for (const g of got)
+        await writeCache({
+          key: cacheKey(singleUrl(datasetId, g)),
+          url: singleUrl(datasetId, g),
+          fetchedAt: retrievedAt,
+          status: 200,
+          body: JSON.stringify({ observations: byGeo.get(g), paging: { isLast: true } }),
+        });
+    }
+  }
 }
 
 const labelsCache = new Map<string, Map<string, Map<string, string>>>();

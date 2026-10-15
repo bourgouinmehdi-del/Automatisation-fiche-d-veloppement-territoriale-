@@ -135,3 +135,8 @@ Le test d'intégration a permis de corriger un défaut réel (la règle « sans 
 - « Intercommunalité » produisait la fiche de la commune : c'est désormais un ciblage des communes de l'intercommunalité, avec l'EPT pour les communes du Grand Paris (Ivry → Grand-Orly Seine Bièvre) et les communes situées dans un autre département.
 - Résidences : positions du catalogue arrondies (≈ 1 km) précisées par la Base adresse nationale, rattachement à la commune par le code INSEE de l'adresse ; titre en double dans l'annexe supprimé ; libellé de légende raccourci et légende de la carte « affiche » sur moins de colonnes si un libellé ne tient pas.
 - OpenStreetMap : 492 équipements dans le PDF de Compiègne du 15 octobre, correctif confirmé.
+
+### Génération plus rapide
+
+- Requêtes INSEE regroupées par jeu de données (tous les territoires d'un coup) : 119 → 28 requêtes sur la fiche simulée de Compiègne, contenu strictement identique (empreinte comparée avec et sans regroupement). Repli automatique sur les requêtes individuelles ; `MELODI_BATCH=0` pour désactiver. **À confirmer** sur l'API réelle (`npm run check:sources`, ligne « INSEE requêtes regroupées »).
+- Syntaxe « FRANCE-FM » essayée en premier (évite des refus HTTP 400 à chaque redémarrage).

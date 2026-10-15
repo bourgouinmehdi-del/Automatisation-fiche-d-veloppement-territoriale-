@@ -201,6 +201,10 @@ Mise à jour : déposer le classeur Excel du mois dans **Données internes** (il
 
 Page **Données internes** : dépôt des parrainages, des groupes (format simple) ou de l'**export brut d'Action Populaire** (colonnes reconnues par leur intitulé ; commune retrouvée par code postal et ville ; colonnes nominatives ignorées). Les fichiers restent dans `data/interne/`. **En ligne, protéger l'application par une authentification** : cette page permet de déposer et supprimer ces fichiers.
 
+### Vitesse de génération
+
+L'API de l'INSEE (Melodi) est limitée à 30 requêtes par minute ; une fiche en demandait plus de 120 (une par jeu de données et par territoire), soit plus de 4 minutes d'attente imposée. Les territoires (commune, intercommunalité, département, région, France, communes du périmètre, communes comparables) sont désormais demandés **ensemble**, jeu par jeu : environ 25 requêtes, pour exactement les mêmes données (vérifié par le test d'intégration : fiche identique avec et sans regroupement). Un territoire absent de la réponse groupée est redemandé seul ; si l'API refuse le regroupement, l'application revient d'elle-même à l'ancienne méthode. `npm run check:sources` indique si le regroupement est actif ; `MELODI_BATCH=0` le désactive.
+
 ### Sources volumineuses
 
 La BPE (≈ 136 Mo), les bases IRIS (≈ 70 Mo) et le GTFS SNCF sont téléchargés une fois puis mis en cache (`CACHE_TTL_HOURS`) ; leur lecture en flux limite la mémoire. Pour s'en passer : `DISABLE_SOURCES=bpe,gtfs,iris`. Les adresses des fichiers INSEE (qui changent à chaque millésime) sont surchargeables : `INSEE_BPE_URL`, `INSEE_IRIS_POP_URL`, `INSEE_IRIS_LOGEMENT_URL`, `INSEE_IRIS_ACTIVITE_URL`, `INSEE_IRIS_FILOSOFI_URL`, `INSEE_QPV_FILOSOFI_URL`, `INSEE_QPV_RP_URL`, `SNCF_GTFS_URL`, `OSRM_URL`.
