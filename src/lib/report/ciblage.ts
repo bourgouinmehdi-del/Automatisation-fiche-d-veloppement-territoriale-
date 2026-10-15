@@ -1,5 +1,6 @@
 import * as turf from "@turf/turf";
 import { referentiel } from "../collectors/admin";
+import { circoLabel, fitAspect } from "../collectors/carto";
 import type { ElectionResult } from "../collectors/elections";
 import { NUANCES, nuanceFamily } from "../collectors/municipales";
 import { abstention, score } from "../analysis/political";
@@ -109,7 +110,16 @@ export function buildCiblage(c: Collected): CiblageOutput {
   if (!d24?.byCommune?.length) return out;
   const by24 = new Map(d24.byCommune.map((x) => [x.code, x as Agg]));
   const by22 = new Map((d22?.byCommune ?? []).map((x) => [x.code, x as Agg]));
-  const communes = ref.communes.filter((x) => x.departement === dep.code && x.type === "commune-actuelle" && by24.has(x.code));
+  const depCommunes = ref.communes.filter((x) => x.departement === dep.code && x.type === "commune-actuelle" && by24.has(x.code));
+  // Périmètre « circonscription » : seules les communes de la circonscription sont classées,
+  // les comparaisons (communes de taille comparable, moyennes) restent départementales.
+  const circo = c.query.scope === "circonscription" ? (c.circos?.list.find((x) => x.num === c.query.circo) ?? null) : null;
+  const shares = circo ? c.circoShares : undefined;
+  if (c.query.scope === "circonscription" && !shares?.size) return out;
+  const communes = shares ? depCommunes.filter((x) => shares.has(x.code)) : depCommunes;
+  const terr = circo ? circoLabel(circo.num, dep.nom) : dep.nom;
+  const dansTerr = circo ? `dans la ${terr}` : `dans ${dep.nom}`;
+  const partagees = shares ? communes.filter((x) => (shares.get(x.code) ?? 1) < 1) : [];
   const pop = (code: string) => ref.byCode.get(code)?.population ?? 0;
   const lfiPct = (a: Agg | null | undefined, eid: string) => (a ? (score(eid, a, "lfi")?.pctInscrits ?? null) : null);
   const lfiVoix = (a: Agg | null | undefined, eid: string) => (a ? (score(eid, a, "lfi")?.voix ?? 0) : 0);
@@ -121,7 +131,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
   const chefLieu = ref.departements.get(dep.code)?.chefLieu;
 
   // Score LFI attendu selon la taille : médiane des communes de population comparable.
-  const lfiAll = communes.map((x) => ({ code: x.code, p: x.population ?? 0, v: lfiPct(by24.get(x.code), "EU24") }));
+  const lfiAll = depCommunes.map((x) => ({ code: x.code, p: x.population ?? 0, v: lfiPct(by24.get(x.code), "EU24") }));
   const expected = (p: number) => {
     let peers = lfiAll.filter((x) => x.p >= p * 0.5 && x.p <= p * 1.5 && x.v != null);
     if (peers.length < 8) peers = [...lfiAll].filter((x) => x.v != null).sort((a, b) => Math.abs(a.p - p) - Math.abs(b.p - p)).slice(0, 10);
@@ -197,7 +207,8 @@ export function buildCiblage(c: Collected): CiblageOutput {
 
   // Sélection : cinq cibles au plus, deux au plus par intercommunalité. Les deux plus grandes
   // villes (souvent chefs-lieux, déjà couvertes) restent hors ciblage, comme dans les fiches de référence.
-  const bigCities = [...communes].sort((a, b) => (b.population ?? 0) - (a.population ?? 0)).slice(0, 2).map((x) => x.code);
+  // (En circonscription, aucune ville n'est écartée : le territoire est déjà restreint.)
+  const bigCities = circo ? [] : [...communes].sort((a, b) => (b.population ?? 0) - (a.population ?? 0)).slice(0, 2).map((x) => x.code);
   const chosen: Unit[] = [];
   for (const u of ranked) {
     if (u.kind === "commune" && bigCities.includes(u.codes[0])) continue;
@@ -326,7 +337,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
     })),
     highlight: ranked.slice(0, 20).map((u, i) => (chosen.includes(u) ? i : -1)).filter((i) => i >= 0),
     sources: [...src, ...(hasParrains || c.interne.files.length ? [interneSrc] : []), ...(c.municipalDep ? [c.municipalDep.source] : [])],
-    note: `Les deux communes les plus peuplées (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) restent hors ciblage. Score : moyenne pondérée de scores z calculés entre les territoires — surperformance LFI par rapport aux communes de taille comparable (${Math.round(w.o * 100)} %), écart d'abstention au département (${Math.round(w.a * 100)} %)${hasParrains ? `, ratio parrains / voix (${Math.round(w.r * 100)} %)` : ""}, volume de voix LFI (${Math.round(w.v * 100)} %) ; −1 pour les territoires déjà couverts par un groupe de 20 membres ou plus. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
+    note: `${bigCities.length ? `Les deux communes les plus peuplées (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) restent hors ciblage. ` : ""}${partagees.length ? `Communes partagées avec une autre circonscription (résultats de toute la commune) : ${partagees.map((x) => `${x.nom} (${Math.round(100 * (shares!.get(x.code) ?? 0))} % de sa surface)`).join(", ")}. ` : ""}Score : moyenne pondérée de scores z calculés entre les territoires — surperformance LFI par rapport aux communes de taille comparable (${Math.round(w.o * 100)} %), écart d'abstention au département (${Math.round(w.a * 100)} %)${hasParrains ? `, ratio parrains / voix (${Math.round(w.r * 100)} %)` : ""}, volume de voix LFI (${Math.round(w.v * 100)} %) ; −1 pour les territoires déjà couverts par un groupe de 20 membres ou plus. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
   });
 
   // Carte des cibles.
@@ -334,20 +345,24 @@ export function buildCiblage(c: Collected): CiblageOutput {
     const colorOf = new Map<string, { color: string; label: string }>();
     chosen.forEach((u, k) => u.codes.forEach((code, j) => colorOf.set(code, { color: TARGET_COLORS[k], label: j === 0 ? (u.kind === "groupement" ? u.nom.replace(/^(CC|CA|CU) (de |du |des |de la |d')?/i, "") : u.nom) : "" })));
     const big = bigCities;
-    const features = c.depFeatures.features.map((f) => {
+    const inTerr = (code: string) => !shares || shares.has(code);
+    const features = c.depFeatures.features.filter((f) => !circo || inTerr((f.properties as { code: string }).code) || turf.booleanIntersects(f, turf.bboxPolygon(turf.bbox(turf.feature(circo.geometry))))).map((f) => {
       const p = f.properties as { code: string; nom: string };
       const t = colorOf.get(p.code);
       const isBig = big.includes(p.code) && !t;
-      return { ...turf.truncate(f, { precision: 4 }), properties: { nom: p.nom, color: t?.color ?? (isBig ? "#7a7a7a" : "#cfcfcf"), label: t?.label || (isBig ? p.nom : "") } } as GeoJSON.Feature;
+      return { ...turf.truncate(f, { precision: 4 }), properties: { nom: p.nom, color: t?.color ?? (isBig ? "#7a7a7a" : inTerr(p.code) ? "#cfcfcf" : "#efece4"), label: t?.label || (isBig ? p.nom : "") } } as GeoJSON.Feature;
     });
+    const circoLayer = circo
+      ? [{ id: "circo", label: "Circonscription", kind: "polygons" as const, data: { type: "FeatureCollection" as const, features: [turf.feature(circo.geometry, { nom: "" })] }, outlineOnly: true, color: "#212320", visible: true, source: c.circos!.source }]
+      : [];
     out.maps.push({
       id: "ciblage_carte",
-      title: `Territoires proposés pour un ciblage militant — ${dep.nom}`,
+      title: `Territoires proposés pour un ciblage militant — ${terr}`,
       theme: "strategie",
-      bbox: turf.bbox(c.depFeatures) as [number, number, number, number],
-      layers: [{ id: "communes", label: "Communes", kind: "polygons", data: { type: "FeatureCollection", features }, labelProperty: "label", visible: true, source: c.geoSource ?? src[0] }],
-      legend: { title: "Propositions de ciblage", categories: [...chosen.map((u, k) => ({ label: `${k + 1}. ${u.nom}`, color: TARGET_COLORS[k] })), { label: "Principales villes (hors ciblage)", color: "#7a7a7a" }] },
-      note: "Les deux communes les plus peuplées sont signalées en gris foncé.",
+      bbox: (circo ? turf.bbox(turf.feature(circo.geometry)) : turf.bbox(c.depFeatures)) as [number, number, number, number],
+      layers: [{ id: "communes", label: "Communes", kind: "polygons", data: { type: "FeatureCollection", features }, labelProperty: "label", visible: true, source: c.geoSource ?? src[0] }, ...circoLayer],
+      legend: { title: "Propositions de ciblage", categories: [...chosen.map((u, k) => ({ label: `${k + 1}. ${u.nom}`, color: TARGET_COLORS[k] })), ...(bigCities.length ? [{ label: "Principales villes (hors ciblage)", color: "#7a7a7a" }] : [])] },
+      note: circo ? "Trait noir : limite de la circonscription ; communes voisines en gris clair." : "Les deux communes les plus peuplées sont signalées en gris foncé.",
     });
   }
 
@@ -363,16 +378,17 @@ export function buildCiblage(c: Collected): CiblageOutput {
     const all = c.depFeatures.features;
     const ga = all.filter((f) => gaCodes.has((f.properties as { code: string }).code) && !targetCodes.has((f.properties as { code: string }).code));
     const cib = all.filter((f) => targetCodes.has((f.properties as { code: string }).code));
-    const bb = c.depVoisins?.bbox ?? (turf.bbox(c.depFeatures) as [number, number, number, number]);
+    const bb = circo ? fitAspect(turf.bbox(turf.feature(circo.geometry)) as [number, number, number, number], 0.06) : (c.depVoisins?.bbox ?? (turf.bbox(c.depFeatures) as [number, number, number, number]));
+    const circoList = circo ? [circo] : (c.circos?.list ?? []);
     const ord = (n: number) => (n === 1 ? "1ère" : `${n}ème`);
     const geoSrc = c.geoSource ?? src[0];
     const interneSrcMap: SourceRef = { id: "interne", name: "Données militantes internes (groupes d'action)", url: "data/interne", retrievedAt: new Date().toISOString() };
     out.maps.push({
       id: "ciblage_affiche",
-      title: `${dep.nom} : état des groupes d'action et propositions de ciblage`,
+      title: `${circo ? terr.replace(/^./, (x) => x.toUpperCase()) : dep.nom} : état des groupes d'action et propositions de ciblage`,
       theme: "strategie",
       bbox: bb,
-      poster: { kicker: dep.nom, title: "État des groupes d'action et propositions de ciblage", source: "Source : Pôle d'études électorales. Fonds : IGN (ADMIN EXPRESS), data.gouv.fr." },
+      poster: { kicker: circo ? terr.replace(/^./, (x) => x.toUpperCase()) : dep.nom, title: "État des groupes d'action et propositions de ciblage", source: "Source : Pôle d'études électorales. Fonds : IGN (ADMIN EXPRESS), data.gouv.fr." },
       layers: [
         ...(c.depVoisins?.features.length
           ? [{ id: "voisins", label: "Départements voisins", kind: "polygons" as const, data: { type: "FeatureCollection" as const, features: c.depVoisins.features }, style: { fill: "#ddd8cd", stroke: "#8f897d", strokeWidth: 1.4 }, labelMode: "caps" as const, labelProperty: "nom", visible: true, source: c.depVoisins.source }]
@@ -384,20 +400,20 @@ export function buildCiblage(c: Collected): CiblageOutput {
         ...(cib.length
           ? [{ id: "cibles", label: "Ciblages proposés", kind: "polygons" as const, data: { type: "FeatureCollection" as const, features: cib.map((f) => feat(f)) }, style: { fill: "#f3b51b", stroke: "#c98a00", strokeWidth: 0.6 }, labelMode: "callout" as const, labelProperty: "nom", labelColor: "#c98a00", legendItem: { label: "Ciblage proposé", swatch: "fill" as const }, visible: true, source: src[0] }]
           : []),
-        ...(c.circos?.list.length
+        ...(circoList.length
           ? [
               {
                 id: "circos",
                 label: "Circonscriptions législatives",
                 kind: "polygons" as const,
-                data: { type: "FeatureCollection" as const, features: c.circos.list.map((x) => ({ type: "Feature" as const, geometry: x.geometry, properties: { nom: c.circos!.list.length > 1 ? `${ord(x.num)} circo.` : "" } })) },
+                data: { type: "FeatureCollection" as const, features: circoList.map((x) => ({ type: "Feature" as const, geometry: x.geometry, properties: { nom: circoList.length > 1 ? `${ord(x.num)} circo.` : "" } })) },
                 style: { fill: "none", stroke: "#212320", strokeWidth: 2 },
                 labelMode: "caps" as const,
                 labelProperty: "nom",
                 labelColor: "#4c0297",
                 legendItem: { label: "Circonscription législative", swatch: "line" as const },
                 visible: true,
-                source: c.circos.source,
+                source: c.circos!.source,
               },
             ]
           : c.depContour
@@ -415,14 +431,14 @@ export function buildCiblage(c: Collected): CiblageOutput {
     theme: "strategie",
     weight: 95,
     evidence: [],
-    text: `Territoires proposés pour un ciblage militant dans ${dep.nom} : ${joinFr(chosen.map((u) => u.nom))}.`,
+    text: `Territoires proposés pour un ciblage militant ${dansTerr} : ${joinFr(chosen.map((u) => u.nom))}.`,
   });
 
   const blocks: Block[] = [
     {
       type: "callout",
       tone: "warning",
-      text: `Le ciblage présenté ci-dessous a été réalisé à partir de la seule exploitation de données statistiques et électorales publiques, par des personnes qui ne vivent pas forcément dans ce département. ${B(`Les informations qui y sont suggérées doivent être confrontées avec la connaissance du terrain des militant·es de ${dep.nom}.`)}`,
+      text: `Le ciblage présenté ci-dessous a été réalisé à partir de la seule exploitation de données statistiques et électorales publiques, par des personnes qui ne vivent pas forcément ${circo ? "dans cette circonscription" : "dans ce département"}. ${B(`Les informations qui y sont suggérées doivent être confrontées avec la connaissance du terrain des militant·es ${circo ? "de la circonscription" : `de ${dep.nom}`}.`)}`,
     },
     { type: "list", title: "Territoires proposés pour un ciblage militant", items: chosen.map((u, k) => ({ text: `${B(`${k + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) },
     ...(out.maps.some((m) => m.id === "ciblage_affiche") ? [{ type: "map" as const, mapId: "ciblage_affiche" }] : []),
@@ -432,6 +448,6 @@ export function buildCiblage(c: Collected): CiblageOutput {
     { type: "table", tableId: "ciblage_classement" },
     { type: "note", text: "Pour chaque territoire, la fiche détaillée (profil sociodémographique, quartiers, bureaux de vote, lieux d'action) se génère depuis l'application : bouton « Générer la fiche » de chaque proposition, ou recherche de la commune." },
   ];
-  out.section = { id: "CIBLAGE", letter: "", title: `Développement territorial — ${dep.nom}`, blocks };
+  out.section = { id: "CIBLAGE", letter: "", title: `Développement territorial — ${circo ? terr.replace(/^./, (x) => x.toUpperCase()) : dep.nom}`, blocks };
   return out;
 }

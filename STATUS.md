@@ -115,3 +115,17 @@ Le test d'intégration a permis de corriger un défaut réel (la règle « sans 
 9. **Voisinage** : les communes limitrophes situées dans un autre département ne sont pas listées.
 10. **Stockage** : fichiers JSON ; migration PostgreSQL/PostGIS à prévoir pour un usage multi-utilisateurs ; les tâches de génération vivent dans le processus serveur.
 11. **Accessibilité** : légendes textuelles et tableaux présents ; pas de texture alternative aux couleurs sur les cartes.
+
+## Retours « Amélioration — Outil Fiche territoire » (15 octobre 2026)
+
+| Demande | État |
+|---|---|
+| Nom « Fiches Territoires » | ✅ en-tête, titre des pages |
+| Accueil épuré, sans accroche ni réglages avancés | ✅ cinq boutons de périmètre |
+| Périmètre « Circonscription » | ✅ ciblage limité aux communes de la circonscription (`/api/circonscriptions` pour le choix) |
+| Recherche par code INSEE | ✅ y compris quand le code INSEE est aussi un code postal |
+| Mode sombre | ✅ suit le système, bouton ☾ / ☀ dans l'en-tête (choix mémorisé) |
+| Données OpenStreetMap manquantes | ✅ réponses Overpass « 200 + erreur » (délai dépassé, mémoire, quota) rejetées au lieu d'être mises en cache comme un résultat vide ; bascule sur les instances de secours ; deux requêtes simultanées au plus ; le journal de collecte donne la raison par instance. **À confirmer** sur le serveur. |
+| Lien « CSV » des tableaux retiré | ✅ (CSV complet toujours dans « Plus ») |
+| Résidences Crous / FJT : porte-à-porte, carte, annexe | ✅ catalogue intégré (1 584 résidences, relevé du 5 septembre 2026), remplaçable depuis « Données internes » |
+| Graphique « Européennes 2024 » dans le profil politique | ✅ part des voix par force (ordre et couleurs de la charte), trait = score national |

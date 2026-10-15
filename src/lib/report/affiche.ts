@@ -40,6 +40,9 @@ export function gareNom(nom: string): string {
   return `Gare ${/^[aeiouyàâéèêëîïôûüœ]/i.test(nom) ? "d'" : "de "}${nom}`;
 }
 
+/** Rond rouge des résidences Crous et foyers de jeunes travailleurs. */
+export const RESIDENCE_RED = "#F91616";
+
 export function communePoster(
   c: Collected,
   o: { prio: BvRow[]; labels: Map<string, string>; markets: Lieu[]; gares: (Lieu & { voyageurs?: number | null })[]; dv?: (bv: string) => string },
@@ -49,14 +52,12 @@ export function communePoster(
   const contour = turf.feature(commune.contour as GeoJSON.Polygon, { nom: commune.nom });
   const qpv = (c.quartiers?.qpv ?? []).filter((q) => q.geometry);
   const prioPolys = (c.bvGeo?.features ?? []).filter((f) => o.prio.some((p) => p.bv === String(f.properties?.bv)));
-  // Résidences : les plus utiles d'abord (Crous, puis nombre de logements connu, puis nommées),
-  // six au plus ; les « résidences étudiantes » sans nom ne s'affichent que faute de mieux.
-  const all = c.residences?.list ?? [];
-  const named = all.filter((r) => !/^r[ée]sidence [ée]tudiante$|^r[ée]sidence du crous$/i.test(r.nom));
-  const res = (named.length >= 2 ? named : all)
-    .map((r) => ({ ...r, w: (r.crous ? 4 : 0) + (r.logements ? 2 : 0) + (named.includes(r) ? 1 : 0) }))
-    .sort((a, b) => b.w - a.w || (b.logements ?? 0) - (a.logements ?? 0))
-    .slice(0, 6);
+  // Résidences du Crous et foyers de jeunes travailleurs (porte-à-porte systématique),
+  // les plus grandes d'abord, huit au plus.
+  const res = (c.residences?.list ?? [])
+    .filter((r) => r.porte)
+    .sort((a, b) => (b.logements ?? 0) - (a.logements ?? 0))
+    .slice(0, 8);
   const short = (t: string, n = 34) => (t.length > n ? `${t.slice(0, n - 1).replace(/\s+\S*$/, "")}…` : t);
   const pts = <T extends Lieu>(xs: T[]) => xs.filter((x) => x.lon != null && x.lat != null);
   const markets = pts(o.markets);
@@ -213,23 +214,22 @@ export function communePoster(
   if (res.length)
     layers.push({
       id: "residences",
-      label: "Résidences étudiantes",
+      label: "Résidences Crous et foyers de jeunes travailleurs",
       kind: "points",
       data: fc(
         res.map((r) =>
           turf.point([r.lon, r.lat], {
             nom: short(r.nom),
-            // Sous-titre seulement s'il apprend quelque chose (nombre de logements, gestionnaire).
-            sub: r.logements ? `${fmtNumber(r.logements)} logements` : r.crous && !/crous/i.test(r.nom) ? "résidence du Crous" : /foyer|coallia|adoma/i.test(r.nom) ? "foyer" : "",
+            sub: [/foyer de jeunes/i.test(r.categorie) ? "foyer de jeunes travailleurs" : "Crous", r.logements ? `${fmtNumber(r.logements)} logements` : ""].filter(Boolean).join(", "),
           }),
         ),
       ),
-      style: { fill: POSTER.jaune, stroke: POSTER.charbon, symbol: "circle", size: 15 },
+      style: { fill: RESIDENCE_RED, stroke: "#ffffff", symbol: "circle", size: 15 },
       labelMode: "callout",
       labelProperty: "nom",
       sublabelProperty: "sub",
-      labelColor: POSTER.jauneTexte,
-      legendItem: { label: "Résidence étudiante (porte-à-porte)", swatch: "circle" },
+      labelColor: RESIDENCE_RED,
+      legendItem: { label: "Résidence Crous ou foyer de jeunes travailleurs (porte-à-porte)", swatch: "circle" },
       visible: true,
       source: c.residences!.source,
     });

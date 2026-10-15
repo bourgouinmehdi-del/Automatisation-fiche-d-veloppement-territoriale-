@@ -48,6 +48,30 @@ describe("ciblage départemental", () => {
     expect(map.legend?.categories?.length).toBe(targets.items.length + 1);
   });
 
+  it("ciblage d'une circonscription : seules ses communes sont classées", async () => {
+    const { buildReport } = await import("@/lib/report/build");
+    const { circoCommunes } = await import("@/lib/collectors/carto");
+    const r = await buildReport({ codeInsee: "60159", scope: "circonscription", circo: 2 });
+    expect(r.perimeter.label).toBe("2e circonscription de l'Oise");
+    expect(r.sections[0]).toMatchObject({ id: "CIBLAGE", title: "Développement territorial — 2e circonscription de l'Oise" });
+    const inCirco = new Set(r.perimeter.communes.map((c) => c.code));
+    expect(inCirco.size).toBeGreaterThan(0);
+    expect(inCirco.size).toBeLessThan(dep.perimeter.communes.length);
+    const targets = r.sections[0].blocks.find((b) => b.type === "targets") as Extract<Report["sections"][number]["blocks"][number], { type: "targets" }>;
+    for (const t of targets?.items ?? []) for (const code of t.codes ?? [t.code]) expect(inCirco.has(code)).toBe(true);
+    const classement = r.tables.find((t) => t.id === "ciblage_classement")!;
+    expect(classement.rows.length).toBeLessThan(dep.tables.find((t) => t.id === "ciblage_classement")!.rows.length);
+    const affiche = r.maps.find((m) => m.id === "ciblage_affiche")!;
+    expect(affiche.poster?.kicker).toBe("2e circonscription de l'Oise");
+    expect(affiche.layers.find((l) => l.id === "circos")!.data.features).toHaveLength(1);
+    // Part de surface : une commune à cheval sur deux circonscriptions est retenue avec une part < 1.
+    const sq = (x0: number, x1: number): GeoJSON.Feature => ({ type: "Feature", properties: { code: "X" }, geometry: { type: "Polygon", coordinates: [[[x0, 0], [x1, 0], [x1, 1], [x0, 1], [x0, 0]]] } });
+    const share = circoCommunes([sq(0, 1)], { geometry: sq(0.5, 2).geometry as GeoJSON.Polygon }).get("X")!;
+    expect(share).toBeGreaterThan(0.45);
+    expect(share).toBeLessThan(0.55);
+    expect(circoCommunes([sq(0, 1)], { geometry: sq(0.9, 2).geometry as GeoJSON.Polygon }).has("X")).toBe(false);
+  }, 180000);
+
   it("carte « affiche » : groupes d'action, ciblages, circonscriptions, départements voisins", async () => {
     const m = dep.maps.find((x) => x.id === "ciblage_affiche")!;
     expect(m.poster?.title).toBe("État des groupes d'action et propositions de ciblage");

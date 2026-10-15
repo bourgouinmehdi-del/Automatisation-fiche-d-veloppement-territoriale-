@@ -173,7 +173,7 @@ export default function Generation({ params }: { params: Promise<{ id: string }>
           </div>
         )}
         {error && (
-          <p className="mt-4 rounded bg-[#fdecea] p-3 text-sm text-[#a12a29]">
+          <p className="mt-4 rounded box-err p-3 text-sm">
             Échec de la génération : {error}. <a href="/">Revenir à l&apos;accueil</a>
           </p>
         )}

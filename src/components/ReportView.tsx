@@ -43,6 +43,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
   const failed = r.runs.filter((x) => x.status === "failed");
   const hasFiche = r.sections.some((s) => s.id === "LFI");
   const hasCiblage = r.sections.some((s) => s.id === "CIBLAGE");
+  const terrName = r.query.scope === "circonscription" ? r.perimeter.label.replace(/^./, (x) => x.toUpperCase()) : r.commune.departement.nom;
   // L'outil s'ouvre sur la fiche seule ; le détail (bureaux, quartiers, porte-à-porte,
   // diagnostic A à I) est replié et s'affiche à la demande.
   const isMain = (id: string) => id === "LFI" || id === "CIBLAGE";
@@ -229,7 +230,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         const t = r.tables.find((x) => x.id === b.tableId);
         if (!t) return null;
         return (
-          <Figure key={key} title={t.title} src={t.sources.map((s) => cit.cite(s))} note={t.note} download={exp("table", `?id=${t.id}`)}>
+          <Figure key={key} title={t.title} src={t.sources.map((s) => cit.cite(s))} note={t.note}>
             <div className="max-h-[520px] overflow-auto rounded-lg border border-[var(--line)]">
               <table className="data">
                 <thead>
@@ -393,7 +394,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
       <section key={s.id} id={`part-${s.id}`} className="card fiche mb-8 scroll-mt-20 overflow-hidden">
         <div className="fiche-band">
           <div className="fiche-kind">{s.id === "CIBLAGE" ? "Propositions de ciblage du département" : "Proposition de ciblage"}</div>
-          <div className="display iso-soft mt-3 text-5xl leading-none">{s.id === "CIBLAGE" ? r.commune.departement.nom : r.commune.nom}</div>
+          <div className="display iso-soft mt-3 text-5xl leading-none">{s.id === "CIBLAGE" ? terrName : r.commune.nom}</div>
         </div>
         <div className="p-5 md:p-8">{s.blocks.map(renderBlock)}</div>
       </section>
@@ -412,9 +413,9 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
     <div className="mx-auto max-w-7xl px-4 py-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold">{hasCiblage ? r.commune.departement.nom : r.commune.nom}</h1>
+          <h1 className="text-4xl font-bold">{hasCiblage ? terrName : r.commune.nom}</h1>
           <div className="mt-1 text-sm text-[var(--ink-2)]">
-            {hasCiblage ? `Ciblage du département (${r.commune.departement.code}), ${r.commune.region.nom}` : `${r.commune.departement.nom} (${r.commune.departement.code}), ${r.commune.region.nom}${r.commune.epci ? `. ${r.commune.epci.nom}` : ""}. Code INSEE ${r.commune.code}`}
+            {hasCiblage ? (r.query.scope === "circonscription" ? `Ciblage de la circonscription, ${r.commune.departement.nom} (${r.commune.departement.code})` : `Ciblage du département (${r.commune.departement.code}), ${r.commune.region.nom}`) : `${r.commune.departement.nom} (${r.commune.departement.code}), ${r.commune.region.nom}${r.commune.epci ? `. ${r.commune.epci.nom}` : ""}. Code INSEE ${r.commune.code}`}
           </div>
           <div className="mt-1 text-xs text-[var(--muted)]">
             Version {r.version}, générée le {fmtDate(r.updatedAt)}. Fraîcheur des données : {freshness}
@@ -466,7 +467,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
       </div>
 
       {(r.warnings.length > 0 || failed.length > 0) && (
-        <div className="mb-6 rounded-lg border-l-4 border-[#eda100] bg-[#fff7e6] p-3 text-sm">
+        <div className="mb-6 rounded-lg box-warn p-3 text-sm">
           {r.warnings.map((w, i) => (
             <div key={i}>{w}</div>
           ))}
@@ -524,7 +525,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
       </div>
 
       {showSources && (
-        <aside className="fixed inset-y-0 right-0 z-[1000] w-full max-w-xl overflow-y-auto border-l border-[var(--line)] bg-white p-5 shadow-2xl">
+        <aside className="fixed inset-y-0 right-0 z-[1000] w-full max-w-xl overflow-y-auto border-l border-[var(--line)] bg-[var(--surface)] p-5 shadow-2xl">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-bold">Sources et méthodologie</h2>
             <button className="btn" onClick={() => setShowSources(false)}>
@@ -567,7 +568,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
                       {x.message ? ` — ${x.message}` : ""}
                     </div>
                   </td>
-                  <td className={x.status === "failed" ? "text-[#a12a29]" : x.status === "ok" || x.status === "cache" ? "text-[#0b6b47]" : "text-[#8a5300]"}>{STATUS_FR[x.status]}</td>
+                  <td className={x.status === "failed" ? "msg-err" : x.status === "ok" || x.status === "cache" ? "msg-ok" : "text-[var(--warn-line)]"}>{STATUS_FR[x.status]}</td>
                   <td className="r">
                     {x.requests}
                     {x.fromCache ? ` (${x.fromCache} cache)` : ""}
@@ -598,16 +599,11 @@ function Refs({ n, onClick }: { n: number[]; onClick: () => void }) {
   );
 }
 
-function Figure({ title, children, src, note, download }: { title: string; children: React.ReactNode; src?: number[]; note?: string; download?: string }) {
+function Figure({ title, children, src, note }: { title: string; children: React.ReactNode; src?: number[]; note?: string }) {
   return (
     <figure className="my-5">
       <figcaption className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold">
         <span>{title}</span>
-        {download && (
-          <a href={download} className="no-print shrink-0 text-xs font-normal">
-            CSV
-          </a>
-        )}
       </figcaption>
       {children}
       {(src?.length || note) && (
@@ -646,7 +642,7 @@ function MapBlock({ maps, cite, exp }: { maps: Report["maps"]; cite: (s: Report[
       {m.poster ? (
         // Carte « affiche » : l'image mise en page (titre, étiquettes, légende), identique au PDF.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={exp("map-svg", `?id=${m.id}&inline=1`)} alt={m.title} className="w-full rounded border border-[var(--line)] bg-white" loading="lazy" />
+        <img src={exp("map-svg", `?id=${m.id}&inline=1`)} alt={m.title} className="w-full rounded border border-[var(--line)] bg-[var(--surface)]" loading="lazy" />
       ) : (
         <MapView key={m.id} map={m} />
       )}
@@ -702,14 +698,14 @@ function FieldNotes({ id, part, initial }: { id: string; part?: FieldNotePart; i
         onChange={(e) => setText(e.target.value)}
         rows={5}
         placeholder={L.placeholder}
-        className="no-print w-full rounded-md border border-[var(--line)] bg-white p-2 text-sm"
+        className="no-print w-full rounded-md border border-[var(--line)] bg-[var(--surface)] p-2 text-sm"
       />
       <div className="print-only whitespace-pre-wrap">{text}</div>
       <div className="no-print mt-2 flex items-center gap-3">
         <button className="btn btn-primary" onClick={save} disabled={!dirty}>
           {state === "saving" ? "Enregistrement…" : "Enregistrer"}
         </button>
-        {state === "error" && <span className="text-sm text-[#a12a29]">Échec de l&apos;enregistrement</span>}
+        {state === "error" && <span className="text-sm msg-err">Échec de l&apos;enregistrement</span>}
       </div>
     </div>
   );
@@ -776,7 +772,7 @@ function FieldPlaces({ id, initial }: { id: string; initial?: Report["fieldPlace
       </div>
       <div className="space-y-2">
         {items.map((p, i) => (
-          <div key={i} className="grid gap-2 rounded-md border border-[var(--line)] bg-white p-2 text-sm md:grid-cols-[8rem_1fr_1fr_1.4fr_auto]">
+          <div key={i} className="grid gap-2 rounded-md border border-[var(--line)] bg-[var(--surface)] p-2 text-sm md:grid-cols-[8rem_1fr_1fr_1.4fr_auto]">
             <select aria-label="Type" value={p.type} onChange={(e) => set(i, "type", e.target.value)} className="rounded border border-[var(--line)] p-1">
               {PLACE_TYPES.map((t) => (
                 <option key={t}>{t}</option>

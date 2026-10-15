@@ -28,6 +28,7 @@ const STMT = [
   },
   { id: "national" as const, title: "Demandeurs d'emploi, France entière", help: "Fichier RES_NAT (même format, colonne COMRES vide) : sert de point de comparaison." },
 ];
+type ResSummary = { origin: "interne" | "embarque"; retrievedAt: string; residences: number; porte: number };
 const per = (m: string) => `${m.slice(4)}/${m.slice(0, 4)}`;
 
 export default function DonneesInternes() {
@@ -35,11 +36,16 @@ export default function DonneesInternes() {
   const [sum, setSum] = useState<Summary | null>(null);
   const [msg, setMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [res, setRes] = useState<ResSummary | null>(null);
 
   useEffect(() => {
     fetch("/api/interne")
       .then((r) => r.json())
       .then(setSum)
+      .catch(() => {});
+    fetch("/api/interne/residences")
+      .then((r) => r.json())
+      .then(setRes)
       .catch(() => {});
     fetch("/api/interne/emploi")
       .then((r) => r.json())
@@ -81,6 +87,24 @@ export default function DonneesInternes() {
     setMsg((m) => ({ ...m, [kind]: res.ok ? { ok: true, text: `Fichier enregistré : ${d.info}.` } : { ok: false, text: d.error } }));
     if (d.summary) setSum(d.summary);
     setBusy(null);
+  }
+
+  async function uploadRes(file: File) {
+    setBusy("residences");
+    const fd = new FormData();
+    fd.set("file", file);
+    const r = await fetch("/api/interne/residences", { method: "POST", body: fd });
+    const d = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+    setMsg((m) => ({ ...m, residences: r.ok ? { ok: true, text: `Catalogue enregistré : ${d.info}.` } : { ok: false, text: d.error } }));
+    if (d.summary) setRes(d.summary);
+    setBusy(null);
+  }
+
+  async function removeRes() {
+    const r = await fetch("/api/interne/residences", { method: "DELETE" });
+    const d = await r.json();
+    if (d.summary) setRes(d.summary);
+    setMsg((m) => ({ ...m, residences: { ok: true, text: "Classeur supprimé : retour à la copie intégrée à l'application." } }));
   }
 
   async function remove(kind: string) {
@@ -151,10 +175,48 @@ export default function DonneesInternes() {
                   )}
                 </div>
               </div>
-              {msg[k.id] && <p className={`mt-3 text-sm ${msg[k.id].ok ? "text-[#0b6b47]" : "text-[#a12a29]"}`}>{msg[k.id].text}</p>}
+              {msg[k.id] && <p className={`mt-3 text-sm ${msg[k.id].ok ? "msg-ok" : "msg-err"}`}>{msg[k.id].text}</p>}
             </section>
           );
         })}
+        <section className="card p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Résidences étudiantes et foyers de jeunes travailleurs</h2>
+              <p className="mt-1 text-sm text-[var(--ink-2)]">
+                Classeur Excel mensuel « catalogue des logements étudiants » (onglets « Résidences » et « Adresses »). Les résidences du Crous et les foyers de jeunes
+                travailleurs sont proposés systématiquement pour du porte-à-porte et affichés sur la carte ; toutes les résidences figurent en annexe.
+              </p>
+              <p className="mt-2 text-xs text-[var(--muted)]">
+                {res
+                  ? `${res.origin === "interne" ? "Classeur déposé" : "Copie intégrée à l'application"} — ${res.residences.toLocaleString("fr-FR")} résidences, dont ${res.porte.toLocaleString("fr-FR")} Crous ou foyers${res.retrievedAt ? `, relevé du ${new Date(res.retrievedAt).toLocaleDateString("fr-FR")}` : ""}`
+                  : "…"}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <label className={`btn ${busy === "residences" ? "opacity-60" : ""} cursor-pointer`}>
+                {busy === "residences" ? "Envoi…" : "Déposer le classeur"}
+                <input
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  disabled={!!busy}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadRes(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {res?.origin === "interne" && (
+                <button className="btn" onClick={removeRes}>
+                  Supprimer
+                </button>
+              )}
+            </div>
+          </div>
+          {msg.residences && <p className={`mt-3 text-sm ${msg.residences.ok ? "msg-ok" : "msg-err"}`}>{msg.residences.text}</p>}
+        </section>
         {STMT.map((k) => {
           const f = stmt[k.id];
           return (
@@ -191,7 +253,7 @@ export default function DonneesInternes() {
                   )}
                 </div>
               </div>
-              {msg[k.id] && <p className={`mt-3 text-sm ${msg[k.id].ok ? "text-[#0b6b47]" : "text-[#a12a29]"}`}>{msg[k.id].text}</p>}
+              {msg[k.id] && <p className={`mt-3 text-sm ${msg[k.id].ok ? "msg-ok" : "msg-err"}`}>{msg[k.id].text}</p>}
             </section>
           );
         })}

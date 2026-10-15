@@ -29,11 +29,11 @@ function LoginForm() {
       <p className="text-sm text-[var(--ink-2)]">Accès réservé aux membres du pôle. Demandez un identifiant au responsable de l&apos;outil.</p>
       <label className="block text-sm font-semibold">
         Identifiant
-        <input autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} className="mt-1 w-full rounded-md border border-[var(--line)] bg-white p-2 font-normal" required />
+        <input autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} className="mt-1 w-full rounded-md border border-[var(--line)] bg-[var(--surface)] p-2 font-normal" required />
       </label>
       <label className="block text-sm font-semibold">
         Mot de passe
-        <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 w-full rounded-md border border-[var(--line)] bg-white p-2 font-normal" required />
+        <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 w-full rounded-md border border-[var(--line)] bg-[var(--surface)] p-2 font-normal" required />
       </label>
       {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
       <button className="btn btn-primary w-full justify-center" disabled={busy}>

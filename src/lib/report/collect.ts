@@ -27,7 +27,8 @@ import {
 import { BureauGeo, collectBureauxGeo } from "../collectors/bureaux-geo";
 import { InternalData, loadInternalData } from "../collectors/interne";
 import { loadStmt, type StmtSeries } from "../collectors/emploi";
-import { collectCirconscriptions, collectDepartementsVoisins, collectFondOsm, collectResidences, fitAspect, type Bbox, type Circo, type FondOsm, type Residence } from "../collectors/carto";
+import { CATALOGUE_URL, isPorteAPorte, loadCatalogue, residencesOf, type ResidenceEtudiante } from "../collectors/residences-etudiantes";
+import { circoCommunes, circoLabel, collectCirconscriptions, collectDepartementsVoisins, collectFondOsm, fitAspect, type Bbox, type Circo, type FondOsm, type Residence } from "../collectors/carto";
 import { rankBureaux } from "../analysis/political";
 import { collectRpls, type RplsResult } from "../collectors/rpls";
 import { collectAdultes, type AdultesDep } from "../collectors/adultes";
@@ -67,6 +68,7 @@ import type {
   GeoRef,
   ProgressEvent,
   ReportQuery,
+  Scope,
   SourceRef,
 } from "../types";
 
@@ -168,9 +170,11 @@ export interface Collected {
   rpls?: RplsResult & { source: SourceRef };
   /** Cartes « affiche » (commune) : fond OpenStreetMap et résidences étudiantes. */
   fond?: FondOsm & { bbox: Bbox; source: SourceRef };
-  residences?: { list: Residence[]; source: SourceRef };
+  residences?: { list: (ResidenceEtudiante & { porte: boolean })[]; source: SourceRef };
   /** Cartes « affiche » (département) : circonscriptions et départements voisins. */
   circos?: { list: Circo[]; source: SourceRef };
+  /** Périmètre « circonscription » : part de chaque commune dans la circonscription (0 à 1). */
+  circoShares?: Map<string, number>;
   depVoisins?: { features: GeoJSON.Feature[]; bbox: Bbox; source: SourceRef };
   /** Demandeurs d'emploi par mois : commune, département, France (fichiers déposés). */
   emploi?: StmtSeries & { source: SourceRef };
@@ -222,6 +226,9 @@ const STEP_ORDER = [
 ];
 
 /** Nombre d'étapes suivies (identité, géographie, 18 étapes parallèles) + 3 étapes d'analyse. */
+/** Périmètres de ciblage (comparaison des communes d'un territoire) plutôt que fiche communale. */
+export const territorial = (s: Scope) => s === "departement" || s === "circonscription";
+
 export const PROGRESS_TOTAL = 2 + 21 + 3;
 
 export async function collect(
@@ -314,14 +321,14 @@ export async function collect(
       label: commune.epci.nom,
       communes: epciMembers(commune.epci.code),
     };
-  } else if (query.scope === "departement") {
+  } else if (territorial(query.scope)) {
     focus = {
       level: "departement",
       code: commune.departement.code,
       name: commune.departement.nom,
     };
     perimeter = {
-      label: commune.departement.nom,
+      label: query.scope === "circonscription" && query.circo ? circoLabel(query.circo, commune.departement.nom) : commune.departement.nom,
       communes: departementCommunes(commune.departement.code),
     };
   } else if (query.scope === "custom" && query.customCommunes?.length) {
@@ -829,7 +836,7 @@ export async function collect(
   /* 14. Quartiers : QPV et IRIS */
   /* Population adulte de nationalité française (IRIS) : non-inscription. */
   const run_adultes = async () => {
-    if (!enabled("iris") || query.scope === "departement") return;
+    if (!enabled("iris") || territorial(query.scope)) return;
     await ctx.step(
       "iris",
       "adultes",
@@ -843,7 +850,7 @@ export async function collect(
 
   /* Logements sociaux (RPLS) : résidences HLM et nombre de logements. */
   const run_rpls = async () => {
-    if (!enabled("rpls") || query.scope === "departement") return;
+    if (!enabled("rpls") || territorial(query.scope)) return;
     await ctx.step(
       "rpls",
       "rpls",
@@ -944,7 +951,7 @@ export async function collect(
         },
         { theme: "elections", label: "Municipales 2026 et maire" },
       );
-      if (query.scope === "departement")
+      if (territorial(query.scope))
         await ctx.step(
           "municipales",
           "municipales:departement",
@@ -1073,7 +1080,7 @@ export async function collect(
   };
   const run_adresses = async () => {
     // Utile seulement si les bureaux ont des contours (rattachement des adresses).
-    if (!enabled("ban") || !c.bvGeo?.features.length || query.scope === "departement") return;
+    if (!enabled("ban") || !c.bvGeo?.features.length || territorial(query.scope)) return;
     await ctx.step(
       "ban",
       "adresses",
@@ -1231,12 +1238,19 @@ export async function collect(
   /* Cartes « affiche » : fond de plan et résidences étudiantes (commune),
      circonscriptions et départements voisins (département). */
   const run_cartes = async () => {
-    if (query.scope === "departement") {
+    if (territorial(query.scope)) {
       if (!c.depFeatures?.features.length) return;
       const bb = fitAspect(turf.bbox(c.depFeatures) as Bbox, 0.04);
       await ctx.step("circonscriptions", "cartes:circonscriptions", async (http) => {
         const r = await collectCirconscriptions(http, commune.departement.code);
         c.circos = { list: r.circos, source: ctx.ref("circonscriptions", r.url, r.retrievedAt) };
+        // Circonscription : communes situées (au moins en partie) dans la circonscription choisie.
+        const circo = query.scope === "circonscription" ? r.circos.find((x) => x.num === query.circo) : null;
+        if (query.scope === "circonscription") {
+          if (!circo) throw new Error(`Circonscription n° ${query.circo} introuvable dans le département ${commune.departement.code}`);
+          c.circoShares = circoCommunes(c.depFeatures!.features, circo);
+          c.perimeter.communes = c.perimeter.communes.filter((x) => c.circoShares!.has(x.code));
+        }
       });
       await ctx.step("contours_admin", "cartes:departements", async (http) => {
         const r = await collectDepartementsVoisins(http, commune.departement.code, bb);
@@ -1244,19 +1258,19 @@ export async function collect(
       });
       return;
     }
+    // Résidences étudiantes et foyers de jeunes travailleurs (catalogue « Mon Logement Étudiant »).
+    await ctx.step("residences_etudiantes", "cartes:residences", async () => {
+      const cat = await loadCatalogue();
+      const list = residencesOf(cat.list, commune);
+      c.residences = {
+        list: list.map((r) => ({ ...r, porte: isPorteAPorte(r) })),
+        source: ctx.ref("residences_etudiantes", CATALOGUE_URL, cat.retrievedAt || new Date().toISOString(), {
+          dataset: cat.origin === "interne" ? "classeur déposé dans « Données internes »" : "copie embarquée dans l'application",
+        }),
+      };
+    });
     if (!enabled("osm") || !commune.contour) return;
     const cb = turf.bbox(turf.feature(commune.contour as GeoJSON.Polygon)) as Bbox;
-    await ctx.step("osm", "cartes:residences", async (http) => {
-      const r = await collectResidences(http, cb);
-      const inCommune = r.list.filter((x) => {
-        try {
-          return turf.booleanPointInPolygon([x.lon, x.lat], turf.feature(commune.contour as GeoJSON.Polygon));
-        } catch {
-          return true;
-        }
-      });
-      c.residences = { list: inCommune, source: ctx.ref("osm", r.url, r.retrievedAt) };
-    });
     // Emprise : les lieux de la carte (bureaux prioritaires, quartiers prioritaires,
     // résidences, marchés, gares), plutôt que toute la commune (forêts, champs).
     const pts: [number, number][] = [];
@@ -1275,7 +1289,7 @@ export async function collect(
       for (const f of c.bvGeo.features) if (prio.has(String(f.properties?.bv))) corners(f);
     }
     for (const q of c.quartiers?.qpv ?? []) if (q.geometry) corners(q.geometry);
-    for (const r of c.residences?.list ?? []) pts.push([r.lon, r.lat]);
+    for (const r of c.residences?.list ?? []) if (r.porte) pts.push([r.lon, r.lat]);
     // Grands ensembles HLM (100 logements et plus) : zones de porte-à-porte de la carte.
     for (const e of (c.rpls?.ensembles ?? []).filter((x) => x.logements >= 100).slice(0, 8)) pts.push([e.lon, e.lat]);
     const inBox = (lon: number, lat: number) => lon >= cb[0] && lon <= cb[2] && lat >= cb[1] && lat <= cb[3];
@@ -1322,7 +1336,7 @@ export async function collect(
     });
 
   /* 19. Demandeurs d'emploi (fichiers France Travail déposés, facultatifs) */
-  if (query.scope !== "departement") {
+  if (!territorial(query.scope)) {
     try {
       const t0 = Date.now();
       // Paris, Lyon, Marseille : la ville = somme de ses arrondissements.

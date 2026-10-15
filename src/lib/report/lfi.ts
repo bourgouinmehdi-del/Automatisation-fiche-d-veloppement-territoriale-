@@ -1,7 +1,7 @@
 import * as turf from "@turf/turf";
 import { referentiel } from "../collectors/admin";
 import type { BureauResult, ElectionResult } from "../collectors/elections";
-import { abstention, BvRow, familyPerformance, frenchHours, lfiOverperformance, prettyBvLabel, rankBureaux, score } from "../analysis/political";
+import { abstention, BvRow, FAMILIES, familyPerformance, frenchHours, lfiOverperformance, prettyBvLabel, rankBureaux, score } from "../analysis/political";
 import { gap, haversineKm, quantileBreaks } from "../analysis/stats";
 import { evidenceId } from "../analysis/findings";
 import { aNom, deNom, fmtNumber, fmtSigned, fmtValue } from "../format";
@@ -47,6 +47,54 @@ export interface LfiOutput {
   maps: MapSpec[];
   findings: Finding[];
   indicators: Indicator[];
+}
+
+/**
+ * Forces politiques du graphique « Européennes 2024 » : ordre et couleurs de
+ * la charte. Score national : résultats définitifs (France entière, % des
+ * suffrages exprimés), ministère de l'Intérieur, 9 juin 2024.
+ */
+export const EU24_CHART: { id: string; label: string; color: string; national: number }[] = [
+  { id: "pcf", label: "PCF", color: "#830E21", national: 2.36 },
+  { id: "lfi", label: "LFI", color: "#E8434B", national: 9.89 },
+  { id: "eco", label: "LÉ", color: "#49C07A", national: 5.5 },
+  { id: "ps", label: "PS / PP", color: "#F08FB7", national: 13.83 },
+  { id: "ens", label: "Ensemble", color: "#FED700", national: 14.6 },
+  { id: "lr", label: "LR", color: "#8CB0DC", national: 7.25 },
+  { id: "rn", label: "RN", color: "#313567", national: 31.37 },
+  { id: "rec", label: "Reconquête", color: "#8D6E63", national: 5.47 },
+];
+export const EU24_AUTRES_COLOR = "#9AA0A6";
+
+export function europeennesChart(a: { exprimes: number; candidates: { label: string; voix: number }[] }, source: SourceRef): ChartSpec {
+  // Chaque liste est rattachée à une seule force (la première qui correspond).
+  const voix = new Map<string, number>();
+  let autres = 0;
+  for (const cand of a.candidates) {
+    const f = EU24_CHART.find((x) => FAMILIES.find((y) => y.id === x.id)?.match.EU24?.test(cand.label));
+    if (f) voix.set(f.id, (voix.get(f.id) ?? 0) + cand.voix);
+    else autres += cand.voix;
+  }
+  const pctOf = (v: number) => (a.exprimes ? Math.round((1000 * v) / a.exprimes) / 10 : null);
+  const natAutres = Math.round(10 * (100 - EU24_CHART.reduce((s2, f) => s2 + f.national, 0))) / 10;
+  return {
+    id: "lfi_chart_eu24",
+    title: "Européennes 2024",
+    type: "refbar",
+    xKey: "label",
+    series: [
+      { key: "value", label: "Commune" },
+      { key: "ref", label: "Score national" },
+    ],
+    colorKey: "color",
+    unit: "%",
+    data: [
+      ...EU24_CHART.map((f) => ({ label: f.label, value: pctOf(voix.get(f.id) ?? 0), ref: f.national, color: f.color })),
+      { label: "Autres", value: pctOf(autres), ref: natAutres, color: EU24_AUTRES_COLOR },
+    ],
+    sources: [source, { id: "elections_nat", name: "Ministère de l'Intérieur, résultats nationaux des élections européennes 2024", url: "https://www.resultats-elections.interieur.gouv.fr/europeennes2024/ensemble_geographique/index.html", retrievedAt: "2024-06-10" }],
+    note: "Part des voix (hors blancs et nuls) ; trait : score national (France entière).",
+  };
 }
 
 /** Adresses du REU en majuscules : « 14 PLACE DE LA FRATERNITE 48000 mende » → « 14 Place de la Fraternite, 48000 Mende ». */
@@ -363,6 +411,12 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   };
   // Logements sociaux (RPLS) par résidence et par bureau de vote.
   const hlm = (c.rpls?.residences ?? []).map((r) => ({ ...r, bv: bvPolys.length ? bvAt(r.lon, r.lat) : null }));
+  // Résidences étudiantes et foyers de jeunes travailleurs : les plus grandes d'abord (logements inconnus en dernier).
+  const residences = (c.residences?.list ?? [])
+    .map((r) => ({ ...r, bv: bvPolys.length ? bvAt(r.lon, r.lat) : null }))
+    .sort((x, y) => (y.logements ?? -1) - (x.logements ?? -1) || x.nom.localeCompare(y.nom, "fr"));
+  const resPorte = residences.filter((r) => r.porte);
+  const resType = (r: { categorie: string }) => (/foyer de jeunes/i.test(r.categorie) ? "foyer de jeunes travailleurs" : "résidence du Crous");
   const hlmByBv = new Map<string, number>();
   for (const r of hlm) if (r.bv) hlmByBv.set(r.bv, (hlmByBv.get(r.bv) ?? 0) + r.logements);
   const hasHlm = hlm.length > 0 && hlmByBv.size > 0;
@@ -401,6 +455,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const c22 = com(p22);
   const d24 = depR(e24);
   const d22 = depR(p22);
+  // Graphique systématique « Européennes 2024 » : % des exprimés par force politique, repère national.
+  if (c24 && e24) out.charts.push(europeennesChart(c24, e24.source));
   if (c24 || c22) {
     type Row = Record<string, string | number | null>;
     const line = (name: string, ins: number | null, l22: ReturnType<typeof score>, l24: ReturnType<typeof score>, par: number | null, a22: ReturnType<typeof abstention> | null, a24: ReturnType<typeof abstention> | null): Row => ({
@@ -1406,6 +1462,12 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (reservoir.length) abstItems.push(`Bureaux à abstention forte à couvrir ensuite : ${joinFr(reservoir.map((b) => `BV ${dv(b.bv)} (${pct(b.abstPct, 0)})`))}.`);
     actionGroups.push({ title: "Abstentionnistes et inscription", items: abstItems });
   }
+  if (resPorte.length)
+    actionGroups.push({
+      title: "Résidences étudiantes et foyers de jeunes travailleurs",
+      hint: "porte-à-porte",
+      items: resPorte.map((r) => `${B(r.nom)} (${resType(r)}${r.logements ? `, ${fmtNumber(r.logements)} logements` : ""}) : ${r.adresse}${r.bv ? ` (bureau ${dv(r.bv)})` : ""}.`),
+    });
   const markets = lieux.filter((l) => l.type === "Marché");
   if (markets.length) actionGroups.push({ title: "Marchés", items: markets.slice(0, 5).map((m) => `${B(m.nom)} : ${m.infos}${m.bv ? ` (${m.bv}${m.prioritaire ? ", prioritaire" : ""})` : ""}.`) });
   else if ((commune.population ?? 0) >= 2000) actionGroups.push({ title: "Marchés", items: ["Aucun marché recensé dans OpenStreetMap : jours, horaires et emplacements à demander à la mairie ou aux militants locaux, puis à ajouter dans « Lieux d'action signalés par les militants »."] });
@@ -1446,6 +1508,13 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       infos: `${pp(p.lfiPctExp)} des voix pour LFI${lfiComExp != null ? ` (commune : ${pp(lfiComExp)})` : ""} ; ${fmtNumber(p.abstN)} inscrits n'ont pas voté`,
       bv: dv(p.bv),
     });
+  for (const r of resPorte)
+    plan.push({
+      action: "Porte-à-porte",
+      ou: `${r.nom} (${resType(r)})`,
+      infos: [r.logements ? `${fmtNumber(r.logements)} logements` : "", r.adresse].filter(Boolean).join(" ; "),
+      bv: r.bv ? dv(r.bv) : "",
+    });
   for (const m of markets.slice(0, 2)) plan.push({ action: "Tractage au marché", ou: m.nom, infos: m.infos, bv: m.bv });
   for (const g of gares.slice(0, 2)) {
     const t = tt(g.nom);
@@ -1470,9 +1539,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         { key: "infos", label: "Pourquoi / quand" },
         { key: "bv", label: "Bureau de vote" },
       ],
-      rows: plan.slice(0, 10).map((r) => ({ ...r, bv: r.bv.replace(/^BV\s*/, "") })),
-      highlight: plan.slice(0, 10).map((r, i) => (r.action === "Porte-à-porte" ? i : -1)).filter((i) => i >= 0),
-      sources: [...(bvRef ? [bvRef.source] : []), ...(c.bpe ? [c.bpe.source] : []), ...(c.schools ? [c.schools.source] : []), ...(c.stations ? [c.stations.source] : [])],
+      rows: plan.slice(0, 10 + resPorte.length).map((r) => ({ ...r, bv: r.bv.replace(/^BV\s*/, "") })),
+      highlight: plan.slice(0, 10 + resPorte.length).map((r, i) => (r.action === "Porte-à-porte" ? i : -1)).filter((i) => i >= 0),
+      sources: [...(bvRef ? [bvRef.source] : []), ...(resPorte.length && c.residences ? [c.residences.source] : []), ...(c.bpe ? [c.bpe.source] : []), ...(c.schools ? [c.schools.source] : []), ...(c.stations ? [c.stations.source] : [])],
       note: "Horaires des marchés à confirmer sur place. Le détail de toutes les pistes et de tous les lieux figure en annexe.",
     });
   }
@@ -1511,11 +1580,31 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       note: `Répertoire des logements locatifs des bailleurs sociaux${c.rpls.millesime ? ` (au 1er janvier ${c.rpls.millesime.slice(0, 4)})` : ""} : un logement par ligne, regroupés par nom de programme ou par adresse.${hlmRank.length > 60 ? ` 60 plus grandes résidences sur ${hlmRank.length}.` : ""}`,
     });
   }
+  const resMsg = resPorte.length
+    ? `, ${porteMsg ? "et " : ""}dans ${resPorte.length > 1 ? `les ${resPorte.length} résidences du Crous et foyers de jeunes travailleurs` : `la résidence ${resPorte[0].nom} (${resType(resPorte[0])})`}`
+    : "";
+  if (residences.length && c.residences)
+    out.tables.push({
+      id: "lfi_residences",
+      title: "Résidences étudiantes et foyers de jeunes travailleurs",
+      theme: "strategie",
+      columns: [
+        { key: "nom", label: "Nom", wide: true },
+        { key: "type", label: "Type" },
+        { key: "gestionnaire", label: "Gestionnaire" },
+        { key: "logements", label: "Nombre de logements", align: "right" },
+        { key: "adresse", label: "Adresse" },
+      ],
+      rows: residences.map((r) => ({ nom: r.nom, type: r.categorie, gestionnaire: r.gestionnaire, logements: r.logements != null ? fmtNumber(r.logements) : "n.d.", adresse: r.adresse })),
+      highlight: residences.map((r, i) => (r.porte ? i : -1)).filter((i) => i >= 0),
+      sources: [c.residences.source],
+      note: "Toutes les résidences du catalogue situées dans la commune, par nombre de logements. En surbrillance : résidences du Crous et foyers de jeunes travailleurs, où le porte-à-porte est proposé systématiquement.",
+    });
   const hlmTop = hlmRank.filter((r) => r.nom !== r.adresse || r.logements >= 40).slice(0, 2);
   const hlmMsg = hlmTop.length ? `, en commençant par ${hlmTop.length > 1 ? "les résidences HLM" : "la résidence HLM"} ${joinFr(hlmTop.map((r) => `${r.nom === r.adresse ? r.adresse : r.nom} (${fmtNumber(r.logements)} logements)`))}` : "";
   const planIntro =
-    porteMsg || lieuxMsg.length
-      ? `${B("Priorité")} : ${porteMsg ? `${porteMsg}${hlmMsg}${lieuxMsg.length ? `, complété par des tractages ${joinFr(lieuxMsg)}` : ""}` : `tractages ${joinFr(lieuxMsg)}`}.`
+    porteMsg || resMsg || lieuxMsg.length
+      ? `${B("Priorité")} : ${porteMsg || resMsg ? `${porteMsg || "porte-à-porte"}${hlmMsg}${porteMsg ? resMsg : resMsg.replace(/^, /, " ")}${lieuxMsg.length ? `, complété par des tractages ${joinFr(lieuxMsg)}` : ""}` : `tractages ${joinFr(lieuxMsg)}`}.`
       : "";
 
   // Carte « affiche » : porte-à-porte et tractage sur fond de plan.
@@ -1754,6 +1843,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // (Sans données internes : rien dans la fiche, qui s'adresse aux élus ; le signalement figure dans le journal de collecte.)
   const prose = (list: string[]) => list.length && blocks.push({ type: "findings", ids: list, style: "prose" });
   // Un tableau, puis 3 phrases au plus : mairie, quartiers où LFI surperforme, parrainages.
+  if (out.charts.some((x) => x.id === "lfi_chart_eu24")) blocks.push({ type: "chart", chartId: "lfi_chart_eu24" });
   if (has("lfi_vote")) blocks.push({ type: "table", tableId: "lfi_vote" });
   if (municipalText) blocks.push({ type: "paragraph", text: municipalText.split(/(?<=\.)\s+(?=[A-ZÀ-Ý«])/).slice(0, 2).join(" "), evidence: [] });
   prose([...ids2.quartiers.filter((id) => out.findings.find((f) => f.id === id)?.kind === "atout"), ...ids.parrains].slice(0, 2));
@@ -1811,6 +1901,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (actionGroups.length) detail.push({ type: "heading", text: "Toutes les pistes d'action" }, { type: "actions", groups: actionGroups });
   if (has("lfi_lieux")) detail.push({ type: "table", tableId: "lfi_lieux" });
   if (has("lfi_hlm_tout")) detail.push({ type: "heading", text: "Logements sociaux" }, { type: "table", tableId: "lfi_hlm_tout" });
+  if (has("lfi_residences")) detail.push({ type: "heading", text: "Résidences étudiantes et foyers de jeunes travailleurs" }, { type: "table", tableId: "lfi_residences" });
   blocks.push({ type: "fieldPlaces" });
   blocks.push({ type: "fieldNotes", part: "actions" });
 

@@ -23,9 +23,11 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Partial<ReportQuery>;
   const code = String(body.codeInsee ?? "").toUpperCase();
   if (!communeFromReferentiel(code)) return NextResponse.json({ error: "Code INSEE inconnu" }, { status: 400 });
-  const scopes: Scope[] = ["commune", "epci", "departement", "custom"];
+  const scopes: Scope[] = ["commune", "epci", "circonscription", "departement", "custom"];
   const scope = scopes.includes(body.scope as Scope) ? (body.scope as Scope) : "commune";
   const custom = Array.isArray(body.customCommunes) ? body.customCommunes.map(String).filter((c) => communeFromReferentiel(c.toUpperCase())).slice(0, 40) : undefined;
-  const id = startJob({ codeInsee: code, codePostal: body.codePostal, scope, customCommunes: scope === "custom" ? custom : undefined });
+  const circo = Number(body.circo);
+  if (scope === "circonscription" && !(Number.isInteger(circo) && circo >= 1 && circo <= 40)) return NextResponse.json({ error: "Numéro de circonscription manquant" }, { status: 400 });
+  const id = startJob({ codeInsee: code, codePostal: body.codePostal, scope, customCommunes: scope === "custom" ? custom : undefined, circo: scope === "circonscription" ? circo : undefined });
   return NextResponse.json({ id });
 }

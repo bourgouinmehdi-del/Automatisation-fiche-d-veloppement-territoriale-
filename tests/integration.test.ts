@@ -253,14 +253,41 @@ describe("chaîne de génération (API simulées)", () => {
     expect(m.poster?.kicker).toBe("Compiègne");
     const ids = m.layers.map((l) => l.id);
     expect(ids).toEqual(expect.arrayContaining(["voisins", "commune", "voies", "fer", "limite", "bv_prio", "qpv", "residences", "tractage"]));
-    expect(m.layers.find((l) => l.id === "residences")!.data.features[0].properties).toMatchObject({ nom: "Résidence Roberval", sub: "385 logements" });
+    expect(m.layers.find((l) => l.id === "residences")!.data.features[0].properties).toMatchObject({ nom: "Roberval", sub: "Crous, 385 logements" });
     expect(m.layers.find((l) => l.id === "tractage")!.data.features.some((f) => /voyageurs\/jour/.test(f.properties?.sub))).toBe(true);
     const { mapSvg } = await import("@/lib/render/svg");
     const svg = mapSvg(m);
-    for (const t of ["COMPIÈGNE", "Propositions de ciblage : porte-à-porte et tractage", "Résidence Roberval", "Lieu de tractage (marché, gare)", "Limite communale"]) expect(svg).toContain(t);
+    for (const t of ["COMPIÈGNE", "Propositions de ciblage : porte-à-porte et tractage", "Roberval", "#F91616", "Lieu de tractage (marché, gare)", "Limite communale"]) expect(svg).toContain(t);
     const fiche = report.sections[0];
     const iAct = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Actions recommandées");
     expect(fiche.blocks.slice(iAct).some((b) => b.type === "map" && b.mapId === "lfi_affiche")).toBe(true);
+  });
+
+  it("résidences Crous et foyers de jeunes travailleurs : porte-à-porte systématique et annexe", async () => {
+    const plan = report.tables.find((t) => t.id === "lfi_plan")!;
+    const porte = plan.rows.filter((r) => r.action === "Porte-à-porte").map((r) => String(r.ou));
+    expect(porte).toEqual(expect.arrayContaining(["Roberval (résidence du Crous)", "Picardie (foyer de jeunes travailleurs)"]));
+    const annexe = report.tables.find((t) => t.id === "lfi_residences")!;
+    expect(annexe.columns.map((c) => c.label)).toEqual(["Nom", "Type", "Gestionnaire", "Nombre de logements", "Adresse"]);
+    const logements = annexe.rows.map((r) => Number(String(r.logements).replace(/\D/g, "")) || -1);
+    expect(logements).toEqual([...logements].sort((a, b) => b - a));
+    const detail = report.sections.find((x) => x.id === "LFI_DETAIL")!;
+    expect(detail.blocks.some((b) => b.type === "table" && b.tableId === "lfi_residences")).toBe(true);
+  });
+
+  it("graphique « Européennes 2024 » dans le profil politique", async () => {
+    const ch = report.charts.find((c) => c.id === "lfi_chart_eu24")!;
+    expect(ch.type).toBe("refbar");
+    expect(ch.data.map((d) => d.label)).toEqual(["PCF", "LFI", "LÉ", "PS / PP", "Ensemble", "LR", "RN", "Reconquête", "Autres"]);
+    expect(ch.data.find((d) => d.label === "LFI")).toMatchObject({ color: "#E8434B", ref: 9.89 });
+    const fiche = report.sections[0];
+    const iPol = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil politique du territoire");
+    const iOu = fiche.blocks.findIndex((b) => b.type === "heading" && /Où agir/.test(b.text));
+    const iChart = fiche.blocks.findIndex((b) => b.type === "chart" && b.chartId === "lfi_chart_eu24");
+    expect(iChart).toBeGreaterThan(iPol);
+    expect(iChart).toBeLessThan(iOu);
+    const { chartSvg } = await import("@/lib/render/svg");
+    expect(chartSvg(ch)).toContain("#830E21");
   });
 
   it("logements sociaux (RPLS) : résidences, bureaux, carte, porte-à-porte", async () => {

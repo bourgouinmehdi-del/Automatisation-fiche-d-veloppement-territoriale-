@@ -22,7 +22,7 @@ import {
 } from "docx";
 import { SOURCES } from "../collectors/catalog";
 import { KIND_LABELS } from "../analysis/findings";
-import { fmtDate, fmtValue } from "../format";
+import { fmtDate, fmtValue, territoryName } from "../format";
 import { cellText, Citations, freshness, selectFindings, sourceLabel } from "../render/html";
 import { inlineParts } from "../render/cite";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "../render/svg";
@@ -333,7 +333,7 @@ async function ficheToDocx(r: Report, sectionIds: string[]): Promise<Buffer> {
     const head = [
       new Paragraph({ children: [new TextRun({ text: "Pôle d'études électorales", font: FONT, size: 32, underline: {} })] }),
       new Paragraph({ children: [new TextRun({ text: "Développement territorial", font: FONT, size: 32 })] }),
-      new Paragraph({ spacing: { after: 240 }, children: [new TextRun({ text: ciblage ? r.commune.departement.nom : `${r.commune.nom} (${r.commune.departement.nom})`, font: FONT, size: 32 })] }),
+      new Paragraph({ spacing: { after: 240 }, children: [new TextRun({ text: ciblage ? territoryName(r) : `${r.commune.nom} (${r.commune.departement.nom})`, font: FONT, size: 32 })] }),
       ...(ciblage
         ? []
         : [
@@ -356,7 +356,7 @@ async function ficheToDocx(r: Report, sectionIds: string[]): Promise<Buffer> {
     ];
     doc = new Document({
       creator: "fiche-territoriale",
-      title: ciblage ? `Développement territorial — ${r.commune.departement.nom}` : `Fiche d'action — ${r.commune.nom}`,
+      title: ciblage ? `Développement territorial — ${territoryName(r)}` : `Fiche d'action — ${r.commune.nom}`,
       styles: {
         default: { document: { run: { font: FONT, size: 22 } } },
         paragraphStyles: [
@@ -411,7 +411,7 @@ export async function reportToDocx(r: Report, opts: { sectionIds?: string[]; sty
     ),
   );
 
-  const scopeLabel = { commune: "Commune", epci: "Intercommunalité", departement: "Département", custom: "Territoire personnalisé" }[r.query.scope];
+  const scopeLabel = { commune: "Commune", epci: "Intercommunalité", circonscription: "Circonscription législative", departement: "Département", custom: "Territoire personnalisé" }[r.query.scope];
   const cover = [
     new Paragraph({ spacing: { before: 1800 }, children: [new TextRun({ text: "DIAGNOSTIC TERRITORIAL", font: FONT, size: 22, color: "52514E" })] }),
     new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: r.commune.nom, font: FONT, size: 64, bold: true, color: BLUE })] }),

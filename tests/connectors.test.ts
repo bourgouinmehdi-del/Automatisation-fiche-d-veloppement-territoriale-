@@ -118,12 +118,19 @@ describe("OpenStreetMap et SNCF", () => {
 
 describe("référentiel administratif (données réelles embarquées)", () => {
   it("code postal à commune unique : 60200 → Compiègne", () => {
-    const r = searchCommunes("60200");
+    const r = searchCommunes("60200").filter((c) => c.via === "postal");
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ code: "60159", nom: "Compiègne", departement: "60" });
   });
+  it("recherche par code INSEE (y compris un code qui est aussi un code postal)", () => {
+    expect(searchCommunes("60159")).toMatchObject([{ code: "60159", nom: "Compiègne", via: "insee" }]);
+    expect(searchCommunes("2A004")).toMatchObject([{ code: "2A004", nom: "Ajaccio", via: "insee" }]);
+    const r = searchCommunes("60200");
+    expect(r[0]).toMatchObject({ nom: "Compiègne", via: "postal" });
+    expect(r[r.length - 1]).toMatchObject({ code: "60200", via: "insee" });
+  });
   it("code postal ambigu : 60350 renvoie plusieurs communes triées par population", () => {
-    const r = searchCommunes("60350");
+    const r = searchCommunes("60350").filter((c) => c.via === "postal");
     expect(r.length).toBeGreaterThan(10);
     expect(r.map((c) => c.nom)).toContain("Pierrefonds");
     for (let i = 1; i < r.length; i++) expect((r[i - 1].population ?? 0) >= (r[i].population ?? 0)).toBe(true);

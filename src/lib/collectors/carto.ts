@@ -72,6 +72,49 @@ export async function collectCirconscriptions(http: TrackedHttp, dep: string): P
   );
 }
 
+/**
+ * Part de la surface de chaque commune située dans une circonscription
+ * (0 à 1). Une commune est retenue dès que 20 % de sa surface, ou son point
+ * central, est dans la circonscription : les grandes villes partagées entre
+ * plusieurs circonscriptions y figurent avec une part inférieure à 1.
+ */
+export function circoCommunes(features: GeoJSON.Feature[], circo: Pick<Circo, "geometry">): Map<string, number> {
+  const out = new Map<string, number>();
+  const cf = turf.feature(circo.geometry);
+  const cb = turf.bbox(cf);
+  for (const f of features) {
+    const code = (f.properties as { code?: string })?.code;
+    if (!code || !f.geometry || !/Polygon/.test(f.geometry.type)) continue;
+    const fb = turf.bbox(f);
+    if (fb[0] > cb[2] || fb[2] < cb[0] || fb[1] > cb[3] || fb[3] < cb[1]) continue;
+    const poly = f as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
+    let share = 0;
+    try {
+      const inter = turf.intersect(turf.featureCollection([poly, cf]));
+      share = inter ? Math.min(1, turf.area(inter) / (turf.area(poly) || 1)) : 0;
+    } catch {
+      share = turf.booleanPointInPolygon(turf.pointOnFeature(poly), cf) ? 1 : 0;
+    }
+    let centre = false;
+    try {
+      centre = turf.booleanPointInPolygon(turf.pointOnFeature(poly), cf);
+    } catch {
+      /* géométrie invalide */
+    }
+    if (share >= 0.2 || centre) out.set(code, share >= 0.98 ? 1 : Math.max(share, 0.01));
+  }
+  return out;
+}
+
+export const ordinalCirco = (n: number) => (n === 1 ? "1re" : `${n}e`);
+
+/** « 2e circonscription de l'Oise ». */
+export function circoLabel(num: number, depNom: string): string {
+  const de = /^[aeiouyàâéèêëîïôûüœh]/i.test(depNom) ? "de l'" : /^(les|la|le)\s/i.test(depNom) ? "" : "de ";
+  const nom = /^les\s/i.test(depNom) ? `des ${depNom.slice(4)}` : /^le\s/i.test(depNom) ? `du ${depNom.slice(3)}` : /^la\s/i.test(depNom) ? `de la ${depNom.slice(3)}` : depNom;
+  return `${ordinalCirco(num)} circonscription ${de}${nom}`;
+}
+
 /* ---------------------------------------------------------- départements voisins */
 
 export const DEPARTEMENTS_URL = "https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/2024/geojson/departements-100m.geojson";

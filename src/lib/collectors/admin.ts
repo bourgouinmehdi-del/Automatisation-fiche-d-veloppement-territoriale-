@@ -95,6 +95,8 @@ export interface CommuneCandidate {
   departementNom: string;
   population: number | null;
   type: string;
+  /** Correspondance trouvée par code INSEE ou par code postal (recherche sur 5 caractères). */
+  via?: "insee" | "postal";
 }
 
 const norm = (s: string) =>
@@ -125,14 +127,17 @@ export function searchCommunes(q: string, limit = 30): CommuneCandidate[] {
   const r = referentiel();
   const query = q.trim();
   const searchable = r.communes.filter((c) => c.type === "commune-actuelle" || c.type === "arrondissement-municipal");
-  if (/^\d{5}$/.test(query)) {
-    return searchable
-      .filter((c) => c.codesPostaux?.includes(query))
-      .sort((a, b) => (b.population ?? 0) - (a.population ?? 0))
-      .map(toCandidate);
-  }
-  if (/^(\d[\dAB]\d{3})$/i.test(query) && r.byCode.has(query.toUpperCase())) {
-    return [toCandidate(r.byCode.get(query.toUpperCase())!)];
+  // Cinq caractères : code postal et/ou code INSEE (les deux peuvent coïncider pour des communes différentes).
+  if (/^\d[\dAB]\d{3}$/i.test(query)) {
+    const postal = /^\d{5}$/.test(query)
+      ? searchable
+          .filter((c) => c.codesPostaux?.includes(query))
+          .sort((a, b) => (b.population ?? 0) - (a.population ?? 0))
+          .map((c) => ({ ...toCandidate(c), via: "postal" as const }))
+      : [];
+    const insee = r.byCode.get(query.toUpperCase());
+    const byInsee = insee && searchable.includes(insee) && !postal.some((p) => p.code === insee.code) ? [{ ...toCandidate(insee), via: "insee" as const }] : [];
+    return [...postal, ...byInsee];
   }
   const nq = norm(query);
   if (nq.length < 2) return [];

@@ -71,3 +71,8 @@ export function deNom(nom: string): string {
   if (/^L'/.test(nom)) return `de l'${nom.slice(2)}`;
   return /^[aeiouyàâéèêëîïôûüœh]/i.test(nom) && !/^(Hy|Ha|He|Ho|Hu)/.test(nom) ? `d'${nom}` : `de ${nom}`;
 }
+
+/** Nom du territoire d'un ciblage : département, ou « 2e circonscription de l'Oise ». */
+export function territoryName(r: { query: { scope: string }; perimeter: { label: string }; commune: { departement: { nom: string } } }): string {
+  return r.query.scope === "circonscription" ? r.perimeter.label.replace(/^./, (x) => x.toUpperCase()) : r.commune.departement.nom;
+}

@@ -4,7 +4,7 @@ import { getProvider, safeRewrite } from "../llm/provider";
 import { config } from "../config";
 import type { GeoRef, ProgressEvent, Report, ReportQuery } from "../types";
 import { assemble } from "./assemble";
-import { collect, PROGRESS_TOTAL } from "./collect";
+import { collect, PROGRESS_TOTAL, territorial } from "./collect";
 import { buildSections } from "./sections";
 import { buildLfi } from "./lfi";
 import { buildCiblage } from "./ciblage";
@@ -73,7 +73,7 @@ export async function buildReport(
 
   // Fiche d'action (approche LFI) pour une commune ; ciblage départemental pour un département.
   const lfi =
-    query.scope === "departement"
+    territorial(query.scope)
       ? { ...buildCiblage(c), charts: [] }
       : buildLfi(c, a.indicators, { emploiText: emp.ficheText });
   a.indicators.push(...lfi.indicators);
@@ -160,7 +160,7 @@ export async function buildReport(
 }
 
 export function reportId(q: ReportQuery) {
-  const key = [q.codeInsee, q.scope, ...(q.customCommunes ?? []).sort()].join(
+  const key = [q.codeInsee, q.scope, ...(q.scope === "circonscription" ? [`circo${q.circo}`] : []), ...(q.customCommunes ?? []).sort()].join(
     "|",
   );
   return `${q.codeInsee}-${q.scope}-${crypto.createHash("sha1").update(key).digest("hex").slice(0, 6)}`;

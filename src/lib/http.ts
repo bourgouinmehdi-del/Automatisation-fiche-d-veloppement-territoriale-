@@ -44,6 +44,12 @@ export interface FetchOptions {
   allow404?: boolean;
   /** Décoder en ISO-8859-1 si le contenu n'est pas de l'UTF-8 valide (fichiers CSV anciens). */
   decodeLatin1?: boolean;
+  /**
+   * Contrôle du contenu : une réponse 200 jugée invalide (ex. Overpass
+   * « runtime error: timed out ») n'est ni mise en cache ni renvoyée ;
+   * elle compte comme un échec (nouvelle tentative, puis erreur).
+   */
+  validate?: (body: string) => string | null;
 }
 
 const lastCallByHost = new Map<string, number>();
@@ -82,7 +88,9 @@ async function throttle(url: string, minIntervalMs: number) {
 
 export async function fetchText(url: string, opts: FetchOptions = {}): Promise<FetchResult<string>> {
   const key = cacheKey(url, opts.body);
-  const cached = opts.noCache ? null : await readCache(key);
+  let cached = opts.noCache ? null : await readCache(key);
+  // Une copie en cache invalide (enregistrée avant l'ajout du contrôle) est ignorée.
+  if (cached && opts.validate && opts.validate(cached.body)) cached = null;
   if (cached && isFresh(cached, opts.ttlHours)) {
     return { data: cached.body, url, retrievedAt: cached.fetchedAt, fromCache: true, stale: false };
   }
@@ -122,6 +130,11 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<F
       }
       if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status, url);
       const body = opts.decodeLatin1 ? decodeBody(new Uint8Array(await res.arrayBuffer())) : await res.text();
+      const invalid = opts.validate?.(body);
+      if (invalid) {
+        lastErr = new HttpError(invalid, res.status, url);
+        continue;
+      }
       const retrievedAt = new Date().toISOString();
       if (!opts.noCache) await writeCache({ key, url, fetchedAt: retrievedAt, status: res.status, body });
       return { data: body, url, retrievedAt, fromCache: false, stale: false };

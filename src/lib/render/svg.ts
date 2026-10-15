@@ -75,6 +75,7 @@ function legend(series: { label: string }[], x: number, y: number) {
 
 export function chartSvg(c: ChartSpec, width = 720): string {
   if (c.type === "hbar") return hbarSvg(c, width);
+  if (c.type === "refbar") return refbarSvg(c, width);
   if (c.type === "pyramid") return pyramidSvg(c, width);
   const rows = c.data;
   const vals = rows.flatMap((r) => c.series.map((s) => r[s.key])).filter((v): v is number => typeof v === "number");
@@ -198,6 +199,41 @@ function hbarSvg(c: ChartSpec, width: number): string {
     });
   });
   s += `<line x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${height - m.b}" stroke="${PALETTE.muted}"/>`;
+  return s + "</svg>";
+}
+
+/**
+ * Barres horizontales sur une piste grisée, une couleur par ligne, valeur à
+ * droite et trait vertical de référence (ex. score national).
+ */
+function refbarSvg(c: ChartSpec, width: number): string {
+  const [val, ref] = c.series;
+  const rows = c.data.filter((r) => typeof r[val.key] === "number");
+  if (!rows.length) return emptySvg(width, "Aucune donnée à représenter");
+  const labelW = Math.min(200, Math.max(...rows.map((r) => String(r[c.xKey]).length)) * 7 + 16);
+  const rowH = 30;
+  const m = { l: labelW, r: 64, t: 8, b: 8 };
+  const height = m.t + m.b + rows.length * rowH;
+  const nums = rows.flatMap((r) => [r[val.key], ref ? r[ref.key] : null]).filter((v): v is number => typeof v === "number");
+  const maxV = Math.max(...nums, 1) * 1.04;
+  const W = width - m.l - m.r;
+  const bh = 10;
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${esc(c.title)}"><rect width="100%" height="100%" fill="${PALETTE.surface}"/>`;
+  rows.forEach((r, i) => {
+    const cy = m.t + i * rowH + rowH / 2;
+    const v = r[val.key] as number;
+    const color = (c.colorKey && (r[c.colorKey] as string)) || PALETTE.series[0];
+    const label = String(r[c.xKey]);
+    s += `<text x="0" y="${cy + 4}" font-size="12" fill="${PALETTE.text}" ${FONT}>${esc(label)}</text>`;
+    s += `<rect x="${m.l}" y="${cy - bh / 2}" width="${W}" height="${bh}" rx="${bh / 2}" fill="${PALETTE.grid}"/>`;
+    s += `<rect x="${m.l}" y="${cy - bh / 2}" width="${Math.max(bh, (v / maxV) * W)}" height="${bh}" rx="${bh / 2}" fill="${color}"><title>${esc(label)} : ${esc(fmtValue(v, c.unit))}</title></rect>`;
+    const rv = ref ? r[ref.key] : null;
+    if (typeof rv === "number") {
+      const x = m.l + (rv / maxV) * W;
+      s += `<line x1="${x}" x2="${x}" y1="${cy - bh / 2 - 3}" y2="${cy + bh / 2 + 3}" stroke="${PALETTE.text}" stroke-width="2"><title>${esc(ref.label)} : ${esc(fmtValue(rv, c.unit))}</title></line>`;
+    }
+    s += `<text x="${width}" y="${cy + 4}" text-anchor="end" font-size="12" font-weight="700" fill="${PALETTE.text}" ${FONT}>${esc(fmtNumber(v, 1))}</text>`;
+  });
   return s + "</svg>";
 }
 

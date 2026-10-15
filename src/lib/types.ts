@@ -138,7 +138,8 @@ export interface DataTable {
 export interface ChartSpec {
   id: string;
   title: string;
-  type: "bar" | "hbar" | "line" | "pyramid";
+  /** « refbar » : barres horizontales colorées par ligne, avec un trait de référence (`ref`). */
+  type: "bar" | "hbar" | "line" | "pyramid" | "refbar";
   /** Données tabulaires : chaque ligne contient `xKey` et une clé par série. */
   data: Record<string, string | number | null>[];
   xKey: string;
@@ -146,6 +147,8 @@ export interface ChartSpec {
   unit: Unit;
   sources: SourceRef[];
   note?: string;
+  /** Colonne portant la couleur de chaque ligne (graphique « refbar »). */
+  colorKey?: string;
 }
 
 /* ------------------------------------------------------------------ cartes */
@@ -313,7 +316,7 @@ export interface CommuneInfo {
   communesDeleguees: { code: string; nom: string; type: string }[];
 }
 
-export type Scope = "commune" | "epci" | "departement" | "custom";
+export type Scope = "commune" | "epci" | "circonscription" | "departement" | "custom";
 
 /** Territoire principal d'analyse (selon le périmètre choisi). */
 export interface Focus {
@@ -328,6 +331,8 @@ export interface ReportQuery {
   scope: Scope;
   /** Codes INSEE des communes formant un territoire personnalisé. */
   customCommunes?: string[];
+  /** Numéro de la circonscription législative (périmètre « circonscription »). */
+  circo?: number;
 }
 
 export interface Report {

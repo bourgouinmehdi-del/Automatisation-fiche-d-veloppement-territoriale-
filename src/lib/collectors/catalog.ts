@@ -62,6 +62,15 @@ export const SOURCES: Record<string, SourceInfo> = {
     access: "API DiDo, interrogée commune par commune (un enregistrement par logement).",
     limits: "Logements des bailleurs sociaux au 1er janvier ; regroupement en résidences par nom de programme ou adresse, puis en ensembles (résidences à moins de 120 m).",
   },
+  residences_etudiantes: {
+    id: "residences_etudiantes",
+    name: "Résidences étudiantes et foyers de jeunes travailleurs (catalogue « Mon Logement Étudiant »)",
+    producer: "Mon Logement Étudiant (Crous et hors Crous), relevé mensuel des militants",
+    homepage: "https://monlogementetudiant.beta.gouv.fr/trouver-un-logement-etudiant",
+    license: "Données publiques du site, mises en forme par les militants",
+    access: "Classeur Excel déposé dans « Données internes », sinon copie embarquée dans l'application.",
+    limits: "« Présent au catalogue » ne veut pas dire « ouvert » ni « libre » ; le nombre total de logements n'est pas toujours renseigné. Résidences rattachées à la commune par leur position.",
+  },
   circonscriptions: {
     id: "circonscriptions",
     name: "Contours géographiques des circonscriptions législatives (data.gouv.fr)",

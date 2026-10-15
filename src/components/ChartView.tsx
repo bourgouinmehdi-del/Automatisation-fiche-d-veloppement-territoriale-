@@ -13,6 +13,32 @@ export default function ChartView({ chart: c }: { chart: ChartSpec }) {
   const tip = (v: unknown) => (typeof v === "number" ? fmtValue(v, c.unit) : "n.d.");
   const legend = c.series.length > 1 ? <Legend wrapperStyle={{ fontSize: 12 }} /> : null;
 
+  if (c.type === "refbar") {
+    const [val, ref] = c.series;
+    const nums = c.data.flatMap((r) => [r[val.key], ref ? r[ref.key] : null]).filter((v): v is number => typeof v === "number");
+    const max = Math.max(...nums, 1) * 1.04;
+    return (
+      <div className="refbar">
+        {c.data
+          .filter((r) => typeof r[val.key] === "number")
+          .map((r) => {
+            const v = r[val.key] as number;
+            const rv = ref ? r[ref.key] : null;
+            return (
+              <div key={String(r[c.xKey])} className="refbar-row" title={`${r[c.xKey]} : ${fmtValue(v, c.unit)}${typeof rv === "number" ? ` (${ref.label.toLowerCase()} : ${fmtValue(rv, c.unit)})` : ""}`}>
+                <span className="refbar-label">{String(r[c.xKey])}</span>
+                <span className="refbar-track">
+                  <span className="refbar-fill" style={{ width: `${(v / max) * 100}%`, background: (c.colorKey && (r[c.colorKey] as string)) || SERIES[0] }} />
+                  {typeof rv === "number" && <span className="refbar-ref" style={{ left: `${(rv / max) * 100}%` }} />}
+                </span>
+                <span className="refbar-value">{fmtNumber(v, 1)}</span>
+              </div>
+            );
+          })}
+      </div>
+    );
+  }
+
   if (c.type === "line")
     return (
       <ResponsiveContainer width="100%" height={300}>

@@ -11,6 +11,7 @@
     "test": "vitest run",
     "generate": "tsx scripts/generate.ts",
     "check:sources": "tsx scripts/check-sources.ts",
+    "import:residences": "tsx scripts/import-residences.ts",
     "mot-de-passe": "tsx scripts/mot-de-passe.ts"
   },
   "engines": {

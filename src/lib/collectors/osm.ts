@@ -157,25 +157,62 @@ export const OVERPASS_MIRRORS = [config.overpassUrl, ...(process.env.OVERPASS_MI
   .map((u) => u.trim())
   .filter((u, i, a) => u && a.indexOf(u) === i);
 
+/**
+ * Overpass renvoie parfois un code 200 avec une remarque d'erreur et une liste
+ * vide (« runtime error: Query timed out », « out of memory », quota) : ces
+ * réponses ne doivent ni être mises en cache ni être prises pour un résultat.
+ */
+export function overpassError(body: string): string | null {
+  if (!body) return "Overpass : réponse vide";
+  if (/^\s*</.test(body)) return "Overpass : réponse HTML (serveur surchargé ou requête refusée)";
+  const m = body.match(/"remark"\s*:\s*"([^"]*)"/);
+  if (m && /runtime error|timed out|out of memory|rate_limited|too many/i.test(m[1])) return "Overpass : " + m[1].slice(0, 160);
+  return null;
+}
+
+/**
+ * Au plus deux requêtes Overpass simultanées (quota de l'instance publique :
+ * deux créneaux par adresse IP ; au-delà, réponses 429 en cascade).
+ */
+const MAX_PARALLEL = 2;
+let running = 0;
+const waiting: (() => void)[] = [];
+async function slot<T>(fn: () => Promise<T>): Promise<T> {
+  if (running >= MAX_PARALLEL) await new Promise<void>((r) => waiting.push(r));
+  running++;
+  try {
+    return await fn();
+  } finally {
+    running--;
+    waiting.shift()?.();
+  }
+}
+
 export async function overpass<T>(http: TrackedHttp, query: string): Promise<{ data: T | null; retrievedAt: string; url: string }> {
   let last: unknown = null;
+  const errors: string[] = [];
   for (const url of OVERPASS_MIRRORS) {
     try {
-      const r = await http.json<T>(url, {
-        method: "POST",
-        body: "data=" + encodeURIComponent(query),
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        timeoutMs: 120000,
-        minIntervalMs: 1000,
-        retries: 1,
-      });
+      const r = await slot(() =>
+        http.json<T>(url, {
+          method: "POST",
+          body: "data=" + encodeURIComponent(query),
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          timeoutMs: 120000,
+          minIntervalMs: 1000,
+          retries: 1,
+          validate: overpassError,
+        }),
+      );
       if (url !== OVERPASS_MIRRORS[0]) http.notes.push(`Overpass : instance de secours ${new URL(url).host}`);
       return { data: r.data, retrievedAt: r.retrievedAt, url };
     } catch (e) {
       last = e;
+      errors.push(`${new URL(url).host} : ${e instanceof Error ? e.message : e}`);
     }
   }
-  throw last instanceof Error ? last : new Error("Overpass indisponible");
+  // Message détaillé (une raison par instance) pour le journal de collecte.
+  throw new Error(`Overpass indisponible (${errors.join(" ; ")})` || (last instanceof Error ? last.message : "Overpass indisponible"));
 }
 
 export async function collectEquipments(http: TrackedHttp, codeInsee: string) {

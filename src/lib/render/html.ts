@@ -1,7 +1,7 @@
 import { SOURCES } from "../collectors/catalog";
 import { KIND_LABELS, THEME_LABELS } from "../analysis/findings";
 import { isSmallSample } from "../analysis/stats";
-import { fmtDate, fmtValue } from "../format";
+import { fmtDate, fmtValue, territoryName } from "../format";
 import { FIELD_NOTE_LABELS } from "../types";
 import type { Block, DataTable, Finding, Indicator, Report, SourceRef } from "../types";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "./svg";
@@ -383,7 +383,7 @@ export function renderReportHtml(r: Report, opts: { standalone?: boolean; sectio
     .join("")}</ul>
 </section>`;
 
-  const scopeLabel = { commune: "Commune", epci: "Intercommunalité", departement: "Département", custom: "Territoire personnalisé" }[r.query.scope];
+  const scopeLabel = { commune: "Commune", epci: "Intercommunalité", circonscription: "Circonscription législative", departement: "Département", custom: "Territoire personnalisé" }[r.query.scope];
   const cover = `<section class="cover"><div><div class="kicker">Diagnostic territorial</div><h1>${esc(r.commune.nom)}</h1><div class="sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}) · ${esc(r.commune.region.nom)}${r.commune.epci ? ` · ${esc(r.commune.epci.nom)}` : ""}</div><p class="sub" style="margin-top:4mm">Périmètre d'analyse : ${esc(scopeLabel)} — ${esc(r.perimeter.label)}</p>
 ${r.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
 <div class="warn" style="border-color:#2a78d6;background:#eef5fd">Ce document est produit automatiquement à partir de statistiques publiques agrégées. Ses constats doivent être confrontés à la connaissance de terrain des acteurs locaux.</div></div>
@@ -395,9 +395,9 @@ ${r.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
   if (opts.sectionIds) {
     const ciblage = sections.some((s) => s.id === "CIBLAGE");
     const head = style === "yonne"
-      ? `<header class="y-head"><div class="y-pole">Pôle d'études électorales</div><div class="y-dt">Développement territorial</div><div class="y-dt">${esc(ciblage ? r.commune.departement.nom : `${r.commune.nom} (${r.commune.departement.nom})`)}</div></header>${ciblage ? "" : `<div class="y-pc">Proposition de ciblage</div><div class="y-nom">${esc(r.commune.nom)}</div>`}`
+      ? `<header class="y-head"><div class="y-pole">Pôle d'études électorales</div><div class="y-dt">Développement territorial</div><div class="y-dt">${esc(ciblage ? territoryName(r) : `${r.commune.nom} (${r.commune.departement.nom})`)}</div></header>${ciblage ? "" : `<div class="y-pc">Proposition de ciblage</div><div class="y-nom">${esc(r.commune.nom)}</div>`}`
       : ciblage
-      ? `<header class="fiche-head"><div class="fiche-k">Propositions de ciblage du département</div><h1>${esc(r.commune.departement.nom)}</h1><div class="fiche-sub">${esc(r.commune.region.nom)}</div><div class="fiche-meta">Généré le ${esc(fmtDate(r.updatedAt))}, version ${r.version}</div></header>`
+      ? `<header class="fiche-head"><div class="fiche-k">Propositions de ciblage ${r.query.scope === "circonscription" ? "de la circonscription" : "du département"}</div><h1>${esc(territoryName(r))}</h1><div class="fiche-sub">${esc(r.commune.region.nom)}</div><div class="fiche-meta">Généré le ${esc(fmtDate(r.updatedAt))}, version ${r.version}</div></header>`
       : `<header class="fiche-head"><div class="fiche-k">Proposition de ciblage</div><h1>${esc(r.commune.nom)}</h1><div class="fiche-sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}), ${esc(r.commune.region.nom)}${r.commune.epci ? `. ${esc(r.commune.epci.nom)}` : ""}</div><div class="fiche-meta">Code INSEE ${esc(r.commune.code)}, généré le ${esc(fmtDate(r.updatedAt))}, version ${r.version}</div></header>`;
     const shortBody = sections.map((s) => `<section id="part-${s.id}">${s.id === "LFI" || s.id === "CIBLAGE" ? "" : `<h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>`}${s.blocks.map((b) => blockHtml(r, b, cit, style)).join("\n")}</section>`).join("\n");
     const biblio = `<section class="part fiche-src"><h2>Sources</h2><ol class="biblio">${cit
@@ -406,7 +406,7 @@ ${r.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
       .join("")}</ol></section>`;
     const short = `<div class="fiche${style === "yonne" ? " yonne" : ""}">${head}${shortBody}${biblio}</div>`;
     if (opts.standalone === false) return short;
-    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${ciblage ? `Développement territorial — ${esc(r.commune.departement.nom)}` : `Fiche d'action — ${esc(r.commune.nom)}`}</title><style>${REPORT_CSS}${style === "yonne" ? YONNE_CSS : ""}</style></head><body>${short}</body></html>`;
+    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${ciblage ? `Développement territorial — ${esc(territoryName(r))}` : `Fiche d'action — ${esc(r.commune.nom)}`}</title><style>${REPORT_CSS}${style === "yonne" ? YONNE_CSS : ""}</style></head><body>${short}</body></html>`;
   }
   const html = `${cover}\n${body}\n${method}`;
   if (opts.standalone === false) return html;

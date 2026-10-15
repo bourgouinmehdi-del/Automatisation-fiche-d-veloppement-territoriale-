@@ -55,8 +55,8 @@ Pour vérifier les sources : `npm run check:sources` (et `npm run check:sources 
 
 ### Interface web
 
-1. Saisir un code postal (ex. `60200`) ou un nom (`Compiègne`). Si plusieurs communes partagent le code postal (ex. `60350`), choisir la bonne dans la liste.
-2. (Facultatif) Réglages avancés : périmètre d'analyse — commune, intercommunalité, département ou territoire personnalisé (liste de codes INSEE).
+1. Choisir le périmètre : **Commune**, **Intercommunalité**, **Circonscription**, **Département** ou **Territoire personnalisé** (liste de codes INSEE).
+2. Saisir un code postal (ex. `60200`), un code INSEE (ex. `60159`, `2A004`) ou un nom (`Compiègne`). Si plusieurs communes correspondent (code postal partagé, ou code postal identique au code INSEE d'une autre commune), choisir la bonne dans la liste. En circonscription, la ou les circonscriptions de la commune s'affichent (avec la part de sa surface quand elle est partagée).
 3. « Générer la fiche territoriale » : une page de progression suit les étapes de collecte.
 4. Le rapport s'affiche avec navigation par chapitres, tableaux, graphiques interactifs, cartes (couches activables, infobulles, sélecteur de période pour les scrutins), panneau « Sources et méthodologie », exports PDF / DOCX / CSV / JSON, export PNG / SVG / GeoJSON de chaque carte et CSV de chaque tableau.
 5. « Régénérer » relance la collecte : les réponses encore valides en cache ne sont pas retéléchargées ; la version du rapport est incrémentée.
@@ -179,6 +179,19 @@ Choisir « Ciblage d'un département » sur la page d'accueil (ou `npm run gener
 - unités : villes de 2 500 habitants et plus, et groupements de bourgs (1 000 à 2 500 habitants) d'une même intercommunalité avec leurs « focus possibles » ;
 - score : surperformance LFI (européennes 2024, % des inscrits) par rapport aux communes de taille comparable du département (35 %), écart d'abstention au département (25 %), ratio parrains / voix (20 %, si fourni), volume de voix LFI (20 %) ; pénalité pour les territoires déjà couverts par un groupe de 20 membres ou plus ; les deux plus grandes villes restent hors ciblage ;
 - sorties : liste des territoires proposés, carte du département, une page par proposition (raisons, tableau Inscrits / LFI P22 / LFI E24 / Parrains / Abstention), classement complet avec la nuance de la majorité municipale ; bouton « Générer la fiche » pour chaque proposition (fiche communale, ou territoire personnalisé pour un groupement) ; export « PDF ciblage ».
+
+### Ciblage d'une circonscription
+
+Bouton « Circonscription » de l'accueil : même méthode que le ciblage départemental, limitée aux communes de la circonscription législative (contours data.gouv.fr). Une commune est retenue dès que 20 % de sa surface, ou son centre, est dans la circonscription ; les communes partagées sont signalées sous le classement (résultats de toute la commune). Les comparaisons (communes de taille comparable, moyennes) restent départementales et aucune grande ville n'est écartée d'office. Cartes et titres sont centrés sur la circonscription.
+
+### Résidences étudiantes et foyers de jeunes travailleurs
+
+Catalogue « Mon Logement Étudiant » (Crous et hors Crous) relevé chaque mois par les militants. Dans la fiche d'action :
+
+- **porte-à-porte systématiquement proposé** dans les résidences du Crous (catégorie « Résidence étudiante », gestionnaire « CROUS ») et les foyers de jeunes travailleurs : lignes du plan d'action, phrase de priorité, ronds rouges `#F91616` sur la carte « affiche » ;
+- **annexe** « Résidences étudiantes et foyers de jeunes travailleurs » : toutes les résidences de la commune (nom, type, gestionnaire, nombre de logements, adresse), par nombre de logements.
+
+Mise à jour : déposer le classeur Excel du mois dans **Données internes** (il remplace la copie intégrée), ou mettre à jour la copie intégrée : `npm run import:residences -- chemin/catalogue.xlsx` puis commit. Onglets lus : « Résidences » et « Adresses » (colonnes repérées par leur intitulé).
 
 ### Données internes depuis l'interface
 
