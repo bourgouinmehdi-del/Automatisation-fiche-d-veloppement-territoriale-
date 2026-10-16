@@ -204,6 +204,16 @@ function overpass(body: string) {
       ],
     };
   }
+  // Moment convivial : un grand parc nommé, un bar de 80 places, un petit bar (écarté).
+  if (q.includes("biergarten")) {
+    return {
+      elements: [
+        { type: "way", id: 701, center: { lat: LAT0 + 0.026, lon: LON0 + 0.012 }, bounds: { minlat: LAT0 + 0.025, minlon: LON0 + 0.01, maxlat: LAT0 + 0.028, maxlon: LON0 + 0.015 }, tags: { leisure: "park", name: "Parc fictif" } },
+        { type: "node", id: 702, lat: LAT0 + 0.012, lon: LON0 + 0.021, tags: { amenity: "bar", name: "Grand café fictif", capacity: "80" } },
+        { type: "node", id: 703, lat: LAT0 + 0.013, lon: LON0 + 0.022, tags: { amenity: "pub", name: "Petit bar", capacity: "25" } },
+      ],
+    };
+  }
   if (q.includes("dormitory")) {
     return { elements: [{ type: "way", id: 601, center: { lat: LAT0 + 0.01, lon: LON0 + 0.008 }, tags: { building: "dormitory", name: "Résidence Roberval", operator: "CROUS Amiens-Picardie", "building:flats": "385" } }] };
   }

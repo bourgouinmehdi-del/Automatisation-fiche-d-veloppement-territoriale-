@@ -29,7 +29,7 @@ import { BureauGeo, collectBureauxGeo } from "../collectors/bureaux-geo";
 import { InternalData, loadInternalData } from "../collectors/interne";
 import { loadStmt, type StmtSeries } from "../collectors/emploi";
 import { CATALOGUE_URL, isPorteAPorte, loadCatalogue, residencesOf, residencesOfGeocoded, type ResidenceEtudiante } from "../collectors/residences-etudiantes";
-import { circoCommunes, circoLabel, collectCirconscriptions, collectDepartementsVoisins, collectFondOsm, fitAspect, type Bbox, type Circo, type FondOsm, type Residence } from "../collectors/carto";
+import { circoCommunes, circoLabel, collectCirconscriptions, collectConvivialite, collectDepartementsVoisins, collectFondOsm, fitAspect, type Bbox, type Circo, type FondOsm, type LieuConvivial, type Residence } from "../collectors/carto";
 import { rankBureaux } from "../analysis/political";
 import { collectRpls, type RplsResult } from "../collectors/rpls";
 import { collectAdultes, type AdultesDep } from "../collectors/adultes";
@@ -172,6 +172,8 @@ export interface Collected {
   rpls?: RplsResult & { source: SourceRef };
   /** Cartes « affiche » (commune) : fond OpenStreetMap et résidences étudiantes. */
   fond?: FondOsm & { bbox: Bbox; source: SourceRef };
+  /** Lieux pour un moment convivial (grands parcs, jardins à bière, grands bars). */
+  convivialite?: { list: LieuConvivial[]; source: SourceRef };
   residences?: { list: (ResidenceEtudiante & { porte: boolean })[]; source: SourceRef };
   /** Cartes « affiche » (département) : circonscriptions et départements voisins. */
   circos?: { list: Circo[]; source: SourceRef };
@@ -1300,6 +1302,19 @@ export async function collect(
     });
     if (!enabled("osm") || !commune.contour) return;
     const cb = turf.bbox(turf.feature(commune.contour as GeoJSON.Polygon)) as Bbox;
+    // Moment convivial (fin de journée, pique-nique) : grands parcs et lieux sûrs de la commune.
+    await ctx.step("osm", "cartes:convivialite", async (http) => {
+      const r = await collectConvivialite(http, cb);
+      const poly = turf.feature(commune.contour as GeoJSON.Polygon);
+      const inside = r.list.filter((x) => {
+        try {
+          return turf.booleanPointInPolygon([x.lon, x.lat], poly as GeoJSON.Feature<GeoJSON.Polygon>);
+        } catch {
+          return false;
+        }
+      });
+      c.convivialite = { list: inside, source: ctx.ref("osm", r.url, r.retrievedAt) };
+    });
     // Emprise : les lieux de la carte (bureaux prioritaires, quartiers prioritaires,
     // résidences, marchés, gares), plutôt que toute la commune (forêts, champs).
     const pts: [number, number][] = [];

@@ -150,6 +150,7 @@ interface El {
   lat?: number;
   lon?: number;
   center?: { lat: number; lon: number };
+  bounds?: { minlat: number; minlon: number; maxlat: number; maxlon: number };
   tags?: Record<string, string>;
   geometry?: { lat: number; lon: number }[];
   members?: { type: string; role: string; geometry?: { lat: number; lon: number }[] }[];
@@ -322,4 +323,63 @@ export function fitAspect(b: Bbox, pad = 0): Bbox {
     n += add;
   }
   return [w, s, e, n];
+}
+
+/* ------------------------------------------------- lieux de convivialité */
+
+export interface LieuConvivial {
+  kind: "parc" | "bar";
+  nom: string;
+  lon: number;
+  lat: number;
+  /** Surface approchée (parcs), en hectares. */
+  ha: number | null;
+  /** Capacité déclarée (bars), en places. */
+  capacite: number | null;
+}
+
+/**
+ * Lieux pour un moment convivial de fin de journée ou un pique-nique, retenus
+ * seulement quand l'information est sûre : parcs et jardins publics nommés
+ * d'au moins 2 hectares (emprise OpenStreetMap), jardins à bière nommés, bars
+ * dont la capacité déclarée atteint 60 places.
+ */
+export async function collectConvivialite(http: TrackedHttp, bbox: Bbox): Promise<{ list: LieuConvivial[]; url: string; retrievedAt: string }> {
+  const key = bbox.map((v) => v.toFixed(3)).join(",");
+  return cachedExtract(`convivial|${key}`, 24 * 30, async () => {
+    const [w, s, e, n] = bbox;
+    const b = `(${s},${w},${n},${e})`;
+    const q = `[out:json][timeout:60];
+(
+  way["leisure"~"^(park|garden)$"]["name"]["access"!~"private|no"]${b};
+  relation["leisure"~"^(park|garden)$"]["name"]["access"!~"private|no"]${b};
+  nwr["amenity"="biergarten"]["name"]${b};
+  nwr["amenity"~"^(bar|pub)$"]["name"]["capacity"]${b};
+);
+out center bb tags;`;
+    const r = await overpass<{ elements?: El[] }>(http, q);
+    const list: LieuConvivial[] = [];
+    for (const el of r.data?.elements ?? []) {
+      const t = el.tags ?? {};
+      const lon = el.lon ?? el.center?.lon;
+      const lat = el.lat ?? el.center?.lat;
+      if (lon == null || lat == null || !t.name) continue;
+      if (/park|garden/.test(t.leisure ?? "")) {
+        if (t.garden && /private|residential|botanical/.test(t["garden:type"] ?? "")) continue;
+        const bb = el.bounds;
+        // Emprise rectangulaire × 0,6 : ordre de grandeur de la surface du parc.
+        const ha = bb ? (0.6 * turf.distance([bb.minlon, bb.minlat], [bb.maxlon, bb.minlat]) * turf.distance([bb.minlon, bb.minlat], [bb.minlon, bb.maxlat]) * 1e6) / 1e4 : null;
+        if (ha == null || ha < 2) continue;
+        list.push({ kind: "parc", nom: t.name, lon, lat, ha: Math.round(ha), capacite: null });
+      } else {
+        const cap = Number(t.capacity);
+        if (t.amenity !== "biergarten" && !(Number.isFinite(cap) && cap >= 60)) continue;
+        list.push({ kind: "bar", nom: t.name, lon, lat, ha: null, capacite: Number.isFinite(cap) ? cap : null });
+      }
+    }
+    // Un même parc peut être découpé en plusieurs objets : un seul par nom.
+    const seen = new Set<string>();
+    const uniq = list.filter((x) => (seen.has(`${x.kind}|${x.nom}`) ? false : (seen.add(`${x.kind}|${x.nom}`), true)));
+    return { list: uniq.sort((a, b) => (b.ha ?? 0) - (a.ha ?? 0)), url: `${r.url}?data=${encodeURIComponent(q)}`, retrievedAt: r.retrievedAt };
+  });
 }

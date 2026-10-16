@@ -241,6 +241,12 @@ describe("chaîne de génération (API simulées)", () => {
     expect(actions.groups.some((g) => /Sorties|Services publics/.test(g.title))).toBe(false);
     const plan = report.tables.find((t) => t.id === "lfi_plan")!;
     expect(plan.rows.length).toBeGreaterThan(0);
+    // Ni poste ni simple supermarché ; un moment convivial dans un grand parc nommé.
+    expect(plan.rows.some((r) => /poste|^Supermarché$/i.test(String(r.action)))).toBe(false);
+    expect(plan.rows.find((r) => r.action === "Moment convivial")).toMatchObject({ ou: "Parc fictif" });
+    const conv = actions.groups.find((g) => g.title === "Moment convivial")!;
+    expect(conv.items.join(" ")).toMatch(/Grand café fictif/);
+    expect(conv.items.join(" ")).not.toMatch(/Petit bar/);
     for (const r of plan.rows) {
       expect(String(r.action)).not.toMatch(/Sortie/);
       expect(String(r.quand)).not.toMatch(/semaine/i);
