@@ -1879,13 +1879,30 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   else if (interneFourni && !groupes.length) synth.push({ text: `${B("Pas encore de groupe d'action")} dans la commune ni aux alentours : tout est à construire.` });
   if (prio.length && ranked.length <= 3) synth.push({ text: `${B("Où aller en priorité")} : toute la commune (${ranked.length} ${ranked.length > 1 ? "bureaux" : "bureau"} de vote), en commençant par le bureau ${dv(prio[0].bv)}${labels.has(prio[0].bv) ? ` (${prio[0].label})` : ""}.` });
   else if (prio.length) synth.push({ text: `${B("Où aller en priorité")} : ${prio.length > 1 ? "les bureaux de vote" : "le bureau de vote"} ${joinFr(prio.map((p) => `${dv(p.bv)}${labels.has(p.bv) ? ` (${p.label})` : ""}`))}.` });
+  // Lieux nommés, avec jour et heure quand on les connaît ; rien de générique (sinon la ligne est omise).
+  const lieuBv = (l: { lon: number | null; lat: number | null }) => {
+    const nb = nearestBv(l.lon, l.lat);
+    if (!nb) return "";
+    const q = quartierOf(nb.bv);
+    return q ? ` ${leQuartier(q).replace(/^(le|la|les|l')\s?/i, (m) => `dans ${m}`)}` : labels.has(nb.bv) ? `, près de ${labels.get(nb.bv)} (bureau ${dv(nb.bv)})` : ` (bureau ${dv(nb.bv)})`;
+  };
+  const named = (n: string) => !/^(march[ée]|supermarch[ée]|gare)$/i.test(n.trim());
+  const weHours = (h: string) =>
+    h
+      .split(" ; ")
+      .filter((p) => /samedi|dimanche|tous les jours/i.test(p))
+      .join(" ; ");
   const leviers = [
-    markets.length ? "le marché" : "",
-    gares.length ? "la gare" : "",
-    sup.length ? "les supermarchés" : "",
-    services.length ? "le bureau de poste le samedi matin" : "",
+    ...markets.slice(0, 2).map((m) => {
+      const h = weHours(m.infos);
+      const where = named(m.nom) ? m.nom : `le marché${lieuBv(m)}`;
+      return h ? `${where} (${h})` : named(m.nom) ? `${where} (jour du week-end à confirmer)` : "";
+    }),
+    ...gares.slice(0, 1).map((g) => `${gareNom(g.nom)}${/voyageurs/.test(g.infos) ? ` (${g.infos})` : ""}, le samedi matin ou le dimanche soir`),
+    ...byPrio(sup.filter((v) => named(v.nom))).slice(0, 1).map((v) => `${v.nom}, le samedi matin`),
+    ...byPrio(services).slice(0, 1).map((v) => `${v.nom}, le samedi matin`),
   ].filter(Boolean);
-  if (leviers.length) synth.push({ text: `${B("Où croiser les habitants")} : ${joinFr(leviers)}.` });
+  if (leviers.length) synth.push({ text: `${B("Où croiser les habitants le week-end")} : ${leviers.join(" ; ")}.` });
 
   /* ================================================================ contexte municipal */
   let municipalText = "";
