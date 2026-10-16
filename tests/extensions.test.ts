@@ -43,6 +43,11 @@ describe("ciblage départemental", () => {
     const classement = dep.tables.find((t) => t.id === "ciblage_classement")!;
     expect(classement.rows.length).toBeGreaterThan(targets.items.length);
     expect(classement.columns.map((c) => c.key)).toEqual(expect.arrayContaining(["ratio", "groupe", "mairie"]));
+    // Score lisible de 0 à 100 (barre de couleur) : 100 pour le premier, décroissant.
+    const scores = classement.rows.map((r) => r.score as number);
+    expect(scores[0]).toBe(100);
+    expect(scores.every((v, i) => v >= 0 && v <= 100 && (i === 0 || v <= scores[i - 1]))).toBe(true);
+    expect(targets.items[0].raisons[0]).toMatch(/^\*\*Score de ciblage : \d+ sur 100\*\*/);
     const map = dep.maps.find((m) => m.id === "ciblage_carte")!;
     expect(map.layers[0].labelProperty).toBe("label");
     expect(map.legend?.categories?.length).toBe(targets.items.length + 1);

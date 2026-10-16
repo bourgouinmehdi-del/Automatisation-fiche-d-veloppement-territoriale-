@@ -102,3 +102,16 @@ export function dansDep(nom: string): string {
 export function territoryName(r: { query: { scope: string }; perimeter: { label: string }; commune: { departement: { nom: string } } }): string {
   return r.query.scope === "circonscription" || r.query.scope === "epci" ? r.perimeter.label.replace(/^./, (x) => x.toUpperCase()) : r.commune.departement.nom;
 }
+
+/** Couleur d'un score de 0 à 100 : rouge (faible), ambre, vert (élevé). */
+export function scoreColor(v: number): string {
+  const x = Math.max(0, Math.min(100, v)) / 100;
+  const stops: [number, number, number][] = [
+    [214, 69, 65],
+    [233, 165, 40],
+    [47, 143, 78],
+  ];
+  const [a, b, t] = x < 0.5 ? [stops[0], stops[1], x / 0.5] : [stops[1], stops[2], (x - 0.5) / 0.5];
+  const c = a.map((v0, i) => Math.round(v0 + (b[i] - v0) * t));
+  return `#${c.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+}

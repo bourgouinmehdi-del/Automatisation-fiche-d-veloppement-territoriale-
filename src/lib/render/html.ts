@@ -2,7 +2,7 @@ import { posterItems } from "./poster";
 import { SOURCES } from "../collectors/catalog";
 import { KIND_LABELS, THEME_LABELS } from "../analysis/findings";
 import { isSmallSample } from "../analysis/stats";
-import { fmtDate, fmtValue, territoryName } from "../format";
+import { fmtDate, fmtValue, scoreColor, territoryName } from "../format";
 import { FIELD_NOTE_LABELS } from "../types";
 import type { Block, DataTable, Finding, Indicator, MapSpec, Report, SourceRef } from "../types";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "./svg";
@@ -41,6 +41,10 @@ function tableHtml(t: DataTable, cit: Citations) {
         `<tr${t.highlight?.includes(i) ? ' class="hl"' : ""}>${t.columns
           .map((c) => {
             const unit = c.unit ?? (c.key !== "indicateur" && c.key !== "annee" ? rowUnit(r) : undefined);
+            if (c.bar && typeof r[c.key] === "number") {
+              const v = r[c.key] as number;
+              return `<td class="sb"><span class="sbar"><span style="width:${Math.max(2, Math.min(100, v))}%;background:${scoreColor(v)}"></span></span><b>${v}</b></td>`;
+            }
             return `<td class="${c.align === "right" ? "r" : ""}">${inline(cellText(r[c.key], unit))}</td>`;
           })
           .join("")}</tr>`,
@@ -328,6 +332,9 @@ p.prose.hyp { color: #2c2b29; }
 h3.target-t { font-size: 24pt; font-weight: 900; color: #4c0297; text-transform: uppercase; margin: 1mm 0 1mm; }
 .target-f { font-style: italic; color: #2c2b29; margin-bottom: 2mm; }
 .fiche-src .biblio li { font-size: 7.8pt; }
+td.sb { white-space: nowrap; }
+.sbar { display: inline-block; vertical-align: middle; width: 16mm; height: 2.2mm; background: #ebe7de; border-radius: 1mm; margin-right: 1.5mm; overflow: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.sbar > span { display: block; height: 100%; }
 figure.poster svg { width: 100%; height: auto; max-height: 238mm; display: block; }
 figure.poster { break-inside: avoid; margin-bottom: 2mm; }
 .oa { border: 0.3mm solid #212320; padding: 3mm 4mm; margin: 0 0 2mm; font-size: 8.6pt; }

@@ -121,6 +121,8 @@ export interface TableColumn {
   align?: "left" | "right";
   /** Colonne de texte à ne pas comprimer (libellés). */
   wide?: boolean;
+  /** Valeur de 0 à 100 affichée avec une barre de couleur (score de ciblage). */
+  bar?: boolean;
 }
 
 export interface DataTable {

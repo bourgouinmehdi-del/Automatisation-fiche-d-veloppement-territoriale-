@@ -230,6 +230,10 @@ export function buildCiblage(c: Collected): CiblageOutput {
     u.score = w.o * zO[i] + w.a * zA[i] + w.r * zR[i] + w.v * zV[i] - (covered ? 1 : 0);
   });
   const ranked = [...units].sort((a, b) => b.score - a.score);
+  // Score lisible de 0 à 100 : 100 pour le territoire le mieux placé, 0 pour le moins bien placé.
+  const sMax = ranked[0]?.score ?? 0;
+  const sMin = ranked[ranked.length - 1]?.score ?? 0;
+  const score100 = (u: Unit) => (sMax > sMin ? Math.round((100 * (u.score - sMin)) / (sMax - sMin)) : 100);
 
   // Sélection : cinq cibles au plus, deux au plus par intercommunalité. Les deux plus grandes
   // villes (souvent chefs-lieux, déjà couvertes) restent hors ciblage, comme dans les fiches de référence,
@@ -307,7 +311,8 @@ export function buildCiblage(c: Collected): CiblageOutput {
     out.tables.push({ id: tid, title: `${u.nom} — vote LFI, parrainages et abstention`, theme: "strategie", columns: colsPol, rows, highlight: [0], sources: [...src, ...(hasParrains ? [interneSrc] : [])], note: "Nombre de voix (ou de parrains, ou d'inscrits qui n'ont pas voté) ; entre parenthèses, la part des électeurs inscrits." });
 
     const ev: string[] = [];
-    const raisons: string[] = [];
+    const rang = ranked.indexOf(u) + 1;
+    const raisons: string[] = [`${B(`Score de ciblage : ${score100(u)} sur 100`)} (${rang === 1 ? "1er" : `${rang}e`} territoire sur ${ranked.length} du classement).`];
     if (u.overperf != null) {
       const e1 = indOf(u, "ciblage_surperf", "Écart du vote LFI (E24) aux communes de taille comparable", u.overperf, "points", e24!.source);
       if (e1) ev.push(e1);
@@ -352,7 +357,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       ...(hasParrains ? [{ key: "ratio", label: "Parrains pour 100 voix LFI", align: "right" as const }] : []),
       ...(c.interne.files.length ? [{ key: "groupe", label: "Groupe d'action" }] : []),
       ...(c.municipalDep ? [{ key: "mairie", label: "Mairie (2026)" }] : []),
-      { key: "score", label: "Score", align: "right" },
+      { key: "score", label: "Score (0 à 100)", bar: true },
     ],
     rows: ranked.slice(0, 20).map((u, i) => ({
       rang: i + 1,
@@ -364,11 +369,11 @@ export function buildCiblage(c: Collected): CiblageOutput {
       ratio: u.ratio != null ? fmtNumber(100 * u.ratio, 1) : "",
       groupe: u.groupes.length ? u.groupes.map((g) => `${g.nom}${g.membres != null ? ` (${g.membres})` : ""}`).join(", ") : "—",
       mairie: u.mairie ? (NUANCES[u.mairie.nuance] ?? u.mairie.nuance) : "",
-      score: fmtNumber(u.score, 2),
+      score: score100(u),
     })),
     highlight: ranked.slice(0, 20).map((u, i) => (chosen.includes(u) ? i : -1)).filter((i) => i >= 0),
     sources: [...src, ...(hasParrains || c.interne.files.length ? [interneSrc] : []), ...(c.municipalDep ? [c.municipalDep.source] : [])],
-    note: `${bigCities.length ? `${bigCities.length > 1 ? "Les deux villes les plus peuplées" : "La ville la plus peuplée"} (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) ${bigCities.length > 1 ? "restent" : "reste"} hors ciblage ; dans les départements sans ville de 20 000 habitants, toutes les communes sont classées. ` : "Aucune ville de 20 000 habitants ou plus : toutes les communes sont classées, chef-lieu compris. "}${partagees.length ? `Communes partagées avec une autre circonscription (résultats de toute la commune) : ${partagees.map((x) => `${x.nom} (${Math.round(100 * (shares!.get(x.code) ?? 0))} % de sa surface)`).join(", ")}. ` : ""}Score : moyenne pondérée de scores z calculés entre les territoires — surperformance LFI par rapport aux communes de taille comparable (${Math.round(w.o * 100)} %), écart d'abstention au département aux ${abstLabel} (${Math.round(w.a * 100)} %)${hasParrains ? `, ratio parrains / voix (${Math.round(w.r * 100)} %)` : ""}, volume de voix LFI (${Math.round(w.v * 100)} %) ; −1 pour les territoires déjà couverts par un groupe de 20 membres ou plus. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
+    note: `${bigCities.length ? `${bigCities.length > 1 ? "Les deux villes les plus peuplées" : "La ville la plus peuplée"} (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) ${bigCities.length > 1 ? "restent" : "reste"} hors ciblage ; dans les départements sans ville de 20 000 habitants, toutes les communes sont classées. ` : "Aucune ville de 20 000 habitants ou plus : toutes les communes sont classées, chef-lieu compris. "}${partagees.length ? `Communes partagées avec une autre circonscription (résultats de toute la commune) : ${partagees.map((x) => `${x.nom} (${Math.round(100 * (shares!.get(x.code) ?? 0))} % de sa surface)`).join(", ")}. ` : ""}Score de 0 à 100 : 100 pour le territoire le mieux placé du classement, 0 pour le moins bien placé. Il combine le vote LFI comparé aux villes de même taille (${Math.round(w.o * 100)} %), l'écart d'abstention au département aux ${abstLabel} (${Math.round(w.a * 100)} %)${hasParrains ? `, les parrains au regard des voix (${Math.round(w.r * 100)} %)` : ""} et le nombre de voix LFI (${Math.round(w.v * 100)} %) ; les territoires déjà couverts par un groupe de 20 membres ou plus sont pénalisés. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
   });
 
   // Carte des cibles.
