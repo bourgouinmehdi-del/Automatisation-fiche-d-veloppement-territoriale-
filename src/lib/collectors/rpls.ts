@@ -36,6 +36,21 @@ export interface Residence {
   qpv: string | null;
   /** Année de construction la plus fréquente. */
   annee: number | null;
+  /** Voie (« Allée Nicolas Copernic ») et numéros de la résidence. */
+  voie?: string;
+  nums?: string[];
+}
+
+/** Rue regroupant plusieurs résidences proches (porte-à-porte rue par rue). */
+export interface RueHlm {
+  voie: string;
+  nums: string[];
+  logements: number;
+  lon: number;
+  lat: number;
+  qpv: string | null;
+  /** Noms de programme (résidences nommées) de la rue. */
+  noms: string[];
 }
 
 export interface Ensemble {
@@ -59,6 +74,28 @@ export interface RplsResult {
 }
 
 const clean = (s: unknown) => String(s ?? "").trim();
+
+// Types de voie abrégés du répertoire.
+const TYPVOIE: Record<string, string> = { AV: "Avenue", AVE: "Avenue", BD: "Boulevard", BLD: "Boulevard", ALL: "Allée", ALLE: "Allée", CHE: "Chemin", CHEM: "Chemin", IMP: "Impasse", PL: "Place", SQ: "Square", RTE: "Route", R: "Rue", RES: "Résidence", CRS: "Cours", QU: "Quai", QUA: "Quai", PROM: "Promenade", LOT: "Lotissement", HAM: "Hameau", PAS: "Passage", FG: "Faubourg", FBG: "Faubourg", CITE: "Cité", CTRE: "Centre", MAIL: "Mail", SEN: "Sente", VLA: "Villa", ESP: "Esplanade", RPT: "Rond-point" };
+
+/**
+ * Nom de programme exploitable (« Les Musiciens »), et non un code de gestion
+ * (« A.h. », « 0401-03-5 », « Bat F/28 », « D09 »).
+ */
+export function isProgName(prog: string): boolean {
+  const p = prog.trim();
+  if (!p) return false;
+  if (/^(r[ée]sidence|immeuble|logements?|programme)$/i.test(p)) return false;
+  if (/^(b[aâ]t(iment)?|imm(euble)?|esc(alier)?|entr[ée]e|bloc|lot|cage|logt?|pav(illon)?|ilot|îlot|tranche|tr|lgt|log)\b\.?/i.test(p)) return false;
+  const letters = (p.match(/[a-zà-ÿ]/gi) ?? []).length;
+  const digits = (p.match(/\d/g) ?? []).length;
+  if (letters < 4 || digits > 2 || letters < 0.7 * p.replace(/\s/g, "").length) return false;
+  // Au moins un mot de quatre lettres (pas une suite d'initiales).
+  return /[a-zà-ÿ]{4,}/i.test(p);
+}
+
+/** « Cité des Perrieres M,j » → « Cité des Perrieres » (suffixes de bâtiments). */
+const tidyProg = (p: string) => p.replace(/[\s,-]+([A-Z](\s*[,/.-]\s*[A-Z])*\.?|\d+[A-Z]?|[A-Z]\d+)$/i, "").trim();
 const title = (s: string) =>
   s
     .toLowerCase()
@@ -84,21 +121,75 @@ export function toLonLat(x: number, y: number, epsg: string): [number, number] |
   }
 }
 
+const sortNums = (xs: string[]) => [...new Set(xs)].sort((a, b) => parseInt(a) - parseInt(b) || a.localeCompare(b));
+
+/** « n° 2, 4 et 6 », « n° 2 à 18 » (plus de quatre numéros). */
+export function numsLabel(nums: string[]): string {
+  if (!nums.length) return "";
+  if (nums.length === 1) return `n° ${nums[0]}`;
+  if (nums.length > 4) return `n° ${nums[0]} à ${nums[nums.length - 1]}`;
+  return `n° ${nums.slice(0, -1).join(", ")} et ${nums[nums.length - 1]}`;
+}
+
+/**
+ * Logements sociaux regroupés par rue : résidences d'une même voie à moins
+ * de 250 m les unes des autres (une longue avenue peut donner deux groupes).
+ */
+export function hlmByStreet<T extends Residence>(residences: T[]): (RueHlm & { items: T[] })[] {
+  const byVoie = new Map<string, T[]>();
+  for (const r of residences) {
+    const v = (r.voie ?? r.adresse.replace(/^\d+\s*\w?\s+/, "")).toUpperCase();
+    if (!byVoie.has(v)) byVoie.set(v, []);
+    byVoie.get(v)!.push(r);
+  }
+  const out: (RueHlm & { items: T[] })[] = [];
+  for (const rs of byVoie.values()) {
+    const groups: T[][] = [];
+    for (const r of [...rs].sort((a, b) => b.logements - a.logements)) {
+      const g = groups.find((g) => g.some((x) => turf.distance([x.lon, x.lat], [r.lon, r.lat], { units: "kilometers" }) <= 0.25));
+      if (g) g.push(r);
+      else groups.push([r]);
+    }
+    for (const g of groups) {
+      const n = g.reduce((s, r) => s + r.logements, 0);
+      out.push({
+        voie: g[0].voie ?? g[0].adresse.replace(/^\d+\s*\w?\s+/, ""),
+        nums: sortNums(g.flatMap((r) => r.nums ?? [])),
+        logements: n,
+        lon: g.reduce((s, r) => s + r.lon * r.logements, 0) / n,
+        lat: g.reduce((s, r) => s + r.lat * r.logements, 0) / n,
+        qpv: g.find((r) => r.qpv)?.qpv ?? null,
+        noms: [...new Set(g.filter((r) => r.nom !== r.adresse).map((r) => r.nom))],
+        items: g,
+      });
+    }
+  }
+  return out.sort((a, b) => b.logements - a.logements);
+}
+
 /** Regroupe les lignes « logement » en résidences, puis en ensembles. */
 export function groupRpls(rows: Record<string, unknown>[]): { total: number; residences: Residence[]; ensembles: Ensemble[] } {
-  const res = new Map<string, { nom: string; adresse: string; n: number; xs: number[]; ys: number[]; qpv: string | null; years: Map<number, number> }>();
+  const res = new Map<string, { nom: string; adresse: string; voie: string; nums: Set<string>; n: number; xs: number[]; ys: number[]; qpv: string | null; years: Map<number, number> }>();
   let total = 0;
   for (const r of rows) {
     total++;
     const ll = toLonLat(Number(String(r.X ?? "").replace(",", ".")), Number(String(r.Y ?? "").replace(",", ".")), clean(r.EPSG));
     if (!ll) continue;
-    const voie = [clean(r.TYPVOIE), clean(r.NOMVOIE)].filter(Boolean).join(" ");
-    const adresse = title([`${clean(r.NUMVOIE)}${clean(r.INDREP) ? ` ${clean(r.INDREP)}` : ""}`.trim(), voie].filter(Boolean).join(" "));
-    const prog = clean(r.COMPLGEO);
+    const num = `${clean(r.NUMVOIE)}${clean(r.INDREP) ? ` ${clean(r.INDREP)}` : ""}`.trim();
+    let typ = clean(r.TYPVOIE);
+    let nomv = clean(r.NOMVOIE);
+    // Numéro et type de voie parfois répétés dans le nom de voie (« 192 RUE 192 RUE … »).
+    if (num) nomv = nomv.replace(new RegExp(`^${num.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+`, "i"), "");
+    typ = TYPVOIE[typ.toUpperCase().replace(/\.$/, "")] ?? typ;
+    if (typ && nomv.toUpperCase().startsWith(`${typ.toUpperCase()} `)) typ = "";
+    const voie = title([typ, nomv].filter(Boolean).join(" "));
+    const adresse = [num, voie].filter(Boolean).join(" ");
+    const prog = tidyProg(clean(r.COMPLGEO));
     // Programme nommé : une résidence par programme et par voie ; sinon une par adresse.
-    const key = prog && !/^(r[ée]sidence|immeuble|batiment|bât\.?|bat\.?|logements?|\d+)$/i.test(prog) ? `p:${prog.toUpperCase()}|${voie.toUpperCase()}` : `a:${adresse.toUpperCase()}`;
+    const key = isProgName(prog) ? `p:${prog.toUpperCase()}|${voie.toUpperCase()}` : `a:${adresse.toUpperCase()}`;
     let e = res.get(key);
-    if (!e) res.set(key, (e = { nom: key.startsWith("p:") ? title(prog) : "", adresse, n: 0, xs: [], ys: [], qpv: clean(r.PLG_QP24 ?? r.QPV_CODE) || null, years: new Map() }));
+    if (!e) res.set(key, (e = { nom: key.startsWith("p:") ? title(prog) : "", adresse, voie, nums: new Set(), n: 0, xs: [], ys: [], qpv: clean(r.PLG_QP24 ?? r.QPV_CODE) || null, years: new Map() }));
+    if (num) e.nums.add(num);
     e.n++;
     e.xs.push(ll[0]);
     e.ys.push(ll[1]);
@@ -108,7 +199,10 @@ export function groupRpls(rows: Record<string, unknown>[]): { total: number; res
   const residences: Residence[] = [...res.values()]
     .map((e) => ({
       nom: e.nom || e.adresse,
-      adresse: e.adresse,
+      // Programme sur plusieurs numéros : « 2, 4 Allée Nicolas Copernic ».
+      adresse: e.nums.size > 1 ? `${sortNums([...e.nums]).slice(0, 4).join(", ")}${e.nums.size > 4 ? "…" : ""} ${e.voie}` : e.adresse,
+      voie: e.voie,
+      nums: sortNums([...e.nums]),
       logements: e.n,
       lon: e.xs.reduce((s, v) => s + v, 0) / e.xs.length,
       lat: e.ys.reduce((s, v) => s + v, 0) / e.ys.length,
@@ -148,7 +242,7 @@ export function groupRpls(rows: Record<string, unknown>[]): { total: number; res
       const main = [...rs].sort((a, b) => b.logements - a.logements)[0];
       const named = rs.filter((r) => r.nom !== r.adresse).sort((a, b) => b.logements - a.logements)[0];
       // Nom : programme principal, sinon la voie de la plus grande résidence.
-      const voie = main.adresse.replace(/^\d+\s*\w?\s+/, "");
+      const voie = main.voie ?? main.adresse.replace(/^\d+\s*\w?\s+/, "");
       return {
         nom: named?.nom ?? voie,
         logements: n,
@@ -188,7 +282,7 @@ async function fetchRows(http: TrackedHttp, code: string): Promise<{ rows: Recor
  */
 export function collectRpls(http: TrackedHttp, code: string, opts: { parent?: string; contour?: GeoJSON.Geometry | null } = {}): Promise<RplsResult> {
   return cachedExtract(
-    `rpls|${code}`,
+    `rpls2|${code}`,
     24 * 30,
     async () => {
       let f = await fetchRows(http, code);

@@ -287,8 +287,8 @@ function forD3<T extends GeoJSON.Feature | GeoJSON.FeatureCollection>(g: T): T {
   }
 }
 
-export function mapSvg(map: MapSpec, width = 720, height = 540): string {
-  if (map.poster) return posterMapSvg(map, Math.max(width, 900));
+export function mapSvg(map: MapSpec, width = 720, height = 540, opts: { posterList?: boolean } = {}): string {
+  if (map.poster) return posterMapSvg(map, Math.max(width, 900), { list: opts.posterList });
   const visible = map.layers
     .filter((l) => l.visible && l.data.features.length)
     .map((l) => (l.kind === "polygons" ? { ...l, data: forD3(structuredClone(l.data)) } : l));
@@ -317,6 +317,7 @@ export function mapSvg(map: MapSpec, width = 720, height = 540): string {
   const path = geoPath(proj);
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${esc(map.title)}"><rect width="100%" height="100%" fill="#f8fafc"/><defs><clipPath id="clip-${map.id}"><rect width="${width}" height="${mapH}"/></clipPath></defs><g clip-path="url(#clip-${map.id})">`;
   let labelsSvg = "";
+  const nameBoxes: { x: number; y: number; w: number }[] = [];
   for (const l of visible) {
     if (l.kind === "polygons") {
       // Un bureau peut compter plusieurs polygones : son numéro n'est écrit qu'une fois, sur le plus grand.
@@ -332,10 +333,19 @@ export function mapSvg(map: MapSpec, width = 720, height = 540): string {
         // Étiquette (ex. noms des territoires ciblés) au centre du polygone.
         if (l.labelProperty && p[l.labelProperty]) {
           const c = path.centroid(f);
-          if (Number.isFinite(c[0])) labelsSvg += `<text x="${c[0].toFixed(1)}" y="${(c[1] - 8).toFixed(1)}" text-anchor="middle" font-size="13" font-weight="600" fill="#111" stroke="#fff" stroke-width="3" paint-order="stroke" ${FONT}>${esc(p[l.labelProperty])}</text>`;
+          // Étiquettes voisines (communes ciblées proches) : décalées verticalement plutôt que superposées.
+          const t = String(p[l.labelProperty]);
+          const w = t.length * 7.2;
+          const dy = Number.isFinite(c[0]) ? [0, 15, -15, 30, -30, 45].find((d) => !nameBoxes.some((b) => Math.abs(b.x - c[0]) < (b.w + w) / 2 && Math.abs(b.y - (c[1] - 8 + d)) < 14)) : undefined;
+          if (dy != null) {
+            nameBoxes.push({ x: c[0], y: c[1] - 8 + dy, w });
+            if (dy) labelsSvg += `<line x1="${c[0].toFixed(1)}" y1="${c[1].toFixed(1)}" x2="${c[0].toFixed(1)}" y2="${(c[1] - 8 + dy + (dy > 0 ? -10 : 3)).toFixed(1)}" stroke="#111" stroke-width="0.8"/>`;
+            labelsSvg += `<text x="${c[0].toFixed(1)}" y="${(c[1] - 8 + dy).toFixed(1)}" text-anchor="middle" font-size="13" font-weight="600" fill="#111" stroke="#fff" stroke-width="3" paint-order="stroke" ${FONT}>${esc(t)}</text>`;
+          }
         }
         // Numéro de bureau de vote au centre de chaque contour.
-        if (p.bv != null && l.valueProperty && labelOf.get(String(p.bv)) === f) {
+        // Plus de 60 bureaux (grandes villes) : seuls les bureaux prioritaires sont numérotés.
+        if (p.bv != null && l.valueProperty && labelOf.get(String(p.bv)) === f && (labelOf.size <= 60 || p.prio)) {
           const c = path.centroid(f);
           if (Number.isFinite(c[0])) labelsSvg += `<text x="${c[0].toFixed(1)}" y="${(c[1] + 3.5).toFixed(1)}" text-anchor="middle" font-size="${labelOf.size > 40 ? 8 : 10}" font-weight="700" fill="#111" stroke="#fff" stroke-width="2.5" paint-order="stroke" ${FONT}>${esc(p.bvl ?? p.bv)}</text>`;
         }

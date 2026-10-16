@@ -1,4 +1,5 @@
 import * as turf from "@turf/turf";
+import { hlmByStreet, numsLabel } from "../collectors/rpls";
 import type { BvRow } from "../analysis/political";
 import type { Adresse } from "../collectors/ban";
 import { fmtNumber } from "../format";
@@ -77,12 +78,13 @@ export function buildPorte(c: Collected, ranked: BvRow[], labels: Map<string, st
     });
     // Résidences HLM du bureau (RPLS) : souvent les immeubles où frapper en premier.
     const hlm = (c.rpls?.residences ?? [])
-      .filter((r) => r.logements >= 10 && r.lon >= bb[0] && r.lon <= bb[2] && r.lat >= bb[1] && r.lat <= bb[3] && turf.booleanPointInPolygon([r.lon, r.lat], poly as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>))
-      .slice(0, 6);
-    if (hlm.length)
+      .filter((r) => r.logements >= 5 && r.lon >= bb[0] && r.lon <= bb[2] && r.lat >= bb[1] && r.lat <= bb[3] && turf.booleanPointInPolygon([r.lon, r.lat], poly as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>));
+    // Rue par rue : « Allée Nicolas Copernic (n° 2 et 4), 119 logements ».
+    const rues = hlmByStreet(hlm).filter((r) => r.logements >= 10).slice(0, 6);
+    if (rues.length)
       blocks.push({
         type: "paragraph",
-        text: `**Résidences HLM du bureau** : ${hlm.map((r) => `${r.nom === r.adresse ? r.adresse : `${r.nom} (${r.adresse})`}, ${fmtNumber(r.logements)} logements`).join(" ; ")}.`,
+        text: `**Résidences HLM du bureau** : ${rues.map((r) => `${r.voie}${r.nums.length ? ` (${numsLabel(r.nums)})` : ""}${r.noms.length ? `, ${r.noms.slice(0, 2).join(", ")}` : ""} : ${fmtNumber(r.logements)} logements`).join(" ; ")}.`,
       });
     // Carte : le bureau, ses voisins en gris clair, les adresses et le lieu de vote.
     const pad = 0.0015;

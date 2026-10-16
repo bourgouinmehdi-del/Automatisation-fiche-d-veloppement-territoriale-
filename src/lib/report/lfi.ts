@@ -9,13 +9,14 @@ import type { Block, ChartSpec, DataTable, Finding, GeoRef, Indicator, MapLegend
 import { MISSING_COLOR, SEQ_COLORS } from "./assemble";
 import { buildPorte } from "./porte";
 import { plmInfo } from "../collectors/plm";
-import { communePoster, gareNom, perDay } from "./affiche";
+import { communePoster, GARE_MIN_JOUR, gareNom, perDay } from "./affiche";
 import { buildInscription } from "./inscription";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
 import { NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
 import { BPE_TYPES } from "../collectors/bpe";
 import { fmtDuration } from "../collectors/routes";
+import { hlmByStreet, numsLabel } from "../collectors/rpls";
 import type { Collected } from "./collect";
 
 /**
@@ -482,7 +483,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const labels = new Map(
     [...(c.bvGeo?.labels ?? new Map<string, string>())]
       .map(([k, v]) => [k, prettyBvLabel(v)] as [string, string])
-      .filter(([, v]) => !/^bureau( de vote)?\s*(n°|no|num[ée]ro)?\s*\d+$/i.test(v.trim())),
+      // « Bureau 5 », « Premier bureau de vote », « Deuxieme Bureau », « Bureau centralisateur » : génériques.
+      .filter(([, v]) => !/^(bureau( de vote)?\s*(n°|no|num[ée]ro)?\s*\d+|(premier|deuxi[eè]me|troisi[eè]me|quatri[eè]me|cinqui[eè]me|sixi[eè]me|septi[eè]me|huiti[eè]me|neuvi[eè]me|dixi[eè]me|\d+(er|e|[eè]me))\s+bureau(\s+de\s+vote)?|bureau( de vote)?( centralisateur| unique| principal)?)$/i.test(v.trim())),
   );
   // Abstention par bureau : législatives 2024 (forte participation) quand tous les bureaux s'apparient.
   const ranked: BvRow[] = bvRef ? rankBureaux(bvRef.results, bvSecond?.results ?? null, labels, c.bureaux.find((b) => b.election.id === "LG24T1")?.results) : [];
@@ -523,7 +525,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const n = quartierLabel(q.nom);
     const low = n.charAt(0).toLowerCase() + n.slice(1);
     if (/^(le |la |les |l')/i.test(n)) return low;
-    if (/^(quartier|cit[ée]|r[ée]sidence)s?(\s|$)/i.test(n)) return `${/^quartier/i.test(n) ? "le" : "la"} ${low}`;
+    if (/^(quartier|cit[ée]|r[ée]sidence|secteur)s?(\s|$)/i.test(n)) return `${/^(quartier|secteur)/i.test(n) ? "le" : "la"} ${low}`;
     return `le quartier ${n}`;
   };
   const quartierOf = (bv: string) => {
@@ -933,7 +935,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
               inscrits: c24?.inscrits ?? null,
               lfi: cl24 ? pp(cl24.pctExprimes) : "",
               mel: cm22 ? pp(cm22.pctExprimes) : "",
-              abstn: c24 ? `${fmtNumber(abstention(c24).n)} (${pp(abstention(c24).pct)})` : "",
+              // Même scrutin que les bureaux (législatives 2024 si elles servent de référence).
+              abstn: (() => {
+                const ac = prioRows[0].abstSrc === "LG24T1" ? cL : c24;
+                return ac ? `${fmtNumber(abstention(ac).n)} (${pp(abstention(ac).pct)})` : "";
+              })(),
             },
           ],
           highlight: prioRows.map((_, i) => i),
@@ -1159,7 +1165,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         features: geo.map((f) => {
           const b = byBv.get(String(f.properties?.bv));
           const v = b ? prop(b) : null;
-          return { ...turf.truncate(f, { precision: 5 }), properties: { ...f.properties, bvl: dv(String(f.properties?.bv)), nom: `Bureau ${dv(String(f.properties?.bv))}${labels.has(String(f.properties?.bv)) ? ` — ${labels.get(String(f.properties?.bv))}` : ""}`, valeur: v != null ? Math.round(v * 10) / 10 : null } };
+          return { ...turf.truncate(f, { precision: 5 }), properties: { ...f.properties, bvl: dv(String(f.properties?.bv)), ...(b?.priorite === 1 ? { prio: 1 } : {}), nom: `Bureau ${dv(String(f.properties?.bv))}${labels.has(String(f.properties?.bv)) ? ` — ${labels.get(String(f.properties?.bv))}` : ""}`, valeur: v != null ? Math.round(v * 10) / 10 : null } };
         }),
       });
       const bbox = turf.bbox(turf.featureCollection(geo)) as [number, number, number, number];
@@ -1366,7 +1372,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
             kind: "atout",
             text:
               strong.length > 1
-                ? `${B("Le vote insoumis est plus fort dans plusieurs quartiers")} que dans le reste de la commune : ${strong.map(item).join(", ")}.`
+                ? `${B("Le vote insoumis est plus fort dans plusieurs quartiers")} que dans le reste de la commune : ${strong.slice(0, 3).map(item).join(" ; ")}${strong.length > 3 ? `, et ${strong.length - 3} autre${strong.length > 4 ? "s" : ""} quartier${strong.length > 4 ? "s" : ""}` : ""}.`
                 : `${B(`Le vote insoumis est ${compareWords(strong[0].l, lfiCom)} fort dans ${joinFr(uniqNames(strong[0].names))}`)} (${bvWords(strong[0].bvs)}) que dans l'ensemble de la commune${strong[0].mel != null && melCom != null && strong[0].mel > melCom * 1.05 ? ", aux européennes 2024 comme à la présidentielle 2022" : " aux européennes 2024"}.`,
             evidence: [...evAll, ...comEv],
             weight: 93,
@@ -1473,6 +1479,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   }
   for (const s of c.stations?.stations ?? []) {
     const last = s.frequentation[s.frequentation.length - 1];
+    // Halte de moins de 300 voyageurs par jour : pas un lieu de tractage.
+    if (last && last.voyageurs / 365 < GARE_MIN_JOUR) continue;
     pushLieu("Gare", s.nom, last ? perDay(last.voyageurs) : "fréquentation n.d.", s.lon, s.lat);
   }
   // Supermarchés : BPE (INSEE) si disponible, plus complète que OpenStreetMap.
@@ -1484,6 +1492,12 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const bpeName = (e: { nom: string; type: string; adresse: string }) => {
     const adr = e.adresse ? tidy(e.adresse) : "";
     if (!e.nom || legalName(e.nom)) return `${singular(e.type)}${adr ? ` (${adr})` : ""}`;
+    // Bureaux de poste : « Annonay Levert Bp » → « Bureau de poste Levert ».
+    if (/(^|\s)(bp|lp)$|^(bp|lp)\s/i.test(e.nom.trim())) {
+      const norm = (x: string) => x.toLowerCase().replace(/[-'’]/g, " ").replace(/\s+/g, " ").trim();
+      const rest = norm(e.nom).replace(/(^|\s)(bp|lp)(\s|$)/g, " ").replace(norm(commune.nom), " ").trim();
+      return `Bureau de poste${rest ? ` ${rest.replace(/(^|\s)\S/g, (m) => m.toUpperCase())}` : ""}${adr ? ` (${adr})` : ""}`;
+    }
     return `${tidy(e.nom).replace(/\s+-\s+/g, " – ")}${adr ? ` (${adr})` : ""}`;
   };
   if (c.bpe) for (const e of c.bpe.commune.filter((e) => e.type === "B105" || e.type === "B104")) pushLieu("Supermarché", bpeName(e), e.type === "B104" ? "hypermarché" : "", e.lon, e.lat);
@@ -1703,6 +1717,13 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   /* Résidences HLM (RPLS) : d'abord celles des bureaux prioritaires, puis les plus grandes. */
   const prioBvSet = new Set(prio.map((p) => p.bv));
   const hlmRank = [...hlm].filter((r) => r.logements >= 10).sort((a, b) => Number(!!(b.bv && prioBvSet.has(b.bv))) - Number(!!(a.bv && prioBvSet.has(a.bv))) || b.logements - a.logements);
+  // Rues : résidences d'une même voie, rattachées au bureau qui regroupe le plus de leurs logements.
+  const rues = hlmByStreet(hlm.filter((r) => r.logements >= 5)).map((r) => {
+    const w = new Map<string, number>();
+    for (const x of r.items) if (x.bv) w.set(x.bv, (w.get(x.bv) ?? 0) + x.logements);
+    return { ...r, bv: [...w].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null };
+  });
+  const ruesRank = rues.filter((r) => r.logements >= 10).sort((a, b) => Number(!!(b.bv && prioBvSet.has(b.bv))) - Number(!!(a.bv && prioBvSet.has(a.bv))) || b.logements - a.logements);
   const hlmCols = [
     { key: "nom", label: "Résidence", wide: true },
     { key: "adresse", label: "Adresse" },
@@ -1711,15 +1732,26 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   ];
   const hlmRow = (r: (typeof hlm)[number]) => ({ nom: r.nom === r.adresse ? "—" : r.nom, adresse: r.adresse, logements: fmtNumber(r.logements), bv: r.bv ? `${dv(r.bv)}${prioBvSet.has(r.bv) ? " (prioritaire)" : ""}` : "" });
   if (hlmRank.length && c.rpls) {
+    // Fiche : rue par rue (« Allée Nicolas Copernic, n° 2 et 4 »), plus utile sur le terrain que des noms de programme.
     out.tables.push({
       id: "lfi_hlm",
-      title: "Résidences HLM à cibler en porte-à-porte",
+      title: "Logements sociaux à cibler en porte-à-porte, rue par rue",
       theme: "strategie",
-      columns: hlmCols,
-      rows: hlmRank.slice(0, 8).map(hlmRow),
-      highlight: hlmRank.slice(0, 8).map((r, i) => (r.bv && prioBvSet.has(r.bv) ? i : -1)).filter((i) => i >= 0),
+      columns: [
+        { key: "rue", label: "Rue (numéros)", wide: true },
+        { key: "nom", label: "Résidence" },
+        { key: "logements", label: "Logements", align: "right" as const },
+        ...(bvPolys.length ? [{ key: "bv", label: "Bureau de vote" }] : []),
+      ],
+      rows: ruesRank.slice(0, 8).map((r) => ({
+        rue: `${r.voie}${r.nums.length ? ` (${numsLabel(r.nums)})` : ""}`,
+        nom: r.noms.slice(0, 2).join(", ") || "—",
+        logements: fmtNumber(r.logements),
+        bv: r.bv ? `${dv(r.bv)}${prioBvSet.has(r.bv) ? " (prioritaire)" : ""}` : "",
+      })),
+      highlight: ruesRank.slice(0, 8).map((r, i) => (r.bv && prioBvSet.has(r.bv) ? i : -1)).filter((i) => i >= 0),
       sources: [c.rpls.source],
-      note: `Logements des bailleurs sociaux (${fmtNumber(c.rpls.total)} dans la commune), regroupés par résidence. Liste complète en annexe.`,
+      note: `Logements des bailleurs sociaux (${fmtNumber(c.rpls.total)} dans la commune), regroupés par rue ; d'abord ceux des bureaux prioritaires. Liste par résidence en annexe.`,
     });
     out.tables.push({
       id: "lfi_hlm_tout",
@@ -1751,20 +1783,30 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       sources: [c.residences.source],
       note: "Toutes les résidences du catalogue situées dans la commune, par nombre de logements. En surbrillance : résidences du Crous et foyers de jeunes travailleurs, où le porte-à-porte est proposé systématiquement.",
     });
-  const hlmTop = hlmRank.filter((r) => r.nom !== r.adresse || r.logements >= 40).slice(0, 2);
-  const hlmMsg = hlmTop.length ? `, en commençant par ${hlmTop.length > 1 ? "les résidences HLM" : "la résidence HLM"} ${joinFr(hlmTop.map((r) => `${r.nom === r.adresse ? r.adresse : r.nom} (${fmtNumber(r.logements)} logements)`))}` : "";
+  const hlmTop = ruesRank.filter((r) => r.logements >= 40).slice(0, 2);
+  const deVoie = (v: string) => {
+    const low = v.charAt(0).toLowerCase() + v.slice(1);
+    if (!/^(rue|avenue|allée|boulevard|place|chemin|impasse|square|cours|quai|route|résidence|cité|mail|esplanade|passage|sente|villa)\b/i.test(v)) return `de ${v}`;
+    if (/^[aeiouyéèh]/i.test(v)) return `de l'${low}`;
+    return `${/^(rue|place|résidence|cité|route|sente|villa)\b/i.test(v) ? "de la" : "du"} ${low}`;
+  };
+  const hlmMsg = hlmTop.length ? `, en commençant par les logements sociaux ${joinFr(hlmTop.map((r) => `${deVoie(r.voie)} (${fmtNumber(r.logements)} logements)`))}` : "";
   const planIntro =
     porteMsg || resMsg || lieuxMsg.length
       ? `${B("Priorité")} : ${porteMsg || resMsg ? `${porteMsg || "porte-à-porte"}${hlmMsg}${porteMsg ? resMsg : resMsg.replace(/^, /, " ")}${lieuxMsg.length ? `, complété par des tractages ${joinFr(lieuxMsg)}` : ""}` : `tractages ${joinFr(lieuxMsg)}`}.`
       : "";
 
   // Carte « affiche » : porte-à-porte et tractage sur fond de plan.
+  const quandPlan = (ou: string) => plan.find((r) => r.ou === ou)?.quand;
   const affiche = communePoster(c, {
     prio,
     labels,
     dv,
-    markets,
-    gares: (c.stations?.stations ?? []).map((st) => ({ nom: st.nom, infos: "", lon: st.lon, lat: st.lat, voyageurs: st.frequentation[st.frequentation.length - 1]?.voyageurs ?? null })),
+    markets: markets.map((m) => ({ ...m, quand: quandPlan(m.nom) })),
+    ecoles: [...ecolesPlan].sort((a, b) => schoolScore(b) - schoolScore(a)).map((e) => ({ ...e, quand: quandPlan(e.nom) })),
+    rues,
+    hlmByBv,
+    gares: (c.stations?.stations ?? []).filter((st) => { const l = st.frequentation[st.frequentation.length - 1]; return !l || l.voyageurs / 365 >= GARE_MIN_JOUR; }).map((st) => ({ nom: st.nom, infos: "", lon: st.lon, lat: st.lat, quand: quandPlan(gareNom(st.nom)), voyageurs: st.frequentation[st.frequentation.length - 1]?.voyageurs ?? null })),
   });
   if (affiche) out.maps.push(affiche);
 
@@ -1840,7 +1882,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   } else if (lowAbove)
     synth.push({ text: `${B("Un vote insoumis encore faible")} : ${pp(l24!.pctExprimes)} aux européennes 2024, ${cmp24!.words} que dans le département (${pp(dl24!.pctExprimes)}) mais loin du niveau national (${pp(LFI_NATIONAL.EU24)}).` });
   else if (perfMain?.dir === "superieur" && (!l24 || l24.pctExprimes >= LFI_NATIONAL.EU24 * 0.9))
-    synth.push({ text: `${B("Un terrain favorable")} : on y vote davantage pour la France insoumise que dans les villes de même taille du département.` });
+    // Cohérent avec « En bref » : si l'écart au département est faible, on le dit.
+    synth.push({ text: cmp24 && !cmp24.net ? `${B("Un terrain plutôt favorable")} : on y vote davantage pour la France insoumise que dans les villes de même taille du département, mais à peu près comme dans l'ensemble du département.` : `${B("Un terrain favorable")} : on y vote davantage pour la France insoumise que dans les villes de même taille du département.` });
   else if (l24 && dl24 && m22 && dm22 && l24.pctExprimes < dl24.pctExprimes * 0.85 && m22.pctExprimes >= dm22.pctExprimes * 0.95)
     // Faible aux européennes, mais au niveau du département à la présidentielle : un électorat qui se mobilise surtout pour la présidentielle.
     synth.push({ text: `${B("Un vote insoumis à réveiller")} : faible aux européennes 2024 (${pp(l24.pctExprimes)}, contre ${pp(dl24.pctExprimes)} dans le département), mais ${m22.pctExprimes >= dm22.pctExprimes * 1.05 ? "plus fort" : "au même niveau"} qu'ailleurs pour J.-L. Mélenchon en 2022 (${pp(m22.pctExprimes)}).` });
@@ -1848,7 +1891,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     synth.push({ text: `${B("Un terrain difficile")} : on y vote moins pour la France insoumise que dans le reste du département ${l24 && dl24 ? `(${pp(l24.pctExprimes)} aux européennes 2024, contre ${pp(dl24.pctExprimes)}${m22 && dm22 ? ` ; ${pp(m22.pctExprimes)} pour J.-L. Mélenchon en 2022, contre ${pp(dm22.pctExprimes)}` : ""})` : ""}.` });
   if (abstMain?.dir === "superieur")
     synth.push({ text: `${B("Des électeurs à aller chercher")} : ${oneInV(abstMain.c, "électeur", "n'a pas voté", "n'ont pas voté")} ${abstRef?.label ?? "aux européennes 2024"}${cL ? ", un scrutin pourtant très suivi" : ""} (${pp(abstMain.c)}, contre ${pp(abstMain.d)} dans le département).` });
-  if (insc.ficheText && insc.commune) synth.push({ text: `${B("Des habitants à inscrire")} : environ ${fmtNumber(Math.round(insc.commune.ecart / 100) * 100)} adultes de nationalité française absents des listes de la commune.` });
+  if (insc.ficheText && insc.commune) synth.push({ text: `${B(insc.ficheText.startsWith("**Des jeunes") ? "Des jeunes à inscrire" : "Des habitants à inscrire")} : environ ${fmtNumber(Math.round(insc.commune.ecart / 100) * 100)} adultes de nationalité française absents des listes de la commune.` });
   if (parrainsRatio && parrainsRatio.r1 < parrainsRatio.r2 * 0.8) synth.push({ text: `${B("Peu de soutiens déclarés")} au regard du vote : il faudra accueillir et encadrer de nouveaux militants.` });
   else if (interneFourni && !groupes.length) synth.push({ text: `${B("Pas encore de groupe d'action")} dans la commune ni aux alentours : tout est à construire.` });
   if (prio.length && ranked.length <= 3) synth.push({ text: `${B("Où aller en priorité")} : toute la commune (${ranked.length} ${ranked.length > 1 ? "bureaux" : "bureau"} de vote), en commençant par le bureau ${dv(prio[0].bv)}${labels.has(prio[0].bv) ? ` (${prio[0].label})` : ""}.` });

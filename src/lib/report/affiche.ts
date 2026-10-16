@@ -40,32 +40,71 @@ export function gareNom(nom: string): string {
   return `Gare ${/^[aeiouyàâéèêëîïôûüœ]/i.test(nom) ? "d'" : "de "}${nom}`;
 }
 
+/** Fréquentation minimale d'une gare de tractage (voyageurs par jour). */
+export const GARE_MIN_JOUR = 300;
+
 /** Rond rouge des résidences Crous et foyers de jeunes travailleurs. */
 export const RESIDENCE_RED = "#F91616";
 
+export interface PosterLieu extends Lieu {
+  /** Créneau conseillé (« Samedi 10 h – 12 h 30 »). */
+  quand?: string;
+  type?: string;
+}
+
+/** Rue de logements sociaux (RPLS) rattachée à un bureau de vote. */
+export interface PosterRue {
+  voie: string;
+  nums: string[];
+  logements: number;
+  lon: number;
+  lat: number;
+  noms: string[];
+  bv: string | null;
+}
+
+const numsTxt = (nums: string[]) => (!nums.length ? "" : nums.length === 1 ? `n° ${nums[0]}` : nums.length > 4 ? `n° ${nums[0]} à ${nums[nums.length - 1]}` : `n° ${nums.slice(0, -1).join(", ")} et ${nums[nums.length - 1]}`);
+
 export function communePoster(
   c: Collected,
-  o: { prio: BvRow[]; labels: Map<string, string>; markets: Lieu[]; gares: (Lieu & { voyageurs?: number | null })[]; dv?: (bv: string) => string },
+  o: {
+    prio: BvRow[];
+    labels: Map<string, string>;
+    markets: PosterLieu[];
+    gares: (PosterLieu & { voyageurs?: number | null })[];
+    ecoles?: PosterLieu[];
+    rues?: PosterRue[];
+    hlmByBv?: Map<string, number>;
+    dv?: (bv: string) => string;
+    quandPorte?: string;
+  },
 ): MapSpec | null {
   const { commune } = c;
   if (!commune.contour) return null;
+  const dv = o.dv ?? String;
   const contour = turf.feature(commune.contour as GeoJSON.Polygon, { nom: commune.nom });
   const qpv = (c.quartiers?.qpv ?? []).filter((q) => q.geometry);
-  const prioPolys = (c.bvGeo?.features ?? []).filter((f) => o.prio.some((p) => p.bv === String(f.properties?.bv)));
-  // Résidences du Crous et foyers de jeunes travailleurs (porte-à-porte systématique),
-  // les plus grandes d'abord, huit au plus.
+  const allBv = (c.bvGeo?.features ?? []).filter((f) => f.geometry);
+  const prioSet = new Set(o.prio.map((p) => p.bv));
+  const prioPolys = allBv.filter((f) => prioSet.has(String(f.properties?.bv)));
+  // Résidences du Crous et foyers de jeunes travailleurs (porte-à-porte systématique), six au plus.
   const res = (c.residences?.list ?? [])
     .filter((r) => r.porte)
     .sort((a, b) => (b.logements ?? 0) - (a.logements ?? 0))
-    .slice(0, 8);
-  const short = (t: string, n = 34) => (t.length > n ? `${t.slice(0, n - 1).replace(/\s+\S*$/, "")}…` : t);
+    .slice(0, 6);
   const pts = <T extends Lieu>(xs: T[]) => xs.filter((x) => x.lon != null && x.lat != null);
-  const markets = pts(o.markets);
-  const gares = pts(o.gares);
-  // Ensembles HLM (RPLS) : les plus grands, dans l'emprise de la carte (8 au plus).
-  const ens = (c.rpls?.ensembles ?? []).filter((e) => e.logements >= 50).slice(0, 8);
-  if (!qpv.length && !prioPolys.length && !res.length && !markets.length && !gares.length && !ens.length) return null;
+  const markets = pts(o.markets).slice(0, 3);
+  const gares = pts(o.gares).slice(0, 2);
+  const ecoles = pts(o.ecoles ?? []).slice(0, 3);
+  // Logements sociaux rue par rue : d'abord ceux des bureaux prioritaires (cinq au plus), puis les grandes rues ailleurs.
+  const rues = (o.rues ?? []).filter((r) => r.logements >= 20);
+  const ruesPrio = rues.filter((r) => r.bv && prioSet.has(r.bv)).slice(0, 5);
+  const ruesAutres = rues.filter((r) => !ruesPrio.includes(r) && r.logements >= 100).slice(0, Math.max(2, 6 - ruesPrio.length));
+  const ruesNum = [...ruesPrio, ...ruesAutres];
+  const ruesDots = rues.filter((r) => !ruesNum.includes(r));
+  if (!qpv.length && !prioPolys.length && !res.length && !markets.length && !gares.length && !ruesNum.length) return null;
   const bbox = c.fond?.bbox ?? (turf.bbox(contour) as [number, number, number, number]);
+  const inBox = (lon: number, lat: number) => lon >= bbox[0] && lon <= bbox[2] && lat >= bbox[1] && lat <= bbox[3];
   const geoSrc: SourceRef = c.geoSource ?? { id: "geoapi", name: "geo.api.gouv.fr", url: "https://geo.api.gouv.fr", retrievedAt: new Date().toISOString() };
   const fc = (features: GeoJSON.Feature[]): GeoJSON.FeatureCollection => ({ type: "FeatureCollection", features });
   const layers: MapLayer[] = [];
@@ -105,8 +144,13 @@ export function communePoster(
       source: geoSrc,
     });
   layers.push({ id: "commune", label: commune.nom, kind: "polygons", data: fc([{ ...contour, properties: { nom: commune.nom, _at: centre.geometry.coordinates } }]), style: { fill: POSTER.creme, stroke: "none" }, labelMode: "caps", labelProperty: "nom", visible: true, source: geoSrc });
+  // Fond jaune pâle des bureaux prioritaires, sous les rues (le plan reste lisible).
+  if (prioPolys.length) layers.push({ id: "bv_prio_fond", label: "Bureaux prioritaires (fond)", kind: "polygons", data: fc(prioPolys.map((p) => ({ type: "Feature", geometry: p.geometry, properties: {} }))), style: { fill: "#fbe8b4", stroke: "none" }, visible: true, source: c.bvGeo!.source });
 
   const f = c.fond;
+  // Rues à nommer : grands axes et rues où se trouvent les logements sociaux numérotés.
+  const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const ruesNoms = new Set(ruesNum.map((r) => norm(r.voie)));
   if (f) {
     if (f.water.length) layers.push({ id: "eau", label: "Cours d'eau", kind: "polygons", data: fc(f.water), style: { fill: "#cfe0ea", stroke: "none" }, legendItem: { label: "Cours d'eau", swatch: "fill" }, visible: true, source: f.source });
     if (f.waterLines.length) layers.push({ id: "rivieres", label: "Rivières", kind: "lines", data: fc(f.waterLines), style: { fill: "#cfe0ea", stroke: "#bcd5e4", strokeWidth: 3 }, ...(f.water.length ? {} : { legendItem: { label: "Cours d'eau", swatch: "line" as const } }), visible: true, source: f.source });
@@ -114,16 +158,59 @@ export function communePoster(
       id: "voies",
       label: "Voies",
       kind: "lines",
-      data: fc([...f.roads].sort((a, b) => (b.properties?.c ?? 5) - (a.properties?.c ?? 5)).map((r) => ({ ...r, properties: { _sw: ROAD[r.properties?.c ?? 5][0], _stroke: ROAD[r.properties?.c ?? 5][1] } }))),
+      data: fc(
+        [...f.roads]
+          .sort((a, b) => (b.properties?.c ?? 5) - (a.properties?.c ?? 5))
+          .map((r) => {
+            const cl = (r.properties?.c ?? 5) as number;
+            const n = r.properties?.n as string | undefined;
+            const named = !!n && (cl <= 3 || ruesNoms.has(norm(n)));
+            return { ...r, properties: { _sw: ROAD[cl][0], _stroke: ROAD[cl][1], ...(named ? { n, _rank: ruesNoms.has(norm(n!)) ? 0 : cl } : {}) } };
+          }),
+      ),
+      labelMode: "road",
+      labelProperty: "n",
       visible: true,
       source: f.source,
     });
     if (f.rail.length) layers.push({ id: "fer", label: "Voie ferrée", kind: "lines", data: fc(f.rail), style: { stroke: "#77736a", strokeWidth: 1.2, dash: "7 4" }, legendItem: { label: "Voie ferrée", swatch: "dash" }, visible: true, source: f.source });
   }
+  // Tous les bureaux de vote, en contour fin avec leur numéro (repère pour les militants).
+  if (allBv.length >= 2)
+    layers.push({
+      id: "bv_ctx",
+      label: "Bureaux de vote",
+      kind: "polygons",
+      data: fc(allBv.map((p) => ({ type: "Feature", geometry: p.geometry, properties: { num: `BV ${dv(String(p.properties?.bv))}`, nom: `Bureau ${dv(String(p.properties?.bv))}${o.labels.has(String(p.properties?.bv)) ? ` — ${o.labels.get(String(p.properties?.bv))}` : ""}` } }))),
+      style: { fill: "none", stroke: "#a39a88", strokeWidth: 0.7, dash: "2 2" },
+      labelMode: allBv.length <= 80 ? "tag" : undefined,
+      labelProperty: "num",
+      labelColor: "#8a8170",
+      legendItem: { label: "Limite de bureau de vote (numéro)", swatch: "dash" },
+      visible: true,
+      source: c.bvGeo!.source,
+    });
   layers.push({ id: "limite", label: "Limite communale", kind: "polygons", data: fc([contour]), style: { fill: "none", stroke: POSTER.charbon, strokeWidth: 1.4, dash: "5 4" }, legendItem: { label: "Limite communale", swatch: "dash" }, visible: true, source: geoSrc });
+
+  if (qpv.length)
+    layers.push({
+      id: "qpv",
+      label: "Quartiers prioritaires",
+      kind: "polygons",
+      data: fc(qpv.map((q) => ({ type: "Feature", geometry: q.geometry!, properties: { nom: quartierLabel(q.nom).replace(/^./, (x) => x.toUpperCase()), sub: q.stats.hlm != null ? `${Math.round(q.stats.hlm)} % de logements sociaux` : "" } }))),
+      style: { fill: "none", stroke: POSTER.violet, strokeWidth: 1.6, dash: "6 3" },
+      labelMode: "tag",
+      labelProperty: "nom",
+      labelColor: POSTER.violet,
+      legendItem: { label: "Quartier prioritaire de la ville", swatch: "dash" },
+      visible: true,
+      source: c.quartiers!.sources[0],
+    });
 
   if (prioPolys.length) {
     const byBv = new Map(o.prio.map((p) => [p.bv, p]));
+    // Pastille au lieu de vote quand il est connu (et dans le bureau), sinon au cœur du bureau.
+    const place = new Map((c.bvGeo?.points ?? []).map((p) => [String(p.properties?.bv), p.geometry.coordinates as [number, number]]));
     layers.push({
       id: "bv_prio",
       label: "Bureaux de vote prioritaires",
@@ -132,13 +219,35 @@ export function communePoster(
         prioPolys.map((p) => {
           const bv = String(p.properties?.bv);
           const r = byBv.get(bv)!;
-          return { type: "Feature", geometry: p.geometry, properties: {
-              nom: `Bureau ${(o.dv ?? String)(bv)}${o.labels.has(bv) ? ` — ${o.labels.get(bv)}` : ""}`,
-              sub: `${fmtNumber(r.abstN)} inscrits n'ont pas voté${r.abstSrc === "LG24T1" ? " aux législatives 2024" : ""} · LFI ${fmtNumber(Math.round(r.lfiPctExp))} % aux européennes`,
-            } };
+          const at = place.get(bv);
+          let inside = false;
+          try {
+            inside = !!at && turf.booleanPointInPolygon(at, p as GeoJSON.Feature<GeoJSON.Polygon>);
+          } catch {
+            inside = false;
+          }
+          const lieu = o.labels.get(bv);
+          const nHlm = o.hlmByBv?.get(bv) ?? 0;
+          const when = r.abstSrc === "LG24T1" ? " aux législatives 2024" : "";
+          return {
+            type: "Feature",
+            geometry: p.geometry,
+            properties: {
+              nom: `Bureau ${dv(bv)}${lieu ? ` — ${lieu}` : ""}`,
+              sub: `${fmtNumber(r.abstN)} inscrits n'ont pas voté${when} · LFI ${fmtNumber(Math.round(r.lfiPctExp))} % aux européennes`,
+              det: [
+                lieu ? `Lieu de vote : ${lieu}` : "",
+                `${fmtNumber(r.inscrits)} inscrits, dont ${fmtNumber(r.abstN)} n'ont pas voté${when} (${fmtNumber(Math.round(r.abstPct))} %)`,
+                `Vote LFI : ${fmtNumber(Math.round(r.lfiPctExp))} % aux européennes 2024${r.lfi2PctExp != null ? `, ${fmtNumber(Math.round(r.lfi2PctExp))} % pour J.-L. Mélenchon en 2022` : ""}`,
+                nHlm >= 20 ? `${fmtNumber(nHlm)} logements sociaux dans le bureau` : "",
+              ].filter(Boolean),
+              quand: o.quandPorte ?? "Samedi 10 h – 12 h 30, ou en semaine 18 h – 20 h 30",
+              ...(inside ? { _at: at } : {}),
+            },
+          };
         }),
       ),
-      style: { fill: "#fbe3a2", stroke: POSTER.jauneTexte, strokeWidth: 1.4 },
+      style: { fill: "none", stroke: POSTER.jauneTexte, strokeWidth: 1.8 },
       labelMode: "number",
       labelProperty: "nom",
       sublabelProperty: "sub",
@@ -148,71 +257,45 @@ export function communePoster(
       source: c.bvGeo!.source,
     });
   }
-  // Avec le répertoire des logements sociaux, les ensembles HLM sont les zones de porte-à-porte ;
-  // les quartiers prioritaires passent en simple contour.
-  if (qpv.length && ens.length)
+  // Logements sociaux : cercle proportionnel au nombre de logements, numéroté pour les rues à cibler.
+  const rad = (n: number) => Math.max(5, Math.min(22, 2.2 * Math.sqrt(n)));
+  if (ruesDots.length)
     layers.push({
-      id: "qpv",
-      label: "Quartiers prioritaires",
-      kind: "polygons",
-      data: fc(qpv.map((q) => ({ type: "Feature", geometry: q.geometry!, properties: { nom: quartierLabel(q.nom) } }))),
-      style: { fill: "none", stroke: POSTER.violet, strokeWidth: 1.6, dash: "6 3" },
-      legendItem: { label: "Quartier prioritaire", swatch: "dash" },
-      visible: true,
-      source: c.quartiers!.sources[0],
-    });
-  if (ens.length) {
-    const blob = (e: (typeof ens)[number]): GeoJSON.Geometry | null => {
-      try {
-        const pts = turf.featureCollection(e.points.map((p) => turf.point(p)));
-        const hull = e.points.length >= 3 ? turf.convex(pts) : null;
-        const base = hull ?? (e.points.length === 2 ? turf.lineString(e.points) : turf.point(e.points[0]));
-        // Zone arrondie autour des immeubles (≈ 45 m).
-        return turf.buffer(base as GeoJSON.Feature, 0.045, { units: "kilometers" })?.geometry ?? null;
-      } catch {
-        return null;
-      }
-    };
-    layers.push({
-      id: "hlm",
-      label: "Résidences HLM",
-      kind: "polygons",
-      data: fc(
-        ens
-          .map((e) => ({ e, g: blob(e) }))
-          .filter((x) => x.g)
-          .map(({ e, g }) => ({ type: "Feature" as const, geometry: g!, properties: { nom: /^\d|^(rue|avenue|allée|square|place|boulevard|chemin|impasse|cours|quai|bd)\b/i.test(e.nom) ? `Logements sociaux, ${e.nom}` : `Résidence ${e.nom.replace(/^r[ée]sidence\s+/i, "")}`, sub: `environ ${fmtNumber(Math.round(e.logements / 10) * 10)} logements sociaux` } })),
-      ),
-      style: { fill: POSTER.jaune, stroke: POSTER.charbon, strokeWidth: 1 },
-      labelMode: "number",
-      labelProperty: "nom",
-      sublabelProperty: "sub",
-      labelColor: POSTER.charbon,
-      legendItem: { label: "Porte-à-porte : logements sociaux", swatch: "fill" },
+      id: "hlm_autres",
+      label: "Autres logements sociaux",
+      kind: "points",
+      data: fc(ruesDots.filter((r) => inBox(r.lon, r.lat)).map((r) => turf.point([r.lon, r.lat], { nom: `${r.voie}${r.nums.length ? ` (${numsTxt(r.nums)})` : ""}`, sub: `${fmtNumber(r.logements)} logements sociaux`, _r: Math.max(2.5, rad(r.logements) * 0.45) }))),
+      style: { fill: "#e7b84a", stroke: "#fff", symbol: "dot", size: 8 },
+      legendItem: { label: "Autres logements sociaux (20 et plus)", swatch: "dot" },
       visible: true,
       source: c.rpls!.source,
     });
-  }
-  if (qpv.length && !ens.length)
+  if (ruesNum.length)
     layers.push({
-      id: "qpv",
-      label: "Quartiers prioritaires",
-      kind: "polygons",
+      id: "hlm",
+      label: "Logements sociaux à cibler",
+      kind: "points",
       data: fc(
-        qpv.map((q) => ({
-          type: "Feature",
-          geometry: q.geometry!,
-          properties: { nom: short(quartierLabel(q.nom).replace(/^./, (x) => x.toUpperCase())), sub: q.stats.hlm != null ? `${Math.round(q.stats.hlm)} % de logements sociaux` : q.stats.population ? `${fmtNumber(Math.round(q.stats.population / 100) * 100)} habitants` : "" },
-        })),
+        ruesNum
+          .filter((r) => inBox(r.lon, r.lat))
+          .map((r) =>
+            turf.point([r.lon, r.lat], {
+              nom: `${r.voie}${r.nums.length ? ` (${numsTxt(r.nums)})` : ""}`,
+              sub: `${fmtNumber(r.logements)} logements sociaux${r.bv ? ` · bureau ${dv(r.bv)}${prioSet.has(r.bv) ? " (prioritaire)" : ""}` : ""}`,
+              det: [r.noms.length ? `Résidence${r.noms.length > 1 ? "s" : ""} : ${r.noms.slice(0, 3).join(", ")}` : "", `${fmtNumber(r.logements)} logements sociaux${r.bv ? `, bureau ${dv(r.bv)}${prioSet.has(r.bv) ? " (prioritaire)" : ""}` : ""}`].filter(Boolean),
+              quand: o.quandPorte ?? "Samedi 10 h – 12 h 30, ou en semaine 18 h – 20 h 30",
+              _r: rad(r.logements),
+            }),
+          ),
       ),
-      style: { fill: POSTER.jaune, stroke: POSTER.charbon, strokeWidth: 1 },
+      style: { fill: POSTER.jaune, stroke: POSTER.charbon, symbol: "circle", size: 16 },
       labelMode: "number",
       labelProperty: "nom",
       sublabelProperty: "sub",
       labelColor: POSTER.charbon,
-      legendItem: { label: "Quartier prioritaire (porte-à-porte)", swatch: "fill" },
+      legendItem: { label: "Porte-à-porte : logements sociaux (taille selon le nombre)", swatch: "circle" },
       visible: true,
-      source: c.quartiers!.sources[0],
+      source: c.rpls!.source,
     });
   if (res.length)
     layers.push({
@@ -220,12 +303,15 @@ export function communePoster(
       label: "Résidences Crous et foyers de jeunes travailleurs",
       kind: "points",
       data: fc(
-        res.map((r) =>
-          turf.point([r.lon, r.lat], {
+        res.map((r) => {
+          const fjt = /foyer de jeunes/i.test(r.categorie);
+          return turf.point([r.lon, r.lat], {
             nom: r.nom,
-            sub: [/foyer de jeunes/i.test(r.categorie) ? "Foyer de jeunes travailleurs" : "Résidence du Crous", r.logements ? `${fmtNumber(r.logements)} logements` : "", r.adresse].filter(Boolean).join(" · "),
-          }),
-        ),
+            sub: [fjt ? "Foyer de jeunes travailleurs" : "Résidence du Crous", r.logements ? `${fmtNumber(r.logements)} logements` : "", r.adresse].filter(Boolean).join(" · "),
+            det: [`${fjt ? "Foyer de jeunes travailleurs" : "Résidence du Crous"}${r.logements ? `, ${fmtNumber(r.logements)} logements` : ""}`, r.adresse ? `Adresse : ${r.adresse}` : "", fjt ? "Jeunes actifs, souvent peu inscrits sur les listes" : "Inscription sur les listes et mobilisation des étudiants"].filter(Boolean),
+            quand: fjt ? "En semaine, 18 h 30 – 20 h 30" : "En semaine, 18 h – 20 h, hors vacances universitaires",
+          });
+        }),
       ),
       style: { fill: RESIDENCE_RED, stroke: "#ffffff", symbol: "circle", size: 15 },
       labelMode: "number",
@@ -237,15 +323,19 @@ export function communePoster(
       source: c.residences!.source,
     });
   const tract = [
-    ...markets.map((m) => ({ nom: /^march[ée]$/i.test(m.nom.trim()) ? "Marché" : m.nom, sub: /à (compléter|vérifier)/.test(m.infos) || !m.infos ? "Marché · jours et horaires à confirmer en mairie" : `Marché · ${m.infos}`, lon: m.lon!, lat: m.lat! })),
-    ...gares.map((g) => ({ nom: gareNom(g.nom), sub: g.voyageurs ? `${perDay(g.voyageurs)}, surtout aux heures de pointe` : "Aux heures de pointe", lon: g.lon!, lat: g.lat! })),
-  ].filter((t) => t.lon >= bbox[0] && t.lon <= bbox[2] && t.lat >= bbox[1] && t.lat <= bbox[3]);
+    ...markets.map((m) => {
+      const nom = /^march[ée]$/i.test(m.nom.trim()) ? "Marché" : m.nom;
+      const h = /à (compléter|vérifier)/.test(m.infos) || !m.infos ? "" : m.infos;
+      return { nom, sub: h ? `Marché · ${h}` : "Marché · jours et horaires à confirmer en mairie", det: ["Lieu de passage régulier des habitants", h ? `Horaires (OpenStreetMap, à confirmer) : ${h}` : "Jours et horaires à confirmer en mairie"], quand: m.quand ?? (h || "Jour de marché, en matinée"), lon: m.lon!, lat: m.lat! };
+    }),
+    ...gares.map((g) => ({ nom: gareNom(g.nom), sub: g.voyageurs ? `${perDay(g.voyageurs)}, surtout aux heures de pointe` : "Aux heures de pointe", det: [g.voyageurs ? `${perDay(g.voyageurs)}` : "", "Actifs qui travaillent hors de la commune"].filter(Boolean), quand: g.quand ?? "En semaine, 7 h – 9 h ou 17 h – 19 h", lon: g.lon!, lat: g.lat! })),
+  ].filter((t) => inBox(t.lon, t.lat));
   if (tract.length)
     layers.push({
       id: "tractage",
       label: "Lieux de tractage",
       kind: "points",
-      data: fc(tract.map((t) => turf.point([t.lon, t.lat], { nom: t.nom, sub: t.sub }))),
+      data: fc(tract.map((t) => turf.point([t.lon, t.lat], { nom: t.nom, sub: t.sub, det: t.det, quand: t.quand }))),
       style: { fill: POSTER.violet, stroke: "#ffffff", symbol: "diamond", size: 17 },
       labelMode: "number",
       labelProperty: "nom",
@@ -254,6 +344,32 @@ export function communePoster(
       legendItem: { label: "Tractage : marché, gare", swatch: "diamond" },
       visible: true,
       source: c.equipments?.source ?? c.stations?.source ?? geoSrc,
+    });
+  const sorties = ecoles.filter((e) => inBox(e.lon!, e.lat!));
+  if (sorties.length)
+    layers.push({
+      id: "ecoles",
+      label: "Sorties de collèges et lycées",
+      kind: "points",
+      data: fc(
+        sorties.map((e) => {
+          const lycee = /lyc[ée]e/i.test(`${e.type ?? ""} ${e.nom}`);
+          return turf.point([e.lon!, e.lat!], {
+            nom: e.nom,
+            sub: [lycee ? "Lycée" : "Collège", e.infos].filter(Boolean).join(" · "),
+            det: [e.infos ? cap(e.infos) : "", lycee ? "Lycéens, dont les premiers votants, et parents" : "Parents d'élèves"].filter(Boolean),
+            quand: e.quand ?? (lycee ? "En semaine, 12 h – 13 h 30 ou 17 h – 18 h" : "En semaine 16 h 30 – 17 h 30, mercredi 12 h"),
+          });
+        }),
+      ),
+      style: { fill: "#7a3fb8", stroke: "#ffffff", symbol: "square", size: 15 },
+      labelMode: "number",
+      labelProperty: "nom",
+      sublabelProperty: "sub",
+      labelColor: "#7a3fb8",
+      legendItem: { label: "Tractage : sortie de collège ou lycée", swatch: "square" },
+      visible: true,
+      source: c.schools?.source ?? geoSrc,
     });
   return {
     id: "lfi_affiche",
@@ -264,10 +380,12 @@ export function communePoster(
       kicker: commune.nom,
       title: "Propositions de ciblage : porte-à-porte et tractage",
       source: "Source : Pôle d'études électorales. Fond de carte : © contributeurs OpenStreetMap, IGN.",
-      footnote: "Périmètres et emplacements indicatifs.",
+      footnote: "Périmètres et emplacements indicatifs. Numéros : voir la liste « Où agir ».",
       scaleBar: true,
     },
     layers,
-    note: `Porte-à-porte : ${ens.length ? "ensembles de logements sociaux (répertoire RPLS), " : "quartiers prioritaires, "}bureaux de vote prioritaires et résidences étudiantes ; tractage : marchés et gares.`,
+    note: `Porte-à-porte : bureaux de vote prioritaires${ruesNum.length ? ", logements sociaux rue par rue (répertoire RPLS)" : ""}${res.length ? ", résidences du Crous et foyers" : ""} ; tractage : ${[markets.length ? "marchés" : "", gares.length ? "gares" : "", sorties.length ? "sorties de collèges et lycées" : ""].filter(Boolean).join(", ") || "à compléter"}.`,
   };
 }
+
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);

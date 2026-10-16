@@ -5,7 +5,7 @@ import type { ElectionResult } from "../collectors/elections";
 import { NUANCES, nuanceFamily } from "../collectors/municipales";
 import { abstention, score } from "../analysis/political";
 import { median } from "../analysis/stats";
-import { fmtNumber, fmtSigned, fmtValue } from "../format";
+import { deNom, fmtNumber, fmtSigned, fmtValue } from "../format";
 import type { Block, DataTable, Finding, Indicator, MapSpec, Section, SourceRef } from "../types";
 import type { Collected } from "./collect";
 
@@ -85,6 +85,8 @@ export interface Unit {
   population: number;
   e24: Agg | null;
   p22: Agg | null;
+  /** Législatives 2024 (abstention de référence), si disponibles pour toutes les communes. */
+  lg?: Agg | null;
   lfi24: number | null;
   lfi22: number | null;
   voix24: number;
@@ -182,6 +184,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       lfi22: lfiPct(a22, "PR22T1"),
       voix24: v24,
       overperf: l24 != null && exp != null ? l24 - exp : null,
+      lg: byLg.size && codes.every((k) => byLg.has(k)) ? merge(codes.map((k) => byLg.get(k)!)) : null,
       abst24: byLg.size && codes.every((k) => byLg.has(k)) ? abstention(merge(codes.map((k) => byLg.get(k)!))).pct : abstention(a24).pct,
       abst22: a22 ? abstention(a22).pct : null,
       parrains: par,
@@ -258,19 +261,21 @@ export function buildCiblage(c: Collected): CiblageOutput {
     abst22: d22 ? pct(abstention(d22).pct) : "",
     abst24: pct(depAbst24),
   };
+  // Langage courant ; l'abstention 2024 est celle du scrutin de référence (législatives si disponibles),
+  // pour le territoire comme pour la moyenne départementale.
   const colsPol = [
     { key: "territoire", label: "", wide: true },
-    { key: "inscrits", label: "Inscrits (2024)", align: "right" as const },
-    { key: "lfi22", label: "LFI (P22)", align: "right" as const },
-    { key: "lfi24", label: "LFI (E24)", align: "right" as const },
+    { key: "inscrits", label: "Électeurs inscrits", align: "right" as const },
+    { key: "lfi22", label: "Vote Mélenchon 2022", align: "right" as const },
+    { key: "lfi24", label: "Vote LFI 2024 (européennes)", align: "right" as const },
     ...(hasParrains ? [{ key: "parrains", label: "Parrains", align: "right" as const }] : []),
-    { key: "abst22", label: "Abstention (2022)", align: "right" as const },
-    { key: "abst24", label: "Abstention (2024)", align: "right" as const },
+    { key: "abst22", label: "N'ont pas voté (présidentielle 2022)", align: "right" as const },
+    { key: "abst24", label: `N'ont pas voté (${abstLabel})`, align: "right" as const },
   ];
-  const lineOf = (name: string, u: Pick<Unit, "e24" | "p22" | "parrains">) => {
+  const lineOf = (name: string, u: Pick<Unit, "e24" | "p22" | "parrains" | "lg">) => {
     const s24 = u.e24 ? score("EU24", u.e24, "lfi") : null;
     const s22 = u.p22 ? score("PR22T1", u.p22, "lfi") : null;
-    const a24 = u.e24 ? abstention(u.e24) : null;
+    const a24 = u.lg ? abstention(u.lg) : u.e24 && !byLg.size ? abstention(u.e24) : null;
     const a22 = u.p22 ? abstention(u.p22) : null;
     return {
       territoire: name,
@@ -291,10 +296,11 @@ export function buildCiblage(c: Collected): CiblageOutput {
       const all = ref.epcis.find((x) => x.code === u.epci)?.membres.map((m) => m.code).filter((m) => by24.has(m)) ?? [];
       const e = merge(all.map((m) => by24.get(m)!));
       const p = all.map((m) => by22.get(m)).filter((x): x is Agg => !!x);
-      rows.push(lineOf(u.nom, { e24: e, p22: p.length ? merge(p) : null, parrains: hasParrains ? all.reduce((s, m) => s + (c.interne.parrains.get(m) ?? 0), 0) : null }));
+      const lgs = all.map((m) => byLg.get(m));
+      rows.push(lineOf(u.nom, { e24: e, p22: p.length ? merge(p) : null, lg: lgs.length && lgs.every(Boolean) ? merge(lgs as Agg[]) : null, parrains: hasParrains ? all.reduce((s, m) => s + (c.interne.parrains.get(m) ?? 0), 0) : null }));
     }
     rows.push(depRow);
-    out.tables.push({ id: tid, title: `${u.nom} — vote LFI, parrainages et abstention`, theme: "strategie", columns: colsPol, rows, highlight: [0], sources: [...src, ...(hasParrains ? [interneSrc] : [])], note: "Le nombre brut correspond au nombre de voix (ou de signataires) ; le pourcentage entre parenthèses est rapporté aux inscrits." });
+    out.tables.push({ id: tid, title: `${u.nom} — vote LFI, parrainages et abstention`, theme: "strategie", columns: colsPol, rows, highlight: [0], sources: [...src, ...(hasParrains ? [interneSrc] : [])], note: "Nombre de voix (ou de parrains, ou d'inscrits qui n'ont pas voté) ; entre parenthèses, la part des électeurs inscrits." });
 
     const ev: string[] = [];
     const raisons: string[] = [];
@@ -303,23 +309,23 @@ export function buildCiblage(c: Collected): CiblageOutput {
       if (e1) ev.push(e1);
       raisons.push(
         u.overperf >= 1
-          ? `${B("LFI surperforme")} par rapport aux communes comparables du département (${fmtSigned(u.overperf, "points")}, ${pct(u.lfi24)} des inscrits aux européennes).`
+          ? `${B("On y vote davantage pour LFI")} que dans les communes de même taille du département : ${pct(u.lfi24)} des électeurs inscrits aux européennes 2024, ${fmtNumber(u.overperf, 1)} point${u.overperf >= 2 ? "s" : ""} de plus.`
           : u.overperf <= -1
-            ? `LFI sous-performe par rapport aux communes comparables (${fmtSigned(u.overperf, "points")}).`
-            : `Vote LFI proche des communes comparables (${pct(u.lfi24)} des inscrits aux européennes).`,
+            ? `On y vote moins pour LFI que dans les communes de même taille du département (${fmtNumber(-u.overperf, 1)} point${u.overperf <= -2 ? "s" : ""} de moins).`
+            : `Vote LFI comparable aux communes de même taille (${pct(u.lfi24)} des électeurs inscrits aux européennes 2024).`,
       );
     }
     if (u.abst24 != null) {
       const d = u.abst24 - depAbst24;
-      if (d >= 3) raisons.push(`${B("Abstention nettement plus élevée")} que dans le département (${pct(u.abst24)} contre ${pct(depAbst24)} aux ${abstLabel}) : marge de progression chez les abstentionnistes.`);
-      else if (d <= -3) raisons.push(`Abstention plus faible que dans le département (${pct(u.abst24)}).`);
+      if (d >= 3) raisons.push(`${B("Beaucoup d'électeurs ne votent pas")} : ${pct(u.abst24)} des inscrits n'ont pas voté aux ${abstLabel}, contre ${pct(depAbst24)} dans le département. Ce sont des électeurs à convaincre d'aller voter.`);
+      else if (d <= -3) raisons.push(`On y vote plus qu'ailleurs : ${pct(u.abst24)} des inscrits n'ont pas voté aux ${abstLabel}, contre ${pct(depAbst24)} dans le département.`);
     }
     if (u.ratio != null && depRatio) {
       const r = u.ratio / depRatio;
       const e2 = indOf(u, "ciblage_ratio_parrains", "Parrains pour 100 voix LFI (E24)", 100 * u.ratio, "nombre", interneSrc);
       if (e2) ev.push(e2);
-      if (r >= 1.3) raisons.push(`Ratio parrains / voix ${fmtNumber(r, 1)} fois supérieur à la moyenne départementale : ${B("forte probabilité de trouver des militants potentiels")}.`);
-      else if (r <= 0.7) raisons.push(`${B("Très peu de parrains")} au regard du vote LFI (ratio ${fmtNumber(r, 1)} fois la moyenne) : l'encadrement des nouveaux militants sera la question centrale.`);
+      if (r >= 1.3) raisons.push(`Beaucoup de parrains au regard des voix LFI (${fmtNumber(r, 1)} fois plus que la moyenne du département) : ${B("de bonnes chances de trouver de futurs militants")}.`);
+      else if (r <= 0.7) raisons.push(`${B("Peu de parrains")} au regard des voix LFI (${fmtNumber(r, 1)} fois la moyenne du département) : il faudra surtout accompagner les nouveaux militants.`);
     }
     if (u.groupes.length) raisons.push(`Groupe${u.groupes.length > 1 ? "s" : ""} d'action : ${u.groupes.map((g) => `« ${g.nom} »${g.membres != null ? ` (${g.membres} membres)` : ""}`).join(", ")}.`);
     else if (c.interne.files.length) raisons.push(`${B("Aucun groupe d'action référencé")} : territoire à implanter.`);
@@ -336,10 +342,10 @@ export function buildCiblage(c: Collected): CiblageOutput {
       { key: "rang", label: "Rang", align: "right" },
       { key: "nom", label: "Territoire", wide: true },
       { key: "pop", label: "Population", align: "right" },
-      { key: "lfi", label: "LFI E24 (% ins.)", align: "right" },
-      { key: "surperf", label: "Écart aux comparables (pts)", align: "right" },
-      { key: "abst", label: abstLabel === "législatives 2024" ? "Abstention L24" : "Abstention E24", align: "right" },
-      ...(hasParrains ? [{ key: "ratio", label: "Parrains / 100 voix", align: "right" as const }] : []),
+      { key: "lfi", label: "Vote LFI 2024 (% des inscrits)", align: "right" },
+      { key: "surperf", label: "Écart aux villes de même taille (points)", align: "right" },
+      { key: "abst", label: `N'ont pas voté (${abstLabel})`, align: "right" },
+      ...(hasParrains ? [{ key: "ratio", label: "Parrains pour 100 voix LFI", align: "right" as const }] : []),
       ...(c.interne.files.length ? [{ key: "groupe", label: "Groupe d'action" }] : []),
       ...(c.municipalDep ? [{ key: "mairie", label: "Mairie (2026)" }] : []),
       { key: "score", label: "Score", align: "right" },
@@ -461,7 +467,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
     {
       type: "callout",
       tone: "warning",
-      text: `Le ciblage présenté ci-dessous a été réalisé à partir de la seule exploitation de données statistiques et électorales publiques, par des personnes qui ne vivent pas forcément ${circo ? "dans cette circonscription" : interco ? "dans cette intercommunalité" : "dans ce département"}. ${B(`Les informations qui y sont suggérées doivent être confrontées avec la connaissance du terrain des militant·es ${circo ? "de la circonscription" : interco ? "de l'intercommunalité" : `de ${dep.nom}`}.`)}`,
+      text: `Le ciblage présenté ci-dessous a été réalisé à partir de la seule exploitation de données statistiques et électorales publiques, par des personnes qui ne vivent pas forcément ${circo ? "dans cette circonscription" : interco ? "dans cette intercommunalité" : "dans ce département"}. ${B(`Les informations qui y sont suggérées doivent être confrontées avec la connaissance du terrain des militant·es ${circo ? "de la circonscription" : interco ? "de l'intercommunalité" : deNom(dep.nom)}.`)}`,
     },
     { type: "list", title: "Territoires proposés pour un ciblage militant", items: chosen.map((u, k) => ({ text: `${B(`${k + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) },
     ...(out.maps.some((m) => m.id === "ciblage_affiche") ? [{ type: "map" as const, mapId: "ciblage_affiche" }] : []),

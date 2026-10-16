@@ -178,14 +178,15 @@ export interface MapLayer {
    * Cartes « affiche » : style de la couche (les propriétés `_fill`, `_stroke`,
    * `_sw`, `_dash` d'une entité le remplacent pour elle seule).
    */
-  style?: { fill?: string; stroke?: string; strokeWidth?: number; dash?: string; symbol?: "circle" | "diamond" | "dot"; size?: number };
+  style?: { fill?: string; stroke?: string; strokeWidth?: number; dash?: string; symbol?: "circle" | "diamond" | "dot" | "square"; size?: number };
   /** Étiquettes : « callout » (texte décalé et trait de rappel), « caps » (capitales grises au centre). */
   /** « number » : pastille numérotée sur la carte, nom et détail dans la liste sous la carte. */
-  labelMode?: "callout" | "caps" | "number";
+  /** « road » : nom le long de la voie ; « tag » : petit texte au centre, omis s'il chevauche. */
+  labelMode?: "callout" | "caps" | "number" | "road" | "tag";
   sublabelProperty?: string;
   labelColor?: string;
   /** Entrée de la légende encadrée (cartes « affiche »). */
-  legendItem?: { label: string; swatch: "fill" | "line" | "dash" | "circle" | "diamond" };
+  legendItem?: { label: string; swatch: "fill" | "line" | "dash" | "circle" | "diamond" | "square" | "dot" };
 }
 
 export interface MapLegend {

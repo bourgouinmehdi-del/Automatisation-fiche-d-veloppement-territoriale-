@@ -207,7 +207,7 @@ const line = (g: { lat: number; lon: number }[], props: Record<string, unknown>)
 export async function collectFondOsm(http: TrackedHttp, bbox: Bbox): Promise<FondOsm> {
   const key = bbox.map((v) => v.toFixed(3)).join(",");
   return cachedExtract(
-    `fondosm|${key}`,
+    `fondosm2|${key}`,
     24 * 30,
     async () => {
       const [w, s, e, n] = bbox;
@@ -229,7 +229,8 @@ out geom qt;`;
       for (const el of r.data?.elements ?? []) {
         const t = el.tags ?? {};
         if (el.type === "way" && el.geometry && el.geometry.length > 1) {
-          if (t.highway) out.roads.push(line(el.geometry, { c: ROAD_CLASS[t.highway] ?? 5 }));
+          // Nom de la voie (étiquettes des grands axes et des rues à cibler).
+          if (t.highway) out.roads.push(line(el.geometry, { c: ROAD_CLASS[t.highway] ?? 5, ...(t.name ? { n: t.name } : {}) }));
           else if (t.railway) out.rail.push(line(el.geometry, {}));
           else if (t.waterway === "river" || t.waterway === "canal") out.waterLines.push(line(el.geometry, { nom: t.name ?? "" }));
           else if (t.natural === "water" || t.waterway === "riverbank") {
