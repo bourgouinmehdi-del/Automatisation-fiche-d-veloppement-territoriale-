@@ -235,9 +235,16 @@ describe("chaîne de génération (API simulées)", () => {
     // Horaires GTFS : pointe du soir et temps vers Paris ; temps routiers.
     const actions = report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
     const gare = actions.groups.find((g) => g.title === "Gare")!;
-    expect(gare.items[0]).toMatch(/entre 17 h et 19 h/);
     expect(gare.items[0]).toMatch(/Paris en 52 min/);
-    expect(actions.groups.some((g) => g.title === "Services publics")).toBe(true);
+    // Actions du week-end : créneaux samedi / dimanche, ni sorties d'établissements ni services fermés.
+    expect(gare.items.some((t) => /Le week-end : samedi 9 h/.test(t))).toBe(true);
+    expect(actions.groups.some((g) => /Sorties|Services publics/.test(g.title))).toBe(false);
+    const plan = report.tables.find((t) => t.id === "lfi_plan")!;
+    expect(plan.rows.length).toBeGreaterThan(0);
+    for (const r of plan.rows) {
+      expect(String(r.action)).not.toMatch(/Sortie/);
+      expect(String(r.quand)).not.toMatch(/semaine/i);
+    }
     const access = fiche.blocks.find((b) => b.type === "paragraph" && /Accès/.test(b.text)) as { text: string };
     expect(access.text).toMatch(/en voiture/);
     // Groupe d'action importé depuis l'export Action Populaire (code postal + ville).
