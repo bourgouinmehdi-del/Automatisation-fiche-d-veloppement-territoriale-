@@ -615,16 +615,21 @@ export async function collect(
       // Élargissement national : France métropolitaine pour une commune métropolitaine,
       // outre-mer pour une commune d'outre-mer (contextes non comparables).
       const dom = (code: string) => code.startsWith("97");
-      const nat = franceCommunes().filter((x) => dom(x.code) === dom(commune.code)).map((x) => ({
+      // Mayotte (976) à part : recensement et revenus non publiés comme ailleurs (jeux INSEE absents).
+      const may = (code: string) => code.startsWith("976");
+      const nat = franceCommunes().filter((x) => dom(x.code) === dom(commune.code) && may(x.code) === may(commune.code)).map((x) => ({
         ...x,
         densite: densityByCode.get(x.code) ?? null,
       }));
-      comps = comparableCommunes(nat, commune, 0.2, 40).filter(
+      const natComps = comparableCommunes(nat, commune, 0.2, 40);
+      comps = natComps.filter(
         (x) =>
           targetDens == null ||
           x.densite == null ||
           (x.densite >= targetDens * 0.5 && x.densite <= targetDens * 2),
       );
+      // Commune très dense (Pointe-à-Pitre) : trop peu de communes de densité voisine, on garde la taille seule.
+      if (comps.length < 3) comps = natComps;
       c.comparablesScope = commune.code.startsWith("97") ? "outre-mer" : "France métropolitaine";
     }
     c.comparables = comps
