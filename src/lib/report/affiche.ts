@@ -40,6 +40,26 @@ export function gareNom(nom: string): string {
   return `Gare ${/^[aeiouyàâéèêëîïôûüœ]/i.test(nom) ? "d'" : "de "}${nom}`;
 }
 
+/**
+ * Créneaux du week-end : les actions militantes ont lieu le samedi et le dimanche
+ * (pas de sorties d'école, collège ou lycée ; services publics fermés, sauf la poste le samedi matin).
+ */
+export const WEEKEND = {
+  porte: "Samedi 10 h – 12 h 30 ou 17 h – 19 h ; dimanche 10 h 30 – 12 h 30",
+  foyer: "Samedi ou dimanche, 17 h – 19 h",
+  crous: "Dimanche 18 h – 20 h (retour des étudiants) ou samedi 11 h – 13 h, hors vacances universitaires",
+  gare: "Samedi 9 h – 12 h ; dimanche 17 h – 20 h (retours de week-end)",
+  marche: "Matinée du marché, samedi ou dimanche (jour à confirmer en mairie)",
+  poste: "Samedi 9 h – 12 h, si le bureau est ouvert",
+  supermarche: "Samedi 10 h – 12 h ou dimanche matin, avec l'accord du magasin",
+};
+
+/** Horaires (« du mardi au samedi, 8 h – 13 h ») : ouvert le week-end ? null si inconnu. */
+export function openWeekend(h: string): boolean | null {
+  if (!/\d+ h/.test(h)) return null;
+  return /samedi|dimanche|tous les jours/i.test(h);
+}
+
 /** Fréquentation minimale d'une gare de tractage (voyageurs par jour). */
 export const GARE_MIN_JOUR = 300;
 
@@ -241,7 +261,7 @@ export function communePoster(
                 `Vote LFI : ${fmtNumber(Math.round(r.lfiPctExp))} % aux européennes 2024${r.lfi2PctExp != null ? `, ${fmtNumber(Math.round(r.lfi2PctExp))} % pour J.-L. Mélenchon en 2022` : ""}`,
                 nHlm >= 20 ? `${fmtNumber(nHlm)} logements sociaux dans le bureau` : "",
               ].filter(Boolean),
-              quand: o.quandPorte ?? "Samedi 10 h – 12 h 30, ou en semaine 18 h – 20 h 30",
+              quand: o.quandPorte ?? WEEKEND.porte,
               ...(inside ? { _at: at } : {}),
             },
           };
@@ -283,7 +303,7 @@ export function communePoster(
               nom: `${r.voie}${r.nums.length ? ` (${numsTxt(r.nums)})` : ""}`,
               sub: `${fmtNumber(r.logements)} logements sociaux${r.bv ? ` · bureau ${dv(r.bv)}${prioSet.has(r.bv) ? " (prioritaire)" : ""}` : ""}`,
               det: [r.noms.length ? `Résidence${r.noms.length > 1 ? "s" : ""} : ${r.noms.slice(0, 3).join(", ")}` : "", `${fmtNumber(r.logements)} logements sociaux${r.bv ? `, bureau ${dv(r.bv)}${prioSet.has(r.bv) ? " (prioritaire)" : ""}` : ""}`].filter(Boolean),
-              quand: o.quandPorte ?? "Samedi 10 h – 12 h 30, ou en semaine 18 h – 20 h 30",
+              quand: o.quandPorte ?? WEEKEND.porte,
               _r: rad(r.logements),
             }),
           ),
@@ -309,7 +329,7 @@ export function communePoster(
             nom: r.nom,
             sub: [fjt ? "Foyer de jeunes travailleurs" : "Résidence du Crous", r.logements ? `${fmtNumber(r.logements)} logements` : "", r.adresse].filter(Boolean).join(" · "),
             det: [`${fjt ? "Foyer de jeunes travailleurs" : "Résidence du Crous"}${r.logements ? `, ${fmtNumber(r.logements)} logements` : ""}`, r.adresse ? `Adresse : ${r.adresse}` : "", fjt ? "Jeunes actifs, souvent peu inscrits sur les listes" : "Inscription sur les listes et mobilisation des étudiants"].filter(Boolean),
-            quand: fjt ? "En semaine, 18 h 30 – 20 h 30" : "En semaine, 18 h – 20 h, hors vacances universitaires",
+            quand: fjt ? WEEKEND.foyer : WEEKEND.crous,
           });
         }),
       ),
@@ -326,9 +346,9 @@ export function communePoster(
     ...markets.map((m) => {
       const nom = /^march[ée]$/i.test(m.nom.trim()) ? "Marché" : m.nom;
       const h = /à (compléter|vérifier)/.test(m.infos) || !m.infos ? "" : m.infos;
-      return { nom, sub: h ? `Marché · ${h}` : "Marché · jours et horaires à confirmer en mairie", det: ["Lieu de passage régulier des habitants", h ? `Horaires (OpenStreetMap, à confirmer) : ${h}` : "Jours et horaires à confirmer en mairie"], quand: m.quand ?? (h || "Jour de marché, en matinée"), lon: m.lon!, lat: m.lat! };
+      return { nom, sub: h ? `Marché · ${h}` : "Marché · jour du week-end à confirmer en mairie", det: ["Lieu de passage régulier des habitants", h ? `Horaires (OpenStreetMap, à confirmer) : ${h}` : "Jours et horaires à confirmer en mairie"], quand: m.quand ?? (h ? `${h} (matinée du week-end)` : WEEKEND.marche), lon: m.lon!, lat: m.lat! };
     }),
-    ...gares.map((g) => ({ nom: gareNom(g.nom), sub: g.voyageurs ? `${perDay(g.voyageurs)}, surtout aux heures de pointe` : "Aux heures de pointe", det: [g.voyageurs ? `${perDay(g.voyageurs)}` : "", "Actifs qui travaillent hors de la commune"].filter(Boolean), quand: g.quand ?? "En semaine, 7 h – 9 h ou 17 h – 19 h", lon: g.lon!, lat: g.lat! })),
+    ...gares.map((g) => ({ nom: gareNom(g.nom), sub: g.voyageurs ? `${perDay(g.voyageurs)} · départs et retours de week-end` : "Départs et retours de week-end", det: [g.voyageurs ? `${perDay(g.voyageurs)} (moyenne de la semaine)` : "", "Départs et retours de week-end, étudiants"].filter(Boolean), quand: g.quand ?? WEEKEND.gare, lon: g.lon!, lat: g.lat! })),
   ].filter((t) => inBox(t.lon, t.lat));
   if (tract.length)
     layers.push({
@@ -341,7 +361,7 @@ export function communePoster(
       labelProperty: "nom",
       sublabelProperty: "sub",
       labelColor: POSTER.violet,
-      legendItem: { label: "Tractage : marché, gare", swatch: "diamond" },
+      legendItem: { label: "Tractage : marché, gare (week-end)", swatch: "diamond" },
       visible: true,
       source: c.equipments?.source ?? c.stations?.source ?? geoSrc,
     });
@@ -358,7 +378,7 @@ export function communePoster(
             nom: e.nom,
             sub: [lycee ? "Lycée" : "Collège", e.infos].filter(Boolean).join(" · "),
             det: [e.infos ? cap(e.infos) : "", lycee ? "Lycéens, dont les premiers votants, et parents" : "Parents d'élèves"].filter(Boolean),
-            quand: e.quand ?? (lycee ? "En semaine, 12 h – 13 h 30 ou 17 h – 18 h" : "En semaine 16 h 30 – 17 h 30, mercredi 12 h"),
+            quand: e.quand ?? "",
           });
         }),
       ),

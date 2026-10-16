@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
+import { playChime } from "@/lib/chime";
 import { useRouter } from "next/navigation";
 
 interface Ev {
@@ -56,6 +57,8 @@ export default function Generation({ params }: { params: Promise<{ id: string }>
   useEffect(() => {
     let stop = false;
     let unknownCount = 0;
+    // Carillon seulement si on a vu la génération en cours (pas en rouvrant une fiche déjà prête).
+    let sawRunning = false;
     const tick = async () => {
       try {
         const r = await fetch(`/api/reports/${id}/progress`, { cache: "no-store" });
@@ -72,7 +75,12 @@ export default function Generation({ params }: { params: Promise<{ id: string }>
         setStatus(d.status);
         if (d.query) setQuery(d.query);
         if (d.status === "interrupted" || d.status === "unknown") return;
+        if (d.status === "running") sawRunning = true;
         if (d.status === "done") {
+          if (sawRunning) {
+            playChime();
+            document.title = "Fiche prête";
+          }
           router.replace(`/rapport/${id}`);
           return;
         }

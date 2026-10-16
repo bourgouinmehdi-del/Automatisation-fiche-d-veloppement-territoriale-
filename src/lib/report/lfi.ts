@@ -9,7 +9,7 @@ import type { Block, ChartSpec, DataTable, Finding, GeoRef, Indicator, MapLegend
 import { MISSING_COLOR, SEQ_COLORS } from "./assemble";
 import { buildPorte } from "./porte";
 import { plmInfo } from "../collectors/plm";
-import { communePoster, GARE_MIN_JOUR, gareNom, perDay } from "./affiche";
+import { communePoster, GARE_MIN_JOUR, gareNom, openWeekend, perDay, WEEKEND } from "./affiche";
 import { buildInscription } from "./inscription";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
@@ -404,7 +404,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     socio.push({
       text:
         conc.value! >= 100
-          ? `${B("Beaucoup d'emplois sur place")} : la commune fait travailler des habitants des alentours, qu'on peut croiser en semaine.`
+          ? `${B("Beaucoup d'emplois sur place")} : la commune fait travailler des habitants des alentours.`
           : `${B("On y habite plus qu'on n'y travaille")} : beaucoup d'habitants travaillent ailleurs${nearestBig ? `, notamment à ${nearestBig.nom}` : ""} ; mieux vaut les rencontrer le soir et le week-end.`,
       evidence: evOf(conc),
     });
@@ -1599,8 +1599,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       hint: "porte-à-porte",
       items: resPorte.map((r) => `${B(r.nom)} (${resType(r)}${r.logements ? `, ${fmtNumber(r.logements)} logements` : ""}) : ${r.adresse}${r.bv ? ` (bureau ${dv(r.bv)})` : ""}.`),
     });
-  const markets = lieux.filter((l) => l.type === "Marché");
-  if (markets.length) actionGroups.push({ title: "Marchés", items: markets.slice(0, 5).map((m) => `${B(m.nom)} : ${m.infos}${m.bv ? ` (${m.bv}${m.prioritaire ? ", prioritaire" : ""})` : ""}.`) });
+  // Actions le week-end : marchés du samedi ou du dimanche (ou jour inconnu, à confirmer) ; ceux de semaine sont signalés à part.
+  const marketsAll = lieux.filter((l) => l.type === "Marché");
+  const markets = marketsAll.filter((m) => openWeekend(m.infos) !== false);
+  if (marketsAll.length) actionGroups.push({ title: "Marchés", items: marketsAll.slice(0, 5).map((m) => `${B(m.nom)} : ${m.infos}${openWeekend(m.infos) === false ? " (en semaine seulement : hors des actions du week-end)" : ""}${m.bv ? ` (${m.bv}${m.prioritaire ? ", prioritaire" : ""})` : ""}.`) });
   else if ((commune.population ?? 0) >= 2000) actionGroups.push({ title: "Marchés", items: ["Aucun marché recensé dans OpenStreetMap : jours, horaires et emplacements à demander à la mairie ou aux militants locaux, puis à ajouter dans « Lieux d'action signalés par les militants »."] });
   const gares = lieux.filter((l) => l.type === "Gare");
   const tt = (nom: string) => c.timetables?.stations.find((s) => s.nom === nom);
@@ -1612,19 +1614,16 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
           const t = tt(g.nom);
           if (!t || !t.departs) return `${B(g.nom)} : ${g.infos}.`;
           const freq = t.departs >= 30 ? `un train toutes les ~${Math.max(5, Math.round((16 * 60) / t.departs / 5) * 5)} minutes en moyenne` : `${t.departs} passage${t.departs > 1 ? "s" : ""} un jour de semaine`;
-          const np = t.pointe ? t.parHeure[t.pointe[0]] + t.parHeure[t.pointe[0] + 1] : 0;
-          const pointe = t.pointe ? `, priorité entre ${t.pointe[0]} h et ${t.pointe[1]} h (${np} passage${np > 1 ? "s" : ""})` : "";
-          return `${B(g.nom)} : ${g.infos} ; ${freq}${pointe}${t.paris ? ` ; Paris en ${fmtDuration(t.paris.minMinutes)} (trajets directs)` : ""}.`;
+          return `${B(g.nom)} : ${g.infos} ; ${freq}${t.paris ? ` ; Paris en ${fmtDuration(t.paris.minMinutes)} (trajets directs)` : ""}.`;
         }),
-        ...(gares.some((g) => tt(g.nom)?.departs) ? [] : ["Privilégier les heures de pointe (7 h-9 h, 17 h-19 h), à confirmer avec les fiches horaires TER."]),
+        `Le week-end : ${WEEKEND.gare.charAt(0).toLowerCase()}${WEEKEND.gare.slice(1)}.`,
       ],
     });
   const sup = lieux.filter((l) => l.type === "Supermarché");
   if (sup.length) actionGroups.push({ title: "Supermarchés", items: sup.slice(0, 5).map((s) => `${B(s.nom)}${s.infos ? ` : ${s.infos}` : ""}${s.bv ? ` (${s.bv})` : ""}.`) });
-  const services = lieux.filter((l) => l.type === "Service public");
-  if (services.length) actionGroups.push({ title: "Services publics", hint: "files d'attente, permanences", items: services.slice(0, 4).map((s) => `${B(s.nom)} (${s.infos}${s.bv ? `, ${s.bv}` : ""}).`) });
-  const ecoles = lieux.filter((l) => l.type.startsWith("Sortie"));
-  if (ecoles.length) actionGroups.push({ title: "Sorties de collèges et lycées", hint: "parents, jeunes", items: ecoles.slice(0, 4).map((s) => `${B(s.nom)}${s.infos ? ` (${s.infos})` : ""}.`) });
+  // Services publics fermés le week-end, sauf la poste le samedi matin.
+  const services = lieux.filter((l) => l.type === "Service public" && /poste/i.test(`${l.nom} ${l.infos}`));
+  if (services.length) actionGroups.push({ title: "Bureaux de poste", hint: "ouverts le samedi matin", items: services.slice(0, 4).map((s) => `${B(s.nom)}${s.bv ? ` (${s.bv})` : ""}.`) });
   const implant: string[] = [];
   if (interneFourni && !groupes.length) implant.push("Aucun groupe d'action référencé : envisager la création d'un groupe local, encadré par un groupe voisin actif.");
   if (parrainsRatio && parrainsRatio.r1 < parrainsRatio.r2 * 0.8) implant.push("Prévoir l'encadrement des nouveaux sympathisants : un futur groupe serait majoritairement composé de personnes n'ayant pas encore parrainé.");
@@ -1640,7 +1639,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       action: "Porte-à-porte",
       ou: `Bureau ${dv(p.bv)}${labels.has(p.bv) ? ` — ${p.label}` : ""}${quartierOf(p.bv) ? ` (${quartierLabel(quartierOf(p.bv)!.nom)})` : ""}`,
       infos: `${fmtNumber(p.abstN)} inscrits n'ont pas voté${abstWhen} (${pp(p.abstPct)}) ; vote LFI à ${pp(p.lfiPctExp)}${lfiComExp != null ? `, contre ${pp(lfiComExp)} dans la commune` : ""}`,
-      quand: "Samedi 10 h – 12 h 30, ou en semaine 18 h – 20 h 30",
+      quand: WEEKEND.porte,
       bv: dv(p.bv),
     });
   for (const r of resPorte)
@@ -1650,7 +1649,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       infos: /foyer/i.test(resType(r))
         ? `${r.logements ? `${fmtNumber(r.logements)} logements de ` : ""}jeunes actifs, souvent peu inscrits sur les listes`
         : `${r.logements ? `${fmtNumber(r.logements)} logements étudiants` : "Logements étudiants"} : inscription sur les listes et mobilisation des jeunes`,
-      quand: /foyer/i.test(resType(r)) ? "En semaine, 18 h 30 – 20 h 30" : "En semaine, 18 h – 20 h, hors vacances universitaires",
+      quand: /foyer/i.test(resType(r)) ? WEEKEND.foyer : WEEKEND.crous,
       bv: r.bv ? dv(r.bv) : "",
     });
   for (const m of markets.slice(0, 2))
@@ -1658,40 +1657,25 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       action: "Tractage au marché",
       ou: m.nom,
       infos: "Lieu de passage régulier des habitants du quartier",
-      quand: hasHours(m.infos) ? cap(m.infos) : "Jours et horaires à confirmer en mairie",
+      quand: hasHours(m.infos) ? `${cap(m.infos)} (matinée du week-end)` : WEEKEND.marche,
       bv: m.bv,
     });
   for (const g of gares.slice(0, 2)) {
-    const t = tt(g.nom);
     plan.push({
       action: "Tractage à la gare",
       ou: gareNom(g.nom),
-      infos: /voyageurs/.test(g.infos) ? `${cap(g.infos)} : actifs qui travaillent hors de la commune` : "Actifs qui travaillent hors de la commune",
-      quand: t?.pointe ? `En semaine, ${t.pointe[0]} h – ${t.pointe[1]} h (heure de pointe la plus chargée)` : "En semaine, 7 h – 9 h ou 17 h – 19 h",
+      infos: /voyageurs/.test(g.infos) ? `${cap(g.infos)} en moyenne : départs et retours de week-end, étudiants` : "Départs et retours de week-end, étudiants",
+      quand: WEEKEND.gare,
       bv: g.bv,
     });
   }
   const byPrio = <T extends { prioritaire: string }>(xs: T[]) => [...xs].sort((a, b) => Number(!!b.prioritaire) - Number(!!a.prioritaire));
-  // Établissements : éducation prioritaire d'abord, puis bureaux prioritaires, le privé en dernier.
-  const schoolScore = (e: { infos: string; prioritaire: string }) => (/prioritaire|REP/i.test(e.infos) ? 2 : 0) + (e.prioritaire ? 1 : 0) - (/priv/i.test(e.infos) ? 1 : 0);
-  // Établissements privés écartés quand il existe des établissements publics.
-  const ecolesPlan = ecoles.some((e) => !/priv/i.test(e.infos)) ? ecoles.filter((e) => !/priv/i.test(e.infos)) : ecoles;
-  for (const e of [...ecolesPlan].sort((a, b) => schoolScore(b) - schoolScore(a)).slice(0, 2)) {
-    const ep = e.infos.match(/éducation prioritaire \((REP\+?)\)/)?.[1];
-    const lycee = /lyc[ée]e/i.test(e.type);
-    plan.push({
-      action: e.type,
-      ou: e.nom,
-      infos: `${ep ? `Collège en éducation prioritaire (${ep}) : ` : ""}${lycee ? "lycéens, dont les premiers votants, et parents" : "parents d'élèves"}`,
-      quand: lycee ? "En semaine, 12 h – 13 h 30 ou 17 h – 18 h" : "En semaine 16 h 30 – 17 h 30, mercredi 12 h",
-      bv: e.bv,
-    });
-  }
+  // Pas de sorties de collèges ni de lycées : les actions ont lieu le week-end.
   const serviceWhy = (x: string) =>
     /france travail|p[ôo]le emploi/i.test(x) ? "Demandeurs d'emploi en file d'attente" : /france services/i.test(x) ? "Habitants venus pour des démarches administratives" : /poste/i.test(x) ? "Public large, souvent âgé, en file d'attente" : "Public en file d'attente";
-  for (const v of byPrio(services).slice(0, 1)) plan.push({ action: "Service public", ou: v.nom, infos: serviceWhy(`${v.nom} ${v.infos}`), quand: "En matinée, à l'ouverture (9 h – 11 h)", bv: v.bv });
+  for (const v of byPrio(services).slice(0, 1)) plan.push({ action: "Bureau de poste", ou: v.nom, infos: serviceWhy(`${v.nom} ${v.infos}`), quand: WEEKEND.poste, bv: v.bv });
   for (const v of byPrio(sup).slice(0, 1))
-    plan.push({ action: "Supermarché", ou: v.nom, infos: `Forte fréquentation${/hyper/i.test(v.infos) ? " (hypermarché)" : ""}, tous publics`, quand: hasHours(v.infos) ? `Samedi 10 h – 12 h (${v.infos})` : "Samedi 10 h – 12 h, avec l'accord du magasin", bv: v.bv });
+    plan.push({ action: "Supermarché", ou: v.nom, infos: `Forte fréquentation${/hyper/i.test(v.infos) ? " (hypermarché)" : ""}, tous publics`, quand: hasHours(v.infos) ? `Samedi 10 h – 12 h ou dimanche matin si ouvert (${v.infos})` : WEEKEND.supermarche, bv: v.bv });
   if (plan.length) {
     out.tables.push({
       id: "lfi_plan",
@@ -1707,10 +1691,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       rows: plan.slice(0, 10 + resPorte.length).map((r) => ({ ...r, bv: r.bv.replace(/^BV\s*/, "") })),
       highlight: plan.slice(0, 10 + resPorte.length).map((r, i) => (r.action === "Porte-à-porte" ? i : -1)).filter((i) => i >= 0),
       sources: [...(bvRef ? [bvRef.source] : []), ...(resPorte.length && c.residences ? [c.residences.source] : []), ...(c.bpe ? [c.bpe.source] : []), ...(c.schools ? [c.schools.source] : []), ...(c.stations ? [c.stations.source] : [])],
-      note: "« Quand » : créneaux habituels du porte-à-porte et du tractage selon le public visé, à adapter avec les militants locaux ; horaires des marchés d'après OpenStreetMap, à confirmer. Le détail de toutes les pistes et de tous les lieux figure en annexe.",
+      note: "« Quand » : créneaux du week-end (samedi et dimanche), selon le public visé, à adapter avec les militants locaux ; horaires des marchés d'après OpenStreetMap, à confirmer. Le détail de toutes les pistes et de tous les lieux figure en annexe.",
     });
   }
-  const lieuxMsg = [markets.length ? "au marché" : "", gares.length ? "à la gare aux heures de pointe" : "", ecoles.length ? "aux sorties des collèges et lycées" : ""].filter(Boolean);
+  const lieuxMsg = [markets.length ? "au marché" : "", gares.length ? "à la gare (départs et retours de week-end)" : ""].filter(Boolean);
   const porteMsg = prio.length
     ? `porte-à-porte dans ${prio.length > 1 ? "les bureaux" : "le bureau"} ${joinFr(prio.map((p) => dv(p.bv)))} (${fmtNumber(prio.reduce((n, p) => n + p.abstN, 0))} électeurs inscrits qui n'ont pas voté)`
     : "";
@@ -1803,7 +1787,6 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     labels,
     dv,
     markets: markets.map((m) => ({ ...m, quand: quandPlan(m.nom) })),
-    ecoles: [...ecolesPlan].sort((a, b) => schoolScore(b) - schoolScore(a)).map((e) => ({ ...e, quand: quandPlan(e.nom) })),
     rues,
     hlmByBv,
     gares: (c.stations?.stations ?? []).filter((st) => { const l = st.frequentation[st.frequentation.length - 1]; return !l || l.voyageurs / 365 >= GARE_MIN_JOUR; }).map((st) => ({ nom: st.nom, infos: "", lon: st.lon, lat: st.lat, quand: quandPlan(gareNom(st.nom)), voyageurs: st.frequentation[st.frequentation.length - 1]?.voyageurs ?? null })),
@@ -1900,8 +1883,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     markets.length ? "le marché" : "",
     gares.length ? "la gare" : "",
     sup.length ? "les supermarchés" : "",
-    services.length ? "les services publics (France Travail, poste…)" : "",
-    ecoles.length ? "les sorties des collèges et lycées" : "",
+    services.length ? "le bureau de poste le samedi matin" : "",
   ].filter(Boolean);
   if (leviers.length) synth.push({ text: `${B("Où croiser les habitants")} : ${joinFr(leviers)}.` });
 
