@@ -1619,11 +1619,20 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         `Le week-end : ${WEEKEND.gare.charAt(0).toLowerCase()}${WEEKEND.gare.slice(1)}.`,
       ],
     });
-  const sup = lieux.filter((l) => l.type === "Supermarché");
-  if (sup.length) actionGroups.push({ title: "Supermarchés", items: sup.slice(0, 5).map((s) => `${B(s.nom)}${s.infos ? ` : ${s.infos}` : ""}${s.bv ? ` (${s.bv})` : ""}.`) });
+  // Grandes surfaces : seulement les hypermarchés (BPE), où l'affluence du week-end est certaine.
+  const sup = lieux.filter((l) => l.type === "Supermarché" && /hyper/i.test(l.infos));
+  if (sup.length) actionGroups.push({ title: "Hypermarchés", hint: "affluence du samedi", items: sup.slice(0, 3).map((s) => `${B(s.nom)}${s.bv ? ` (${s.bv})` : ""}.`) });
   // Services publics fermés le week-end, sauf la poste le samedi matin.
-  const services = lieux.filter((l) => l.type === "Service public" && /poste/i.test(`${l.nom} ${l.infos}`));
-  if (services.length) actionGroups.push({ title: "Bureaux de poste", hint: "ouverts le samedi matin", items: services.slice(0, 4).map((s) => `${B(s.nom)}${s.bv ? ` (${s.bv})` : ""}.`) });
+  // Moment convivial de fin de journée ou pique-nique : grands parcs, jardins à bière, bars d'au moins 60 places
+  // (OpenStreetMap), ceux des bureaux prioritaires d'abord.
+  const conv = (c.convivialite?.list ?? [])
+    .map((x) => {
+      const nb = nearestBv(x.lon, x.lat);
+      return { ...x, bv: nb ? `BV ${dv(nb.bv)}` : "", prioritaire: nb && prioSet.has(nb.bv) ? "oui" : "" };
+    })
+    .sort((a, b) => Number(!!b.prioritaire) - Number(!!a.prioritaire) || (b.ha ?? 0) - (a.ha ?? 0) || (b.capacite ?? 0) - (a.capacite ?? 0));
+  const convTxt = (x: (typeof conv)[number]) => (x.kind === "parc" ? `parc d'environ ${fmtNumber(x.ha ?? 0)} ha` : x.capacite ? `${fmtNumber(x.capacite)} places` : "jardin à bière");
+  if (conv.length) actionGroups.push({ title: "Moment convivial", hint: "fin de journée, pique-nique", items: conv.slice(0, 3).map((x) => `${B(x.nom)} (${convTxt(x)}${x.bv ? `, ${x.bv}` : ""}).`) });
   const implant: string[] = [];
   if (interneFourni && !groupes.length) implant.push("Aucun groupe d'action référencé : envisager la création d'un groupe local, encadré par un groupe voisin actif.");
   if (parrainsRatio && parrainsRatio.r1 < parrainsRatio.r2 * 0.8) implant.push("Prévoir l'encadrement des nouveaux sympathisants : un futur groupe serait majoritairement composé de personnes n'ayant pas encore parrainé.");
@@ -1671,11 +1680,16 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   }
   const byPrio = <T extends { prioritaire: string }>(xs: T[]) => [...xs].sort((a, b) => Number(!!b.prioritaire) - Number(!!a.prioritaire));
   // Pas de sorties de collèges ni de lycées : les actions ont lieu le week-end.
-  const serviceWhy = (x: string) =>
-    /france travail|p[ôo]le emploi/i.test(x) ? "Demandeurs d'emploi en file d'attente" : /france services/i.test(x) ? "Habitants venus pour des démarches administratives" : /poste/i.test(x) ? "Public large, souvent âgé, en file d'attente" : "Public en file d'attente";
-  for (const v of byPrio(services).slice(0, 1)) plan.push({ action: "Bureau de poste", ou: v.nom, infos: serviceWhy(`${v.nom} ${v.infos}`), quand: WEEKEND.poste, bv: v.bv });
   for (const v of byPrio(sup).slice(0, 1))
-    plan.push({ action: "Supermarché", ou: v.nom, infos: `Forte fréquentation${/hyper/i.test(v.infos) ? " (hypermarché)" : ""}, tous publics`, quand: hasHours(v.infos) ? `Samedi 10 h – 12 h ou dimanche matin si ouvert (${v.infos})` : WEEKEND.supermarche, bv: v.bv });
+    plan.push({ action: "Tractage à l'hypermarché", ou: v.nom, infos: "Forte affluence le samedi, tous publics", quand: WEEKEND.supermarche, bv: v.bv });
+  for (const x of conv.slice(0, 1))
+    plan.push({
+      action: "Moment convivial",
+      ou: x.nom,
+      infos: x.kind === "parc" ? `Parc d'environ ${fmtNumber(x.ha ?? 0)} ha : pique-nique ou apéro avec les militants et les sympathisants rencontrés` : `Bar (${convTxt(x)}) : verre de fin de journée avec les militants et les sympathisants rencontrés`,
+      quand: x.kind === "parc" ? "Samedi midi (pique-nique) ou 18 h – 20 h" : "Samedi, 18 h – 20 h, après le porte-à-porte",
+      bv: x.bv,
+    });
   if (plan.length) {
     out.tables.push({
       id: "lfi_plan",
@@ -1899,8 +1913,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       return h ? `${where} (${h})` : named(m.nom) ? `${where} (jour du week-end à confirmer)` : "";
     }),
     ...gares.slice(0, 1).map((g) => `${gareNom(g.nom)}${/voyageurs/.test(g.infos) ? ` (${g.infos})` : ""}, le samedi matin ou le dimanche soir`),
-    ...byPrio(sup.filter((v) => named(v.nom))).slice(0, 1).map((v) => `${v.nom}, le samedi matin`),
-    ...byPrio(services).slice(0, 1).map((v) => `${v.nom}, le samedi matin`),
+    ...byPrio(sup.filter((v) => named(v.nom))).slice(0, 1).map((v) => `${v.nom} (hypermarché), le samedi`),
   ].filter(Boolean);
   if (leviers.length) synth.push({ text: `${B("Où croiser les habitants le week-end")} : ${leviers.join(" ; ")}.` });
 
