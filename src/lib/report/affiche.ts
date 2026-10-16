@@ -63,6 +63,9 @@ export function openWeekend(h: string): boolean | null {
 /** Fréquentation minimale d'une gare de tractage (voyageurs par jour). */
 export const GARE_MIN_JOUR = 300;
 
+/** Vert du moment convivial. */
+export const CONVIVIAL_GREEN = "#2f8f4e";
+
 /** Rond rouge des résidences Crous et foyers de jeunes travailleurs. */
 export const RESIDENCE_RED = "#F91616";
 
@@ -92,6 +95,10 @@ export function communePoster(
     labels: Map<string, string>;
     markets: PosterLieu[];
     gares: (PosterLieu & { voyageurs?: number | null })[];
+    /** Grandes surfaces retenues (grands groupes, desservies). */
+    supermarches?: PosterLieu[];
+    /** Lieu du moment convivial (parc, bar). */
+    convivial?: (PosterLieu & { kind: "parc" | "bar" })[];
     ecoles?: PosterLieu[];
     rues?: PosterRue[];
     hlmByBv?: Map<string, number>;
@@ -349,6 +356,10 @@ export function communePoster(
       return { nom, sub: h ? `Marché · ${h}` : "Marché · jour du week-end à confirmer en mairie", det: ["Lieu de passage régulier des habitants", h ? `Horaires (OpenStreetMap, à confirmer) : ${h}` : "Jours et horaires à confirmer en mairie"], quand: m.quand ?? (h ? `${h} (matinée du week-end)` : WEEKEND.marche), lon: m.lon!, lat: m.lat! };
     }),
     ...gares.map((g) => ({ nom: gareNom(g.nom), sub: g.voyageurs ? `${perDay(g.voyageurs)} · départs et retours de week-end` : "Départs et retours de week-end", det: [g.voyageurs ? `${perDay(g.voyageurs)} (moyenne de la semaine)` : "", "Départs et retours de week-end, étudiants"].filter(Boolean), quand: g.quand ?? WEEKEND.gare, lon: g.lon!, lat: g.lat! })),
+    ...pts(o.supermarches ?? []).slice(0, 2).map((v) => {
+      const hyper = /hyper/.test(v.infos);
+      return { nom: v.nom, sub: `${hyper ? "Hypermarché" : "Supermarché"} · affluence du samedi`, det: [v.infos ? cap(v.infos) : "", "Forte affluence le samedi, tous publics"].filter(Boolean), quand: v.quand ?? WEEKEND.supermarche, lon: v.lon!, lat: v.lat! };
+    }),
   ].filter((t) => inBox(t.lon, t.lat));
   if (tract.length)
     layers.push({
@@ -361,9 +372,35 @@ export function communePoster(
       labelProperty: "nom",
       sublabelProperty: "sub",
       labelColor: POSTER.violet,
-      legendItem: { label: "Tractage : marché, gare (week-end)", swatch: "diamond" },
+      legendItem: { label: `Tractage : ${["marché", "gare", ...(o.supermarches?.length ? ["grande surface"] : [])].join(", ")} (week-end)`, swatch: "diamond" },
       visible: true,
       source: c.equipments?.source ?? c.stations?.source ?? geoSrc,
+    });
+  // Moment convivial de fin de journée (parc, grand bar) : un lieu, en vert.
+  const conv = pts(o.convivial ?? []).filter((x) => inBox(x.lon!, x.lat!)).slice(0, 1);
+  if (conv.length)
+    layers.push({
+      id: "convivial",
+      label: "Moment convivial",
+      kind: "points",
+      data: fc(
+        conv.map((x) =>
+          turf.point([x.lon!, x.lat!], {
+            nom: x.nom,
+            sub: x.kind === "parc" ? cap(x.infos) : `Bar · ${x.infos}`,
+            det: [x.kind === "parc" ? `${cap(x.infos)} : pique-nique ou apéro après l'action` : `Bar (${x.infos}) : verre de fin de journée`, "Avec les militants et les sympathisants rencontrés"],
+            quand: x.quand ?? (x.kind === "parc" ? "Samedi midi (pique-nique) ou 18 h – 20 h" : "Samedi, 18 h – 20 h"),
+          }),
+        ),
+      ),
+      style: { fill: CONVIVIAL_GREEN, stroke: "#ffffff", symbol: "circle", size: 15 },
+      labelMode: "number",
+      labelProperty: "nom",
+      sublabelProperty: "sub",
+      labelColor: CONVIVIAL_GREEN,
+      legendItem: { label: "Moment convivial : parc ou bar", swatch: "circle" },
+      visible: true,
+      source: c.convivialite?.source ?? geoSrc,
     });
   const sorties = ecoles.filter((e) => inBox(e.lon!, e.lat!));
   if (sorties.length)

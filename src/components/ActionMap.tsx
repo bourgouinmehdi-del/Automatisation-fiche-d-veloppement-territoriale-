@@ -20,6 +20,7 @@ const TOGGLES: { key: string; label: string; layers: string[]; on: boolean }[] =
   { key: "hlm", label: "Logements sociaux", layers: ["hlm", "hlm_autres"], on: true },
   { key: "res", label: "Résidences Crous, foyers", layers: ["residences"], on: true },
   { key: "tract", label: "Tractage", layers: ["tractage", "ecoles"], on: true },
+  { key: "conv", label: "Moment convivial", layers: ["convivial"], on: true },
   { key: "bv", label: "Limites des bureaux", layers: ["bv_ctx"], on: true },
   { key: "qpv", label: "Quartiers prioritaires", layers: ["qpv"], on: true },
 ];

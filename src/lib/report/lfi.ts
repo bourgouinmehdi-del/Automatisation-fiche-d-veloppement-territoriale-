@@ -1623,7 +1623,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       const nb = nearestBv(x.lon, x.lat);
       return { ...x, bv: nb ? `BV ${dv(nb.bv)}` : "", prioritaire: nb && prioSet.has(nb.bv) ? "oui" : "" };
     })
-    .sort((a, b) => Number(!!b.prioritaire) - Number(!!a.prioritaire) || Number(a.kind === "bar") - Number(b.kind === "bar") || (b.ha ?? 0) - (a.ha ?? 0) || (b.capacite ?? 0) - (a.capacite ?? 0));
+    .sort((a, b) => Number(a.kind === "bar") - Number(b.kind === "bar") || Number(!!b.prioritaire) - Number(!!a.prioritaire) || (b.ha ?? 0) - (a.ha ?? 0) || (b.capacite ?? 0) - (a.capacite ?? 0));
   const convTxt = (x: (typeof conv)[number]) => (x.kind === "parc" ? `parc d'environ ${fmtNumber(x.ha ?? 0)} ha` : x.capacite ? `${fmtNumber(x.capacite)} places` : "jardin à bière");
   if (conv.length) actionGroups.push({ title: "Moment convivial", hint: "fin de journée, pique-nique", items: conv.slice(0, 3).map((x) => `${B(x.nom)} (${convTxt(x)}${x.bv ? `, ${x.bv}` : ""}).`) });
   const implant: string[] = [];
@@ -1796,6 +1796,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     markets: markets.map((m) => ({ ...m, quand: quandPlan(m.nom) })),
     rues,
     hlmByBv,
+    supermarches: sup.slice(0, 2).map((v) => ({ ...v, quand: quandPlan(v.nom) })),
+    convivial: conv.slice(0, 1).map((x) => ({ nom: x.nom, kind: x.kind, infos: convTxt(x), lon: x.lon, lat: x.lat, quand: quandPlan(x.nom) })),
     gares: (c.stations?.stations ?? []).filter((st) => { const l = st.frequentation[st.frequentation.length - 1]; return !l || l.voyageurs / 365 >= GARE_MIN_JOUR; }).map((st) => ({ nom: st.nom, infos: "", lon: st.lon, lat: st.lat, quand: quandPlan(gareNom(st.nom)), voyageurs: st.frequentation[st.frequentation.length - 1]?.voyageurs ?? null })),
   });
   if (affiche) out.maps.push(affiche);

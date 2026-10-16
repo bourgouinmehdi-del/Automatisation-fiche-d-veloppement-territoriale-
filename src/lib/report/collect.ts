@@ -1354,6 +1354,8 @@ export async function collect(
     const inBox = (lon: number, lat: number) => lon >= cb[0] && lon <= cb[2] && lat >= cb[1] && lat <= cb[3];
     for (const f of c.equipments?.features ?? []) if (f.properties?.category === "marche") pts.push(f.geometry.coordinates as [number, number]);
     for (const st of c.stations?.stations ?? []) if (st.lon != null && st.lat != null && inBox(st.lon, st.lat)) pts.push([st.lon, st.lat]);
+    // Grande surface et lieu convivial retenus en premier : visibles sur la carte.
+    for (const x of [c.grandesSurfaces?.list[0], c.convivialite?.list[0]]) if (x && inBox(x.lon, x.lat)) pts.push([x.lon, x.lat]);
     let fb: Bbox = cb;
     if (pts.length >= 2) {
       const xs = pts.map((p) => p[0]);

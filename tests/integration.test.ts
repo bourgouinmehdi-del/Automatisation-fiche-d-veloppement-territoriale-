@@ -247,6 +247,10 @@ describe("chaîne de génération (API simulées)", () => {
     expect(plan.rows.find((r) => /hypermarché/.test(String(r.action)))).toMatchObject({ ou: "E.Leclerc (Avenue fictive)" });
     const gs = actions.groups.find((g) => g.title === "Grandes surfaces")!.items.join(" ");
     expect(gs).not.toMatch(/Carrefour City|Auchan/);
+    // Sur la carte : la grande surface dans le tractage, le parc en « moment convivial ».
+    const aff = report.maps.find((m) => m.id === "lfi_affiche")!;
+    expect(aff.layers.find((l) => l.id === "tractage")!.data.features.some((f) => /Leclerc/.test(String(f.properties?.nom)))).toBe(true);
+    expect(aff.layers.find((l) => l.id === "convivial")?.data.features[0].properties?.nom).toBe("Parc fictif");
     expect(plan.rows.find((r) => r.action === "Moment convivial")).toMatchObject({ ou: "Parc fictif" });
     const conv = actions.groups.find((g) => g.title === "Moment convivial")!;
     expect(conv.items.join(" ")).toMatch(/Grand café fictif/);
