@@ -114,3 +114,13 @@ describe("logements sociaux et population adulte", () => {
     expect(adultesOf({ P20_POP: "100", P20_POP0014: "20", P20_POP1519: "10" })?.adultes).toBe(74);
   });
 });
+
+describe("articles des départements", () => {
+  it("la Creuse, le Nord, l'Oise, les Landes, Paris", async () => {
+    const { deDep, dansDep } = await import("@/lib/format");
+    expect(["Creuse", "Nord", "Oise", "Landes", "Paris", "Haute-Vienne", "Hérault", "Val-de-Marne"].map(deDep)).toEqual(["de la Creuse", "du Nord", "de l'Oise", "des Landes", "de Paris", "de la Haute-Vienne", "de l'Hérault", "du Val-de-Marne"]);
+    expect(dansDep("Creuse")).toBe("dans la Creuse");
+    const { circoLabel } = await import("@/lib/collectors/carto");
+    expect(circoLabel(1, "Creuse")).toMatch(/circonscription de la Creuse$/);
+  });
+});

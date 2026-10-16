@@ -1,3 +1,4 @@
+import { deDep } from "../format";
 import { promises as fs } from "node:fs";
 import * as turf from "@turf/turf";
 import type { TrackedHttp } from "./context";
@@ -110,9 +111,7 @@ export const ordinalCirco = (n: number) => (n === 1 ? "1re" : `${n}e`);
 
 /** « 2e circonscription de l'Oise ». */
 export function circoLabel(num: number, depNom: string): string {
-  const de = /^[aeiouyàâéèêëîïôûüœh]/i.test(depNom) ? "de l'" : /^(les|la|le)\s/i.test(depNom) ? "" : "de ";
-  const nom = /^les\s/i.test(depNom) ? `des ${depNom.slice(4)}` : /^le\s/i.test(depNom) ? `du ${depNom.slice(3)}` : /^la\s/i.test(depNom) ? `de la ${depNom.slice(3)}` : depNom;
-  return `${ordinalCirco(num)} circonscription ${de}${nom}`;
+  return `${ordinalCirco(num)} circonscription ${deDep(depNom)}`;
 }
 
 /* ---------------------------------------------------------- départements voisins */

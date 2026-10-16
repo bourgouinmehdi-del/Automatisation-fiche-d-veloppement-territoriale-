@@ -1,3 +1,4 @@
+import { deDep } from "../format";
 import { fmtNumber, fmtSigned, fmtValue } from "../format";
 import { evidenceId } from "../analysis/findings";
 import { rankOf } from "../analysis/stats";
@@ -88,11 +89,7 @@ function sectionA(x: Ctx): Section {
   return { id: "A", letter: "A", title: "Présentation générale du territoire", blocks };
 }
 
-function depArticle(nom: string) {
-  if (/^[AEIOUYÉÈ]/i.test(nom)) return `de l'${nom}`;
-  if (/^(Hautes?|Bouches|Côtes|Deux|Alpes|Pyrénées|Yvelines|Vosges|Landes|Ardennes|Hauts|Bouches)/.test(nom)) return `des ${nom}`;
-  return `de ${nom}`;
-}
+const depArticle = deDep;
 
 /* ===================================================================== B */
 function sectionB(x: Ctx): Section {

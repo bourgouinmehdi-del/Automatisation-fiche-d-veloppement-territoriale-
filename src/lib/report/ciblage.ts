@@ -5,7 +5,7 @@ import type { ElectionResult } from "../collectors/elections";
 import { NUANCES, nuanceFamily } from "../collectors/municipales";
 import { abstention, score } from "../analysis/political";
 import { median } from "../analysis/stats";
-import { deNom, fmtNumber, fmtSigned, fmtValue } from "../format";
+import { dansDep, deDep, fmtNumber, fmtSigned, fmtValue } from "../format";
 import type { Block, DataTable, Finding, Indicator, MapSpec, Section, SourceRef } from "../types";
 import type { Collected } from "./collect";
 
@@ -44,6 +44,8 @@ const pct = (v: number | null | undefined, d = 1) => (v == null || !Number.isFin
 const cnt = (n: number | null | undefined, p: number | null | undefined) => (n == null ? "n.d." : `${fmtNumber(n)} **(${pct(p)})**`);
 const B = (s: string) => `**${s}**`;
 const joinFr = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} et ${xs[xs.length - 1]}`);
+/** Population à partir de laquelle une des deux plus grandes villes est laissée hors ciblage. */
+export const BIG_CITY_MIN = 20000;
 export const TARGET_COLORS = ["#2f8f4e", "#3f4bb8", "#e3b23c", "#c0503a", "#a35fbf", "#2a9d9b", "#d66f2f"];
 
 interface Agg {
@@ -132,7 +134,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       : depCommunes;
   if (interco && !communes.length) return out;
   const terr = circo ? circoLabel(circo.num, dep.nom) : interco ? c.perimeter.label : dep.nom;
-  const dansTerr = circo ? `dans la ${terr}` : interco ? `dans l'intercommunalité ${terr}` : `dans ${dep.nom}`;
+  const dansTerr = circo ? `dans la ${terr}` : interco ? `dans l'intercommunalité ${terr}` : dansDep(dep.nom);
   const Terr = terr.replace(/^./, (x) => x.toUpperCase());
   const zoom = circo || interco;
   const zoneBbox = (): [number, number, number, number] | null => {
@@ -230,9 +232,11 @@ export function buildCiblage(c: Collected): CiblageOutput {
   const ranked = [...units].sort((a, b) => b.score - a.score);
 
   // Sélection : cinq cibles au plus, deux au plus par intercommunalité. Les deux plus grandes
-  // villes (souvent chefs-lieux, déjà couvertes) restent hors ciblage, comme dans les fiches de référence.
+  // villes (souvent chefs-lieux, déjà couvertes) restent hors ciblage, comme dans les fiches de référence,
+  // mais seulement si ce sont de vraies villes (20 000 habitants et plus) : dans un département rural
+  // (Creuse : Guéret 13 000 habitants), le chef-lieu est souvent le meilleur point d'appui.
   // (En circonscription, aucune ville n'est écartée : le territoire est déjà restreint.)
-  const bigCities = zoom ? [] : [...communes].sort((a, b) => (b.population ?? 0) - (a.population ?? 0)).slice(0, 2).map((x) => x.code);
+  const bigCities = zoom ? [] : [...communes].filter((x) => (x.population ?? 0) >= BIG_CITY_MIN).sort((a, b) => (b.population ?? 0) - (a.population ?? 0)).slice(0, 2).map((x) => x.code);
   const chosen: Unit[] = [];
   for (const u of ranked) {
     if (u.kind === "commune" && bigCities.includes(u.codes[0])) continue;
@@ -364,7 +368,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
     })),
     highlight: ranked.slice(0, 20).map((u, i) => (chosen.includes(u) ? i : -1)).filter((i) => i >= 0),
     sources: [...src, ...(hasParrains || c.interne.files.length ? [interneSrc] : []), ...(c.municipalDep ? [c.municipalDep.source] : [])],
-    note: `${bigCities.length ? `Les deux communes les plus peuplées (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) restent hors ciblage. ` : ""}${partagees.length ? `Communes partagées avec une autre circonscription (résultats de toute la commune) : ${partagees.map((x) => `${x.nom} (${Math.round(100 * (shares!.get(x.code) ?? 0))} % de sa surface)`).join(", ")}. ` : ""}Score : moyenne pondérée de scores z calculés entre les territoires — surperformance LFI par rapport aux communes de taille comparable (${Math.round(w.o * 100)} %), écart d'abstention au département aux ${abstLabel} (${Math.round(w.a * 100)} %)${hasParrains ? `, ratio parrains / voix (${Math.round(w.r * 100)} %)` : ""}, volume de voix LFI (${Math.round(w.v * 100)} %) ; −1 pour les territoires déjà couverts par un groupe de 20 membres ou plus. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
+    note: `${bigCities.length ? `${bigCities.length > 1 ? "Les deux villes les plus peuplées" : "La ville la plus peuplée"} (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) ${bigCities.length > 1 ? "restent" : "reste"} hors ciblage ; dans les départements sans ville de 20 000 habitants, toutes les communes sont classées. ` : "Aucune ville de 20 000 habitants ou plus : toutes les communes sont classées, chef-lieu compris. "}${partagees.length ? `Communes partagées avec une autre circonscription (résultats de toute la commune) : ${partagees.map((x) => `${x.nom} (${Math.round(100 * (shares!.get(x.code) ?? 0))} % de sa surface)`).join(", ")}. ` : ""}Score : moyenne pondérée de scores z calculés entre les territoires — surperformance LFI par rapport aux communes de taille comparable (${Math.round(w.o * 100)} %), écart d'abstention au département aux ${abstLabel} (${Math.round(w.a * 100)} %)${hasParrains ? `, ratio parrains / voix (${Math.round(w.r * 100)} %)` : ""}, volume de voix LFI (${Math.round(w.v * 100)} %) ; −1 pour les territoires déjà couverts par un groupe de 20 membres ou plus. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
   });
 
   // Carte des cibles.
@@ -467,7 +471,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
     {
       type: "callout",
       tone: "warning",
-      text: `Le ciblage présenté ci-dessous a été réalisé à partir de la seule exploitation de données statistiques et électorales publiques, par des personnes qui ne vivent pas forcément ${circo ? "dans cette circonscription" : interco ? "dans cette intercommunalité" : "dans ce département"}. ${B(`Les informations qui y sont suggérées doivent être confrontées avec la connaissance du terrain des militant·es ${circo ? "de la circonscription" : interco ? "de l'intercommunalité" : deNom(dep.nom)}.`)}`,
+      text: `Le ciblage présenté ci-dessous a été réalisé à partir de la seule exploitation de données statistiques et électorales publiques, par des personnes qui ne vivent pas forcément ${circo ? "dans cette circonscription" : interco ? "dans cette intercommunalité" : "dans ce département"}. ${B(`Les informations qui y sont suggérées doivent être confrontées avec la connaissance du terrain des militant·es ${circo ? "de la circonscription" : interco ? "de l'intercommunalité" : deDep(dep.nom)}.`)}`,
     },
     { type: "list", title: "Territoires proposés pour un ciblage militant", items: chosen.map((u, k) => ({ text: `${B(`${k + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) },
     ...(out.maps.some((m) => m.id === "ciblage_affiche") ? [{ type: "map" as const, mapId: "ciblage_affiche" }] : []),
