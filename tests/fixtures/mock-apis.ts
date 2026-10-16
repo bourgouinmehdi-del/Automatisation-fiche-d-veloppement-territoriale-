@@ -204,6 +204,18 @@ function overpass(body: string) {
       ],
     };
   }
+  // Grandes surfaces : un hypermarché desservi, un supermarché de proximité (écarté), un hypermarché sans arrêt (écarté).
+  if (q.includes('"shop"="supermarket"')) {
+    return {
+      elements: [
+        { type: "way", id: 801, center: { lat: LAT0 + 0.006, lon: LON0 + 0.03 }, tags: { shop: "supermarket", brand: "E.Leclerc", name: "E.Leclerc", "addr:street": "Avenue fictive" } },
+        { type: "node", id: 802, lat: LAT0 + 0.02, lon: LON0 + 0.02, tags: { shop: "supermarket", brand: "Carrefour City", name: "Carrefour City" } },
+        { type: "node", id: 803, lat: LAT0 + 0.035, lon: LON0 + 0.035, tags: { shop: "supermarket", brand: "Auchan", name: "Auchan" } },
+        { type: "node", id: 811, lat: LAT0 + 0.007, lon: LON0 + 0.031 },
+        { type: "node", id: 812, lat: LAT0 + 0.0205, lon: LON0 + 0.0205 },
+      ],
+    };
+  }
   // Moment convivial : un grand parc nommé, un bar de 80 places, un petit bar (écarté).
   if (q.includes("biergarten")) {
     return {

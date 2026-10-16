@@ -29,7 +29,7 @@ import { BureauGeo, collectBureauxGeo } from "../collectors/bureaux-geo";
 import { InternalData, loadInternalData } from "../collectors/interne";
 import { loadStmt, type StmtSeries } from "../collectors/emploi";
 import { CATALOGUE_URL, isPorteAPorte, loadCatalogue, residencesOf, residencesOfGeocoded, type ResidenceEtudiante } from "../collectors/residences-etudiantes";
-import { circoCommunes, circoLabel, collectCirconscriptions, collectConvivialite, collectDepartementsVoisins, collectFondOsm, fitAspect, type Bbox, type Circo, type FondOsm, type LieuConvivial, type Residence } from "../collectors/carto";
+import { circoCommunes, circoLabel, collectCirconscriptions, collectConvivialite, collectDepartementsVoisins, collectFondOsm, collectGrandesSurfaces, fitAspect, type Bbox, type Circo, type FondOsm, type GrandeSurface, type LieuConvivial, type Residence } from "../collectors/carto";
 import { rankBureaux } from "../analysis/political";
 import { collectRpls, type RplsResult } from "../collectors/rpls";
 import { collectAdultes, type AdultesDep } from "../collectors/adultes";
@@ -174,6 +174,8 @@ export interface Collected {
   fond?: FondOsm & { bbox: Bbox; source: SourceRef };
   /** Lieux pour un moment convivial (grands parcs, jardins à bière, grands bars). */
   convivialite?: { list: LieuConvivial[]; source: SourceRef };
+  /** Hypermarchés et supermarchés des grands groupes desservis en transports en commun. */
+  grandesSurfaces?: { list: GrandeSurface[]; source: SourceRef };
   residences?: { list: (ResidenceEtudiante & { porte: boolean })[]; source: SourceRef };
   /** Cartes « affiche » (département) : circonscriptions et départements voisins. */
   circos?: { list: Circo[]; source: SourceRef };
@@ -1314,6 +1316,19 @@ export async function collect(
         }
       });
       c.convivialite = { list: inside, source: ctx.ref("osm", r.url, r.retrievedAt) };
+    });
+    // Grandes surfaces des grands groupes, desservies en transports en commun (tractage du samedi).
+    await ctx.step("osm", "cartes:grandes-surfaces", async (http) => {
+      const r = await collectGrandesSurfaces(http, cb);
+      const poly = turf.feature(commune.contour as GeoJSON.Polygon);
+      const inside = r.list.filter((x) => {
+        try {
+          return turf.booleanPointInPolygon([x.lon, x.lat], poly as GeoJSON.Feature<GeoJSON.Polygon>);
+        } catch {
+          return false;
+        }
+      });
+      c.grandesSurfaces = { list: inside, source: ctx.ref("osm", r.url, r.retrievedAt) };
     });
     // Emprise : les lieux de la carte (bureaux prioritaires, quartiers prioritaires,
     // résidences, marchés, gares), plutôt que toute la commune (forêts, champs).

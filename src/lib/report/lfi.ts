@@ -1500,13 +1500,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     }
     return `${tidy(e.nom).replace(/\s+-\s+/g, " – ")}${adr ? ` (${adr})` : ""}`;
   };
-  if (c.bpe) for (const e of c.bpe.commune.filter((e) => e.type === "B105" || e.type === "B104")) pushLieu("Supermarché", bpeName(e), e.type === "B104" ? "hypermarché" : "", e.lon, e.lat);
+  // Grandes surfaces : enseignes des grands groupes encore ouvertes (OpenStreetMap) et desservies en transports en commun.
+  // La BPE n'est pas utilisée ici : raisons sociales et établissements fermés (« Aldachanie »).
+  for (const g of c.grandesSurfaces?.list ?? [])
+    pushLieu("Supermarché", `${g.nom}${g.adresse ? ` (${g.adresse})` : ""}`, `${g.hyper ? "hypermarché" : "supermarché"} ; ${g.arrets} arrêt${g.arrets > 1 ? "s" : ""} de transport en commun à moins de 400 m`, g.lon, g.lat);
   for (const e of c.bpe?.commune.filter((e) => ["A122", "A128", "A206"].includes(e.type)) ?? []) pushLieu("Service public", bpeName(e), singular(e.type), e.lon, e.lat);
-  for (const f of c.bpe ? [] : eq.filter((f) => f.properties?.category === "alimentaire" && (f.properties?.shop === "supermarket" || f.properties?.shop == null))) {
-    const [lon, lat] = f.geometry.coordinates;
-    if (!f.properties?.name || /^(total|esso|bp|shell|avia)\b/i.test(String(f.properties.name))) continue;
-    pushLieu("Supermarché", String(f.properties.name), frenchHours(f.properties?.opening_hours as string), lon, lat);
-  }
   // Un même site accueille souvent plusieurs établissements (lycée général, lycée professionnel,
   // collège) : une seule sortie à tenir, regroupée par nom de base ou par position (~100 m).
   const sites = new Map<string, { base: string; kinds: Set<string>; s: (typeof schoolsList)[number]; ep: string | null; pub: boolean; n: number }>();
@@ -1538,13 +1536,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const type = kinds.length > 1 ? `Sortie de ${kinds.join(" et ")}` : `Sortie de ${kinds[0]}`;
     pushLieu(type, nom, v.ep ? `éducation prioritaire (${v.ep})` : v.pub ? "Public" : v.s.statut, v.s.lon, v.s.lat);
   }
-  if (centroids.size && prioSet.size) {
-    // Marchés, gares, services publics et établissements scolaires attirent toute la commune :
-    // ils sont gardés même hors des bureaux prioritaires ; les commerces, seulement dans ceux-ci.
-    const keep = lieux.filter((l) => l.prioritaire || l.type !== "Supermarché");
-    lieux.length = 0;
-    lieux.push(...keep);
-  }
+  // Marchés, gares et grandes surfaces (déjà triées : grands groupes, desservies) attirent toute la commune :
+  // gardés même hors des bureaux prioritaires.
   if (lieux.length) {
     const order = ["Marché", "Gare", "Supermarché", "Service public", "Sortie de collège", "Sortie de collège et lycée", "Sortie de lycée"];
     lieux.sort((a, b) => (b.prioritaire ? 1 : 0) - (a.prioritaire ? 1 : 0) || order.indexOf(a.type) - order.indexOf(b.type) || a.bv.localeCompare(b.bv));
@@ -1619,9 +1612,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         `Le week-end : ${WEEKEND.gare.charAt(0).toLowerCase()}${WEEKEND.gare.slice(1)}.`,
       ],
     });
-  // Grandes surfaces : seulement les hypermarchés (BPE), où l'affluence du week-end est certaine.
-  const sup = lieux.filter((l) => l.type === "Supermarché" && /hyper/i.test(l.infos));
-  if (sup.length) actionGroups.push({ title: "Hypermarchés", hint: "affluence du samedi", items: sup.slice(0, 3).map((s) => `${B(s.nom)}${s.bv ? ` (${s.bv})` : ""}.`) });
+  // Grandes surfaces des grands groupes (hypermarchés d'abord), desservies en transports en commun.
+  const sup = lieux.filter((l) => l.type === "Supermarché");
+  if (sup.length) actionGroups.push({ title: "Grandes surfaces", hint: "affluence du samedi, accès en transports en commun", items: sup.slice(0, 3).map((s) => `${B(s.nom)} : ${s.infos}${s.bv ? ` (${s.bv})` : ""}.`) });
   // Services publics fermés le week-end, sauf la poste le samedi matin.
   // Moment convivial de fin de journée ou pique-nique : grands parcs, jardins à bière, bars d'au moins 60 places
   // (OpenStreetMap), ceux des bureaux prioritaires d'abord.
@@ -1630,7 +1623,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       const nb = nearestBv(x.lon, x.lat);
       return { ...x, bv: nb ? `BV ${dv(nb.bv)}` : "", prioritaire: nb && prioSet.has(nb.bv) ? "oui" : "" };
     })
-    .sort((a, b) => Number(!!b.prioritaire) - Number(!!a.prioritaire) || (b.ha ?? 0) - (a.ha ?? 0) || (b.capacite ?? 0) - (a.capacite ?? 0));
+    .sort((a, b) => Number(!!b.prioritaire) - Number(!!a.prioritaire) || Number(a.kind === "bar") - Number(b.kind === "bar") || (b.ha ?? 0) - (a.ha ?? 0) || (b.capacite ?? 0) - (a.capacite ?? 0));
   const convTxt = (x: (typeof conv)[number]) => (x.kind === "parc" ? `parc d'environ ${fmtNumber(x.ha ?? 0)} ha` : x.capacite ? `${fmtNumber(x.capacite)} places` : "jardin à bière");
   if (conv.length) actionGroups.push({ title: "Moment convivial", hint: "fin de journée, pique-nique", items: conv.slice(0, 3).map((x) => `${B(x.nom)} (${convTxt(x)}${x.bv ? `, ${x.bv}` : ""}).`) });
   const implant: string[] = [];
@@ -1680,8 +1673,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   }
   const byPrio = <T extends { prioritaire: string }>(xs: T[]) => [...xs].sort((a, b) => Number(!!b.prioritaire) - Number(!!a.prioritaire));
   // Pas de sorties de collèges ni de lycées : les actions ont lieu le week-end.
-  for (const v of byPrio(sup).slice(0, 1))
-    plan.push({ action: "Tractage à l'hypermarché", ou: v.nom, infos: "Forte affluence le samedi, tous publics", quand: WEEKEND.supermarche, bv: v.bv });
+  for (const v of sup.slice(0, 1))
+    plan.push({ action: /hyper/.test(v.infos) ? "Tractage à l'hypermarché" : "Tractage au supermarché", ou: v.nom, infos: "Forte affluence le samedi, tous publics ; accessible en transports en commun", quand: WEEKEND.supermarche, bv: v.bv });
   for (const x of conv.slice(0, 1))
     plan.push({
       action: "Moment convivial",
@@ -1913,7 +1906,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       return h ? `${where} (${h})` : named(m.nom) ? `${where} (jour du week-end à confirmer)` : "";
     }),
     ...gares.slice(0, 1).map((g) => `${gareNom(g.nom)}${/voyageurs/.test(g.infos) ? ` (${g.infos})` : ""}, le samedi matin ou le dimanche soir`),
-    ...byPrio(sup.filter((v) => named(v.nom))).slice(0, 1).map((v) => `${v.nom} (hypermarché), le samedi`),
+    ...sup.slice(0, 1).map((v) => `${v.nom} (${/hyper/.test(v.infos) ? "hypermarché" : "supermarché"}), le samedi`),
   ].filter(Boolean);
   if (leviers.length) synth.push({ text: `${B("Où croiser les habitants le week-end")} : ${leviers.join(" ; ")}.` });
 

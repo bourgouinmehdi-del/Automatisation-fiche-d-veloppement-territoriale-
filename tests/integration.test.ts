@@ -243,6 +243,10 @@ describe("chaîne de génération (API simulées)", () => {
     expect(plan.rows.length).toBeGreaterThan(0);
     // Ni poste ni simple supermarché ; un moment convivial dans un grand parc nommé.
     expect(plan.rows.some((r) => /poste|^Supermarché$/i.test(String(r.action)))).toBe(false);
+    // Grandes surfaces : enseigne d'un grand groupe, desservie ; ni format de proximité ni magasin sans arrêt.
+    expect(plan.rows.find((r) => /hypermarché/.test(String(r.action)))).toMatchObject({ ou: "E.Leclerc (Avenue fictive)" });
+    const gs = actions.groups.find((g) => g.title === "Grandes surfaces")!.items.join(" ");
+    expect(gs).not.toMatch(/Carrefour City|Auchan/);
     expect(plan.rows.find((r) => r.action === "Moment convivial")).toMatchObject({ ou: "Parc fictif" });
     const conv = actions.groups.find((g) => g.title === "Moment convivial")!;
     expect(conv.items.join(" ")).toMatch(/Grand café fictif/);

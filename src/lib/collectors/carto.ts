@@ -346,7 +346,7 @@ export interface LieuConvivial {
  */
 export async function collectConvivialite(http: TrackedHttp, bbox: Bbox): Promise<{ list: LieuConvivial[]; url: string; retrievedAt: string }> {
   const key = bbox.map((v) => v.toFixed(3)).join(",");
-  return cachedExtract(`convivial|${key}`, 24 * 30, async () => {
+  return cachedExtract(`convivial2|${key}`, 24 * 30, async () => {
     const [w, s, e, n] = bbox;
     const b = `(${s},${w},${n},${e})`;
     const q = `[out:json][timeout:60];
@@ -356,13 +356,14 @@ export async function collectConvivialite(http: TrackedHttp, bbox: Bbox): Promis
   nwr["amenity"="biergarten"]["name"]${b};
   nwr["amenity"~"^(bar|pub)$"]["name"]["capacity"]${b};
 );
-out center bb tags;`;
+out tags bb;`;
     const r = await overpass<{ elements?: El[] }>(http, q);
     const list: LieuConvivial[] = [];
     for (const el of r.data?.elements ?? []) {
       const t = el.tags ?? {};
-      const lon = el.lon ?? el.center?.lon;
-      const lat = el.lat ?? el.center?.lat;
+      // « out bb » : emprise des chemins et relations (une seule option de géométrie par sortie Overpass).
+      const lon = el.lon ?? el.center?.lon ?? (el.bounds ? (el.bounds.minlon + el.bounds.maxlon) / 2 : undefined);
+      const lat = el.lat ?? el.center?.lat ?? (el.bounds ? (el.bounds.minlat + el.bounds.maxlat) / 2 : undefined);
       if (lon == null || lat == null || !t.name) continue;
       if (/park|garden/.test(t.leisure ?? "")) {
         if (t.garden && /private|residential|botanical/.test(t["garden:type"] ?? "")) continue;
@@ -381,5 +382,65 @@ out center bb tags;`;
     const seen = new Set<string>();
     const uniq = list.filter((x) => (seen.has(`${x.kind}|${x.nom}`) ? false : (seen.add(`${x.kind}|${x.nom}`), true)));
     return { list: uniq.sort((a, b) => (b.ha ?? 0) - (a.ha ?? 0)), url: `${r.url}?data=${encodeURIComponent(q)}`, retrievedAt: r.retrievedAt };
+  });
+}
+
+/* ---------------------------------------------------- grandes surfaces */
+
+export interface GrandeSurface {
+  nom: string;
+  enseigne: string;
+  hyper: boolean;
+  adresse: string;
+  lon: number;
+  lat: number;
+  /** Arrêts de transport en commun à moins de 400 m. */
+  arrets: number;
+}
+
+// Enseignes des grands groupes ; formats de proximité (City, Express, Proxi…) écartés.
+const HYPER = /^(e\.?\s?leclerc|leclerc|auchan|carrefour|hyper u|g[ée]ant( casino)?|cora)$/i;
+const SUPER = /^(lidl|aldi|intermarch[ée]( (super|hyper|contact))?|super u|carrefour market|netto|leader price|casino( supermarch[ée])?|supermarch[ée] casino|super casino|match|supermarch[ée]s? match|monoprix|auchan supermarch[ée])$/i;
+const PROXI = /(city|express|contact|proxi|piéton|pi[ée]ton|drive|vival|spar|franprix|shopi|8 ?à ?huit|coccinelle)/i;
+
+/**
+ * Hypermarchés et supermarchés des grands groupes (OpenStreetMap, à jour des
+ * fermetures), desservis par les transports en commun (arrêt à moins de 400 m).
+ */
+export async function collectGrandesSurfaces(http: TrackedHttp, bbox: Bbox): Promise<{ list: GrandeSurface[]; url: string; retrievedAt: string }> {
+  const key = bbox.map((v) => v.toFixed(3)).join(",");
+  return cachedExtract(`gsurfaces|${key}`, 24 * 14, async () => {
+    const [w, s, e, n] = bbox;
+    const b = `(${s},${w},${n},${e})`;
+    const q = `[out:json][timeout:60];
+nwr["shop"="supermarket"]${b}->.s;
+.s out tags center;
+(
+  node(around.s:400)["highway"="bus_stop"];
+  node(around.s:400)["public_transport"="platform"];
+  node(around.s:400)["railway"~"^(tram_stop|station|halt)$"];
+);
+out skel;`;
+    const r = await overpass<{ elements?: El[] }>(http, q);
+    const els = r.data?.elements ?? [];
+    const stops = els.filter((x) => x.type === "node" && !x.tags).map((x) => [x.lon!, x.lat!] as [number, number]);
+    const list: GrandeSurface[] = [];
+    for (const el of els) {
+      const t = el.tags;
+      if (!t || t.shop !== "supermarket") continue;
+      const lon = el.lon ?? el.center?.lon;
+      const lat = el.lat ?? el.center?.lat;
+      if (lon == null || lat == null) continue;
+      const enseigne = (t.brand ?? t.name ?? "").trim();
+      const full = `${t.brand ?? ""} ${t.name ?? ""}`;
+      if (!enseigne || PROXI.test(full)) continue;
+      const hyper = HYPER.test(enseigne) || /hyper/i.test(full);
+      if (!hyper && !SUPER.test(enseigne)) continue;
+      const arrets = stops.filter((p) => turf.distance(p, [lon, lat]) <= 0.4).length;
+      if (!arrets) continue;
+      const adresse = [t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" ");
+      list.push({ nom: t.name && t.name !== enseigne ? t.name : enseigne, enseigne, hyper, adresse, lon, lat, arrets });
+    }
+    return { list: list.sort((a, b) => Number(b.hyper) - Number(a.hyper) || b.arrets - a.arrets), url: `${r.url}?data=${encodeURIComponent(q)}`, retrievedAt: r.retrievedAt };
   });
 }
