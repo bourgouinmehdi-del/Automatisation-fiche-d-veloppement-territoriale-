@@ -208,3 +208,4 @@ table.data thead th { position: sticky; top: 0; z-index: 1; }
 .am-b.am-diamond.am-on { transform: rotate(45deg) scale(1.08); }
 .am-b.am-sm { width: 20px; height: 20px; font-size: 10.5px; margin-top: 1px; }
 @media (prefers-reduced-motion: reduce) { .am-b { transition: none; } }
+.am-tiles { filter: grayscale(0.65) brightness(1.05) contrast(0.92); }
