@@ -7,7 +7,7 @@ import { FIELD_NOTE_LABELS } from "@/lib/types";
 import type { SourceInfo } from "@/lib/collectors/catalog";
 import { KIND_LABELS } from "@/lib/analysis/findings";
 import { isSmallSample } from "@/lib/analysis/stats";
-import { fmtDate, fmtValue, territoryName } from "@/lib/format";
+import { fmtDate, fmtValue, scoreColor, territoryName } from "@/lib/format";
 import { cellText, Citations, inlineParts, sourceLabel } from "@/lib/render/cite";
 import ChartView from "./ChartView";
 import { useRole } from "./useRole";
@@ -248,7 +248,16 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
                     <tr key={i} className={t.highlight?.includes(i) ? "hl" : ""}>
                       {t.columns.map((c) => (
                         <td key={c.key} className={c.align === "right" ? "r" : ""}>
-                          <Rich text={cellText(row[c.key], c.unit ?? (c.key !== "indicateur" && c.key !== "annee" ? (row.unite as string | undefined) : undefined))} />
+                          {c.bar && typeof row[c.key] === "number" ? (
+                            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                              <span className="inline-block h-2 w-16 overflow-hidden rounded bg-[var(--line)]" aria-hidden="true">
+                                <span className="block h-full" style={{ width: `${Math.max(2, Math.min(100, row[c.key] as number))}%`, background: scoreColor(row[c.key] as number) }} />
+                              </span>
+                              <b>{row[c.key]}</b>
+                            </span>
+                          ) : (
+                            <Rich text={cellText(row[c.key], c.unit ?? (c.key !== "indicateur" && c.key !== "annee" ? (row.unite as string | undefined) : undefined))} />
+                          )}
                         </td>
                       ))}
                     </tr>

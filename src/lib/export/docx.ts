@@ -133,7 +133,9 @@ function table(headers: string[], rows: string[][], rightCols: number[] = [], hi
 
 function dataTable(t: DataTable, cit: Citations) {
   const right = t.columns.map((c, i) => (c.align === "right" ? i : -1)).filter((i) => i >= 0);
-  const rows = t.rows.map((r) => t.columns.map((c) => cellText(r[c.key], c.unit ?? (c.key !== "indicateur" && c.key !== "annee" ? (r.unite as string | undefined) : undefined))));
+  // Score de 0 à 100 : barre en caractères (dix crans) dans Word.
+  const bar = (v: number) => `${"█".repeat(Math.round(v / 10))}${"░".repeat(10 - Math.round(v / 10))} ${v}`;
+  const rows = t.rows.map((r) => t.columns.map((c) => (c.bar && typeof r[c.key] === "number" ? bar(r[c.key] as number) : cellText(r[c.key], c.unit ?? (c.key !== "indicateur" && c.key !== "annee" ? (r.unite as string | undefined) : undefined)))));
   return [caption(t.title), table(t.columns.map((c) => c.label), rows, right, t.highlight ?? []), small(`Sources : ${[...new Set(t.sources.map((s) => `[${cit.cite(s)}]`))].join(" ")}${t.note ? ` — ${t.note}` : ""}`)];
 }
 
