@@ -130,9 +130,10 @@ export default function ActionMap({ map, height = 520 }: { map: MapSpec; height?
         </div>
         <MapContainer bounds={bounds} style={{ height: `min(${height}px, 72vh)`, borderRadius: 8 }} scrollWheelZoom={false} ref={setLmap}>
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">contributeurs OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-            subdomains="abcd"
+            // Tuiles OpenStreetMap (sans clé, comme les autres cartes de l'outil), atténuées pour que les lieux ressortent.
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">contributeurs OpenStreetMap</a>'
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            className="am-tiles"
             maxZoom={19}
           />
           <ScaleControl imperial={false} />
