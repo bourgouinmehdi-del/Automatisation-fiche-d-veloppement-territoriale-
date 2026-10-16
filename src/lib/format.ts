@@ -72,6 +72,32 @@ export function deNom(nom: string): string {
   return /^[aeiouyàâéèêëîïôûüœh]/i.test(nom) && !/^(Hy|Ha|He|Ho|Hu)/.test(nom) ? `d'${nom}` : `de ${nom}`;
 }
 
+// Article des départements (« la Creuse », « le Nord », « l'Oise », « les Landes ») ; sans article : Paris, Mayotte.
+const DEP_LE = ["Nord", "Calvados", "Cantal", "Cher", "Doubs", "Finistère", "Gard", "Gers", "Jura", "Lot", "Loiret", "Morbihan", "Pas-de-Calais", "Rhône", "Tarn", "Var", "Val-d'Oise", "Val-de-Marne", "Bas-Rhin", "Haut-Rhin", "Lot-et-Garonne", "Maine-et-Loire", "Puy-de-Dôme", "Tarn-et-Garonne", "Territoire de Belfort", "Loir-et-Cher", "Vaucluse"];
+const DEP_LES = ["Ardennes", "Bouches-du-Rhône", "Côtes-d'Armor", "Deux-Sèvres", "Hautes-Alpes", "Hautes-Pyrénées", "Hauts-de-Seine", "Landes", "Pyrénées-Atlantiques", "Pyrénées-Orientales", "Vosges", "Yvelines", "Alpes-Maritimes", "Alpes-de-Haute-Provence"];
+const DEP_SANS = ["Paris", "Mayotte"];
+function depKind(nom: string): "le" | "la" | "l" | "les" | "" {
+  if (DEP_SANS.includes(nom)) return "";
+  if (DEP_LES.includes(nom)) return "les";
+  if (DEP_LE.includes(nom)) return "le";
+  if (/^[aeiouyàâéèêëîïôûüœ]/i.test(nom) || /^Hérault$/.test(nom)) return "l";
+  return "la";
+}
+/** « la Creuse », « le Nord », « l'Oise », « les Landes », « Paris ». */
+export function leDep(nom: string): string {
+  const k = depKind(nom);
+  return k === "" ? nom : k === "l" ? `l'${nom}` : `${k} ${nom}`;
+}
+/** « de la Creuse », « du Nord », « de l'Oise », « des Landes », « de Paris ». */
+export function deDep(nom: string): string {
+  const k = depKind(nom);
+  return k === "" ? `de ${nom}` : k === "le" ? `du ${nom}` : k === "les" ? `des ${nom}` : k === "l" ? `de l'${nom}` : `de la ${nom}`;
+}
+/** « dans la Creuse », « dans le Nord », « à Paris ». */
+export function dansDep(nom: string): string {
+  return depKind(nom) === "" ? `à ${nom}` : `dans ${leDep(nom)}`;
+}
+
 /** Nom du territoire d'un ciblage : département, intercommunalité ou « 2e circonscription de l'Oise ». */
 export function territoryName(r: { query: { scope: string }; perimeter: { label: string }; commune: { departement: { nom: string } } }): string {
   return r.query.scope === "circonscription" || r.query.scope === "epci" ? r.perimeter.label.replace(/^./, (x) => x.toUpperCase()) : r.commune.departement.nom;
