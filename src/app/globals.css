@@ -197,3 +197,14 @@ table.data thead th { position: sticky; top: 0; z-index: 1; }
 .chart-tab { border: 1.5px solid var(--line); border-radius: 999px; padding: .2rem .75rem; font-size: .8rem; font-weight: 700; background: var(--surface); color: var(--ink-2); cursor: pointer; }
 .chart-tab:hover { border-color: var(--accent); color: var(--accent); }
 .chart-tab[aria-selected="true"] { background: var(--accent-fill); border-color: var(--accent-fill); color: #fff; }
+
+/* Carte « Où agir » interactive : pastilles numérotées (mêmes formes que la carte imprimée). */
+.am-icon { background: none; border: 0; }
+.am-b { --c: #4c0297; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--c); color: #fff; font-weight: 800; font-size: 12px; border: 2px solid #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.35); transition: transform 0.15s; }
+.am-b.am-square { border-radius: 4px; }
+.am-b.am-diamond { border-radius: 3px; transform: rotate(45deg) scale(0.86); }
+.am-b.am-diamond > span { transform: rotate(-45deg); }
+.am-b.am-on { transform: scale(1.25); }
+.am-b.am-diamond.am-on { transform: rotate(45deg) scale(1.08); }
+.am-b.am-sm { width: 20px; height: 20px; font-size: 10.5px; margin-top: 1px; }
+@media (prefers-reduced-motion: reduce) { .am-b { transition: none; } }

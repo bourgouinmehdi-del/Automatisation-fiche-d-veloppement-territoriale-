@@ -20,6 +20,8 @@ export interface AdultesIris {
   pop: number;
   adultes: number;
   adultesFr: number;
+  /** 18-24 ans (souvent étudiants inscrits chez leurs parents), si publié. */
+  jeunes?: number | null;
 }
 
 export interface AdultesDep {
@@ -39,7 +41,7 @@ const num = (v: string | undefined) => {
 };
 
 /** Lecture d'une ligne IRIS (colonnes « P21_POP », « P21_POP0002 »…). */
-export function adultesOf(r: Record<string, string>): { pop: number; adultes: number; fr: number | null; annee: string | null } | null {
+export function adultesOf(r: Record<string, string>): { pop: number; adultes: number; fr: number | null; jeunes: number | null; annee: string | null } | null {
   const k = (re: RegExp) => Object.keys(r).find((c) => re.test(c));
   const v = (re: RegExp) => {
     const c = k(re);
@@ -52,12 +54,12 @@ export function adultesOf(r: Record<string, string>): { pop: number; adultes: nu
   const under = minors.every((x) => x != null) ? minors.reduce((s, x) => s + x!, 0) : (v(/^P\d\d_POP0014$/) ?? 0) + 0.6 * (v(/^P\d\d_POP1519$/) ?? 0);
   const fr = v(/^P\d\d_POP_FR$/);
   const annee = k(/^P\d\d_POP$/)?.match(/^P(\d\d)/)?.[1] ?? null;
-  return { pop, adultes: Math.max(0, pop - under), fr, annee: annee ? `20${annee}` : null };
+  return { pop, adultes: Math.max(0, pop - under), fr, jeunes: v(/^P\d\d_POP1824$/), annee: annee ? `20${annee}` : null };
 }
 
 export function collectAdultes(http: TrackedHttp, dep: string): Promise<AdultesDep> {
   return cachedExtract(
-    `adultes|${dep}`,
+    `adultes2|${dep}`,
     24 * 60,
     () =>
       heavyLane.run(async () => {
@@ -79,7 +81,7 @@ export function collectAdultes(http: TrackedHttp, dep: string): Promise<AdultesD
           annee ??= a.annee;
           if (a.fr != null) nationalite = true;
           const share = a.fr != null && a.pop > 0 ? a.fr / a.pop : 1;
-          out.push({ iris: String(r.IRIS ?? ""), com: String(r.COM ?? String(r.IRIS ?? "").slice(0, 5)).padStart(5, "0"), pop: a.pop, adultes: a.adultes, adultesFr: a.adultes * share });
+          out.push({ iris: String(r.IRIS ?? ""), com: String(r.COM ?? String(r.IRIS ?? "").slice(0, 5)).padStart(5, "0"), pop: a.pop, adultes: a.adultes, adultesFr: a.adultes * share, jeunes: a.jeunes });
         }
         return { rows: out, annee, nationalite, url, retrievedAt: f.retrievedAt };
       }),

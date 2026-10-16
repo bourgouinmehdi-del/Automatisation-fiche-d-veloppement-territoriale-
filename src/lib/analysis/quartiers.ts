@@ -94,11 +94,11 @@ export function quartierOfBureau(m: BvQuartier[], bv: string, min = OVERLAP_MIN)
 /**
  * Nom d'un quartier lisible dans une phrase : article initial en minuscule,
  * mots de liaison en minuscules (« Frange Ouest du Centre-Ville », « Pierre et
- * Marie Curie »), numéro d'IRIS détaché (« Gare 31 » → « Gare (secteur 31) »).
+ * Marie Curie »), numéro d'IRIS détaché (« Gare 31 » → « Gare, secteur 31 »).
  */
 export const quartierLabel = (nom: string) =>
   nom
     .trim()
     .replace(/(?<=\S\s)(Du|De|Des|La|Le|Les|Et|Aux?|Sur|En|D'|L')(?=\s|[A-ZÀ-Ý])/g, (m) => m.toLowerCase())
-    .replace(/^(.*\D)\s+(\d{1,3})$/, "$1 (secteur $2)")
+    .replace(/^(.*\D)\s+(\d{1,3})$/, "$1, secteur $2")
     .replace(/^(Le|La|Les|L')\s?/, (m) => m.toLowerCase());

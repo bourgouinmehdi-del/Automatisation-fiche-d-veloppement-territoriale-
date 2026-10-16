@@ -48,7 +48,7 @@ describe("noms lisibles", () => {
   it("quartiers : mots de liaison, numéros d'IRIS", () => {
     expect(quartierLabel("Frange Ouest Du Centre-Ville Aggloméré")).toBe("Frange Ouest du Centre-Ville Aggloméré");
     expect(quartierLabel("Pierre Et Marie Curie")).toBe("Pierre et Marie Curie");
-    expect(quartierLabel("Gare 31")).toBe("Gare (secteur 31)");
+    expect(quartierLabel("Gare 31")).toBe("Gare, secteur 31");
     expect(quartierLabel("La Victoire")).toBe("la Victoire");
   });
   it("articles et élisions", () => {
@@ -91,9 +91,26 @@ describe("logements sociaux et population adulte", () => {
     expect(g.residences.map((r) => [r.nom, r.logements])).toEqual([["Cité des Fleurs", 30], ["10 Rue des Lilas", 20], ["3 Rue Lointaine", 5]]);
     expect(g.ensembles[0]).toMatchObject({ nom: "Cité des Fleurs", logements: 50, residences: 2 });
   });
+  it("noms de programme, adresses en double et regroupement par rue", async () => {
+    const { groupRpls, hlmByStreet, isProgName, numsLabel } = await import("@/lib/collectors/rpls");
+    for (const code of ["A.h.", "0401-03-5", "Bat F/28", "D09", "BATIMENT A"]) expect(isProgName(code)).toBe(false);
+    expect(isProgName("Les Musiciens")).toBe(true);
+    const row = (prog: string, num: string, typ: string, voie: string, x: number) => ({ DEPCOM: "35281", NUMVOIE: num, TYPVOIE: typ, NOMVOIE: voie, COMPLGEO: prog, X: String(x), Y: "6862000", EPSG: "2154" });
+    const rows = [
+      ...Array.from({ length: 4 }, () => row("", "192", "RUE", "192 RUE ALEXANDRA DAVID NEEL", 652000)),
+      ...Array.from({ length: 60 }, () => row("D09", "2", "ALL", "NICOLAS COPERNIC", 652100)),
+      ...Array.from({ length: 59 }, () => row("CITE DES PERRIERES M,J", "4", "ALL", "NICOLAS COPERNIC", 652130)),
+    ];
+    const g = groupRpls(rows);
+    expect(g.residences.map((r) => r.adresse)).toContain("192 Rue Alexandra David Neel");
+    expect(g.residences.map((r) => r.nom)).toEqual(expect.arrayContaining(["2 Allée Nicolas Copernic", "Cité des Perrieres"]));
+    const rue = hlmByStreet(g.residences)[0];
+    expect(rue).toMatchObject({ voie: "Allée Nicolas Copernic", nums: ["2", "4"], logements: 119 });
+    expect(numsLabel(rue.nums)).toBe("n° 2 et 4");
+  });
   it("compte les adultes (18 ans et plus) d'une ligne IRIS", async () => {
     const { adultesOf } = await import("@/lib/collectors/adultes");
-    expect(adultesOf({ P21_POP: "1000", P21_POP0002: "40", P21_POP0305: "40", P21_POP0610: "60", P21_POP1117: "90", P21_POP_FR: "900" })).toEqual({ pop: 1000, adultes: 770, fr: 900, annee: "2021" });
+    expect(adultesOf({ P21_POP: "1000", P21_POP0002: "40", P21_POP0305: "40", P21_POP0610: "60", P21_POP1117: "90", P21_POP_FR: "900", P21_POP1824: "120" })).toEqual({ pop: 1000, adultes: 770, fr: 900, jeunes: 120, annee: "2021" });
     expect(adultesOf({ P20_POP: "100", P20_POP0014: "20", P20_POP1519: "10" })?.adultes).toBe(74);
   });
 });

@@ -1,9 +1,10 @@
+import { posterItems } from "./poster";
 import { SOURCES } from "../collectors/catalog";
 import { KIND_LABELS, THEME_LABELS } from "../analysis/findings";
 import { isSmallSample } from "../analysis/stats";
 import { fmtDate, fmtValue, territoryName } from "../format";
 import { FIELD_NOTE_LABELS } from "../types";
-import type { Block, DataTable, Finding, Indicator, Report, SourceRef } from "../types";
+import type { Block, DataTable, Finding, Indicator, MapSpec, Report, SourceRef } from "../types";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "./svg";
 import { cellText, Citations, inlineParts, sourceLabel } from "./cite";
 
@@ -83,6 +84,30 @@ function comparisonHtml(r: Report, ids: string[], title: string | undefined, cit
     .join("")}</tbody></table><div class="src">n.d. : non disponible. Les numéros renvoient à la bibliographie des sources.</div></figure>`;
 }
 
+/** Liste « Où agir » d'une carte affiche, en HTML (coupée proprement entre les pages, contrairement à l'image). */
+function posterListHtml(m: MapSpec): string {
+  const items = posterItems(m);
+  if (!items.length) return "";
+  const groups: { action: string; group: string; items: typeof items }[] = [];
+  for (const it of items) {
+    const g = groups.find((x) => x.group === it.group);
+    if (g) g.items.push(it);
+    else groups.push({ action: it.action, group: it.group, items: [it] });
+  }
+  const badge = (it: (typeof items)[number]) => `<span class="oa-b oa-${it.shape}" style="background:${it.color}">${it.n}</span>`;
+  return `<section class="oa"><h4 class="oa-t">Où agir</h4>${groups
+    .map(
+      (g) =>
+        `<div class="oa-g"><div class="oa-gt">${esc(g.action !== g.group ? `${g.action} — ${g.group}` : g.group)}</div><ol>${g.items
+          .map((it) => `<li>${badge(it)}<div><b>${esc(it.nom)}</b>${(it.det.length ? it.det : [it.sub]).filter(Boolean).map((d) => `<div>${esc(d)}</div>`).join("")}${it.quand ? `<div class="oa-q">Quand : ${esc(it.quand)}</div>` : ""}</div></li>`)
+          .join("")}</ol></div>`,
+    )
+    .join("")}</section>`;
+}
+
+/** Noms longs (« Saint-Jacques-de-la-Lande ») : titre plus petit, sans coupure au milieu d'un mot. */
+const titleClass = (t: string) => (t.length > 26 ? ' class="xlong"' : t.length > 16 ? ' class="long"' : "");
+
 export function selectFindings(r: Report, b: Extract<Block, { type: "findings" }>) {
   if (b.ids) return b.ids.map((id) => r.findings.find((f) => f.id === id)).filter((f): f is Finding => !!f);
   return r.findings.filter((f) => (!b.kinds || b.kinds.includes(f.kind)) && (!b.themes || b.themes.includes(f.theme)));
@@ -140,7 +165,7 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       if (!m) return "";
       const srcs = [...new Map(m.layers.map((l) => [l.source.id + l.source.url, l.source])).values()];
       // Carte « affiche » : titre, légende et source sont dans l'image ; renvois aux sources en dessous.
-      if (m.poster) return `<figure class="map poster">${mapSvg(m)}<div class="src">Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")}${m.note ? ` — ${esc(m.note)}` : ""}</div></figure>`;
+      if (m.poster) return `<figure class="map poster">${mapSvg(m, 720, 540, { posterList: false })}</figure>${posterListHtml(m)}<div class="src">Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")}${m.note ? ` — ${esc(m.note)}` : ""}</div>`;
       return `<figure class="map"><figcaption>${esc(m.title)}</figcaption>${mapSvg(m)}<div class="src">Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")} · Fond : contours ADMIN EXPRESS (IGN) via geo.api.gouv.fr${m.note ? ` — ${esc(m.note)}` : ""}</div></figure>`;
     }
     case "locator": {
@@ -266,7 +291,9 @@ tr.hl td strong { font-weight: 800; }
 .fiche-head { background: #4c0297; color: #fff; padding: 5mm 6mm 9mm; margin-bottom: 6mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .fiche-k { font-size: 9.5pt; color: #c9adff; font-weight: 600; }
 .fiche-pc { font-size: 11pt; font-weight: 700; margin-top: 3mm; color: #fff; }
-.fiche-head h1 { font-size: 34pt; color: #fff; margin: 4mm 0 2mm; text-transform: uppercase; transform: skewY(-6deg); transform-origin: 0 100%; }
+.fiche-head h1 { font-size: 34pt; color: #fff; margin: 4mm 0 2mm; text-transform: uppercase; transform: skewY(-6deg); transform-origin: 0 100%; word-break: normal; overflow-wrap: normal; hyphens: manual; line-height: 1.05; }
+.fiche-head h1.long { font-size: 26pt; }
+.fiche-head h1.xlong { font-size: 21pt; }
 .fiche-sub { font-size: 10.5pt; color: #fff; }
 .fiche-meta { font-size: 8.5pt; color: #c9adff; margin-top: 1mm; }
 h3.fh { font-size: 15pt; font-weight: 800; color: #4c0297; margin: 7mm 0 3mm; padding-bottom: 1mm; border-bottom: 1.5px solid #4c0297; break-after: avoid; }
@@ -301,8 +328,18 @@ p.prose.hyp { color: #2c2b29; }
 h3.target-t { font-size: 24pt; font-weight: 900; color: #4c0297; text-transform: uppercase; margin: 1mm 0 1mm; }
 .target-f { font-style: italic; color: #2c2b29; margin-bottom: 2mm; }
 .fiche-src .biblio li { font-size: 7.8pt; }
-figure.poster svg { width: 100%; height: auto; }
-figure.poster { break-inside: avoid; }
+figure.poster svg { width: 100%; height: auto; max-height: 238mm; display: block; }
+figure.poster { break-inside: avoid; margin-bottom: 2mm; }
+.oa { border: 0.3mm solid #212320; padding: 3mm 4mm; margin: 0 0 2mm; font-size: 8.6pt; }
+.oa-t { margin: 0 0 2mm; color: #4c0297; font-size: 11pt; font-weight: 800; }
+.oa-g { break-inside: avoid; margin-bottom: 2mm; }
+.oa-gt { font-weight: 700; color: #52514e; font-size: 8pt; margin-bottom: 1mm; }
+.oa ol { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 6mm; }
+.oa li { display: flex; gap: 2mm; break-inside: avoid; margin-bottom: 1.6mm; line-height: 1.3; }
+.oa-b { flex: none; width: 5mm; height: 5mm; border-radius: 50%; color: #fff; font-weight: 800; font-size: 7.5pt; display: inline-flex; align-items: center; justify-content: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.oa-b.oa-square { border-radius: 1mm; }
+.oa-b.oa-diamond { border-radius: 1mm; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); width: 6mm; height: 6mm; }
+.oa-q { color: #52514e; font-style: italic; }
 /* Fiche destinée à des non-spécialistes : pas d'appels de note dans le texte (les sources restent listées en fin de fiche). */
 .fiche section:not(.fiche-src) sup, .fiche section:not(.fiche-src) .refs { display: none; }
 /* Feuilles de porte-à-porte : une page par bureau. */
@@ -397,8 +434,8 @@ ${r.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
     const head = style === "yonne"
       ? `<header class="y-head"><div class="y-pole">Pôle d'études électorales</div><div class="y-dt">Développement territorial</div><div class="y-dt">${esc(ciblage ? territoryName(r) : `${r.commune.nom} (${r.commune.departement.nom})`)}</div></header>${ciblage ? "" : `<div class="y-pc">Proposition de ciblage</div><div class="y-nom">${esc(r.commune.nom)}</div>`}`
       : ciblage
-      ? `<header class="fiche-head"><div class="fiche-k">Propositions de ciblage ${r.query.scope === "circonscription" ? "de la circonscription" : r.query.scope === "epci" ? "de l'intercommunalité" : "du département"}</div><h1>${esc(territoryName(r))}</h1><div class="fiche-sub">${esc(r.commune.region.nom)}</div><div class="fiche-meta">Généré le ${esc(fmtDate(r.updatedAt))}, version ${r.version}</div></header>`
-      : `<header class="fiche-head"><div class="fiche-k">Proposition de ciblage</div><h1>${esc(r.commune.nom)}</h1><div class="fiche-sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}), ${esc(r.commune.region.nom)}${r.commune.epci ? `. ${esc(r.commune.epci.nom)}` : ""}</div><div class="fiche-meta">Code INSEE ${esc(r.commune.code)}, généré le ${esc(fmtDate(r.updatedAt))}, version ${r.version}</div></header>`;
+      ? `<header class="fiche-head"><div class="fiche-k">Propositions de ciblage ${r.query.scope === "circonscription" ? "de la circonscription" : r.query.scope === "epci" ? "de l'intercommunalité" : "du département"}</div><h1${titleClass(territoryName(r))}>${esc(territoryName(r))}</h1><div class="fiche-sub">${esc(r.commune.region.nom)}</div><div class="fiche-meta">Généré le ${esc(fmtDate(r.updatedAt))}, version ${r.version}</div></header>`
+      : `<header class="fiche-head"><div class="fiche-k">Proposition de ciblage</div><h1${titleClass(r.commune.nom)}>${esc(r.commune.nom)}</h1><div class="fiche-sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}), ${esc(r.commune.region.nom)}${r.commune.epci ? `. ${esc(r.commune.epci.nom)}` : ""}</div><div class="fiche-meta">Code INSEE ${esc(r.commune.code)}, généré le ${esc(fmtDate(r.updatedAt))}, version ${r.version}</div></header>`;
     const shortBody = sections.map((s) => `<section id="part-${s.id}">${s.id === "LFI" || s.id === "CIBLAGE" ? "" : `<h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>`}${s.blocks.map((b) => blockHtml(r, b, cit, style)).join("\n")}</section>`).join("\n");
     const biblio = `<section class="part fiche-src"><h2>Sources</h2><ol class="biblio">${cit
       .all()

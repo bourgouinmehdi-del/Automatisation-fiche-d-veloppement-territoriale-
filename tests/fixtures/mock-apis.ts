@@ -196,8 +196,8 @@ function overpass(body: string) {
     const g = (pts: [number, number][]) => pts.map(([x, y]) => ({ lon: LON0 + x, lat: LAT0 + y }));
     return {
       elements: [
-        { type: "way", id: 501, tags: { highway: "primary" }, geometry: g([[-0.01, 0.0], [0.05, 0.03]]) },
-        { type: "way", id: 502, tags: { highway: "residential" }, geometry: g([[0.0, 0.02], [0.04, 0.02], [0.04, 0.035]]) },
+        { type: "way", id: 501, tags: { highway: "primary", name: "Avenue de la République" }, geometry: g([[-0.01, 0.0], [0.05, 0.03]]) },
+        { type: "way", id: 502, tags: { highway: "residential", name: "Rue des Roses" }, geometry: g([[0.0, 0.02], [0.04, 0.02], [0.04, 0.035]]) },
         { type: "way", id: 503, tags: { railway: "rail" }, geometry: g([[-0.01, 0.035], [0.05, 0.005]]) },
         { type: "way", id: 504, tags: { waterway: "river", name: "L'Oise" }, geometry: g([[-0.01, 0.04], [0.05, 0.041]]) },
         { type: "way", id: 505, tags: { natural: "water" }, geometry: g([[0.03, 0.03], [0.035, 0.03], [0.035, 0.034], [0.03, 0.03]]) },

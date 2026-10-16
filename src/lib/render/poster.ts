@@ -1,6 +1,9 @@
 import { geoMercator, geoPath, type GeoProjection } from "d3-geo";
-import { area as turfArea, bboxClip, distance, pointOnFeature, rewind } from "@turf/turf";
+import { bboxClip, distance, rewind } from "@turf/turf";
 import type { MapLayer, MapSpec } from "../types";
+import { anchorOf, posterItems } from "./poster-items";
+
+export { posterItems, type PosterItem } from "./poster-items";
 
 /**
  * Cartes « affiche », sur le modèle des cartes du pôle (état des groupes
@@ -41,29 +44,16 @@ function forD3<T extends GeoJSON.Feature | GeoJSON.FeatureCollection>(g: T): T {
   }
 }
 
-/** Point d'ancrage d'une entité : le point lui-même, ou un point intérieur du plus grand polygone. */
-function anchorOf(f: GeoJSON.Feature): [number, number] | null {
-  const g = f.geometry;
-  if (!g) return null;
-  if (g.type === "Point") return g.coordinates as [number, number];
-  try {
-    let poly: GeoJSON.Feature = f;
-    if (g.type === "MultiPolygon") {
-      const parts = g.coordinates.map((c) => ({ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: c } }) as GeoJSON.Feature<GeoJSON.Polygon>);
-      poly = parts.sort((a, b) => turfArea(b) - turfArea(a))[0];
-    }
-    return pointOnFeature(poly as GeoJSON.Feature<GeoJSON.Polygon>).geometry.coordinates as [number, number];
-  } catch {
-    return null;
-  }
-}
-
 function symbolSvg(kind: string, x: number, y: number, size: number, fill: string, stroke: string) {
   if (kind === "diamond") {
     const r = size * 0.75;
     return `<path d="M${x} ${y - r}L${x + r} ${y}L${x} ${y + r}L${x - r} ${y}Z" fill="${fill}" stroke="${stroke}" stroke-width="1.3"/>`;
   }
   if (kind === "dot") return `<circle cx="${x}" cy="${y}" r="${size / 3}" fill="${fill}"/>`;
+  if (kind === "square") {
+    const r = size * 0.5;
+    return `<rect x="${x - r}" y="${y - r}" width="${2 * r}" height="${2 * r}" rx="1.5" fill="${fill}" stroke="${stroke}" stroke-width="1.3"/>`;
+  }
   return `<circle cx="${x}" cy="${y}" r="${size / 2}" fill="${fill}" stroke="${stroke}" stroke-width="1.3"/>`;
 }
 
@@ -71,7 +61,8 @@ function swatch(kind: string, x: number, y: number, l: MapLayer) {
   const st = l.style ?? {};
   const fill = st.fill ?? l.color ?? "#ccc";
   const stroke = st.stroke ?? POSTER.charbon;
-  if (kind === "fill") return `<rect x="${x}" y="${y - 5}" width="24" height="10" fill="${fill}" stroke="${stroke}" stroke-width="0.8"/>`;
+  if (kind === "fill") return `<rect x="${x}" y="${y - 5}" width="24" height="10" fill="${l.id === "bv_prio" ? "#fbe8b4" : fill === "none" ? "#fff" : fill}" stroke="${stroke}" stroke-width="${l.id === "bv_prio" ? 1.6 : 0.8}"/>`;
+  if (kind === "dot") return `<circle cx="${x + 12}" cy="${y}" r="3.5" fill="${fill}"/>`;
   if (kind === "line" || kind === "dash")
     return `<line x1="${x}" x2="${x + 24}" y1="${y}" y2="${y}" stroke="${kind === "line" && (st.strokeWidth ?? 1) < 1 ? "#9b9485" : st.stroke ?? fill}" stroke-width="${Math.max(1.2, Math.min(2.4, st.strokeWidth ?? 1.4))}"${st.dash ? ` stroke-dasharray="${st.dash}"` : ""}/>`;
   return symbolSvg(kind, x + 12, y, 12, fill, stroke);
@@ -81,7 +72,9 @@ function swatch(kind: string, x: number, y: number, l: MapLayer) {
 function badgeSvg(shape: string, x: number, y: number, r: number, color: string, n: number) {
   const fs = n >= 10 ? r * 1.05 : r * 1.25;
   const sh =
-    shape === "diamond"
+    shape === "square"
+      ? `<rect x="${(x - r).toFixed(1)}" y="${(y - r).toFixed(1)}" width="${2 * r}" height="${2 * r}" rx="2" fill="${color}" stroke="#fff" stroke-width="1.6"/>`
+      : shape === "diamond"
       ? `<path d="M${x.toFixed(1)} ${(y - r * 1.3).toFixed(1)}L${(x + r * 1.3).toFixed(1)} ${y.toFixed(1)}L${x.toFixed(1)} ${(y + r * 1.3).toFixed(1)}L${(x - r * 1.3).toFixed(1)} ${y.toFixed(1)}Z" fill="${color}" stroke="#fff" stroke-width="1.6"/>`
       : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${color}" stroke="#fff" stroke-width="1.6"/>`;
   return `${sh}<text x="${x.toFixed(1)}" y="${(y + fs * 0.36).toFixed(1)}" text-anchor="middle" font-size="${fs.toFixed(1)}" font-weight="800" fill="#fff" ${FONT}>${n}</text>`;
@@ -99,7 +92,8 @@ function scaleBar(proj: GeoProjection, x: number, y: number) {
   return `<g><rect x="${x - 10}" y="${y - 30}" width="${px + 20}" height="44" fill="#fff" fill-opacity="0.75"/><text x="${x + px / 2}" y="${y - 12}" text-anchor="middle" font-size="11" fill="${POSTER.charbon}" ${FONT}>${lab}</text><rect x="${x}" y="${y - 4}" width="${px / 2}" height="7" fill="${POSTER.charbon}"/><rect x="${x + px / 2}" y="${y - 4}" width="${px / 2}" height="7" fill="#fff" stroke="${POSTER.charbon}" stroke-width="1"/></g>`;
 }
 
-export function posterMapSvg(map: MapSpec, width = 900): string {
+export function posterMapSvg(map: MapSpec, width = 900, opts: { list?: boolean } = {}): string {
+  const withList = opts.list ?? true;
   const P = map.poster!;
   const layers = map.layers.filter((l) => l.visible && l.data.features.length).map((l) => (l.kind === "polygons" ? { ...l, data: forD3(structuredClone(l.data)) } : l));
   const bb = map.bbox ?? [-5, 41, 10, 51];
@@ -137,8 +131,13 @@ export function posterMapSvg(map: MapSpec, width = 900): string {
       const dash = (p._dash as string) ?? st.dash;
       if (l.kind === "points") {
         if (st.symbol === undefined && !l.legendItem) continue;
-        if (l.labelMode === "number") continue; // pastille numérotée, dessinée avec les étiquettes
         const xy = f.geometry?.type === "Point" ? proj(f.geometry.coordinates as [number, number]) : null;
+        // Cercle proportionnel (logements sociaux) : dessiné sous la pastille numérotée.
+        if (xy && typeof p._r === "number") {
+          body += `<circle cx="${xy[0].toFixed(1)}" cy="${xy[1].toFixed(1)}" r="${(p._r as number).toFixed(1)}" fill="${st.fill ?? POSTER.jaune}" fill-opacity="${l.labelMode === "number" ? 0.85 : 0.9}" stroke="${l.labelMode === "number" ? POSTER.charbon : "#fff"}" stroke-width="${l.labelMode === "number" ? 1.1 : 0.6}"/>`;
+          continue;
+        }
+        if (l.labelMode === "number") continue; // pastille numérotée, dessinée avec les étiquettes
         if (xy) body += symbolSvg(st.symbol ?? "circle", +xy[0].toFixed(1), +xy[1].toFixed(1), st.size ?? 14, st.fill ?? l.color ?? POSTER.jaune, st.stroke ?? POSTER.charbon);
         continue;
       }
@@ -233,53 +232,119 @@ export function posterMapSvg(map: MapSpec, width = 900): string {
     if (c.sub) labels += `<text x="${placed.tx.toFixed(1)}" y="${(placed.ty + 14).toFixed(1)}" text-anchor="middle" font-size="10" fill="${POSTER.charbon}" stroke="#fff" stroke-width="2.5" paint-order="stroke" ${FONT}>${esc(c.sub)}</text>`;
   }
 
-  // Pastilles numérotées : un numéro par lieu, détaillé dans la liste « Où agir » sous la carte.
+  // Pastilles numérotées : un numéro par lieu, détaillé dans la liste « Où agir ».
   type Num = { n: number; t: string; sub: string; color: string; shape: string; group: string };
-  const nums: Num[] = [];
-  let counter = 0;
+  const items = posterItems({ ...map, layers });
+  const nums: Num[] = items.map((it) => ({ n: it.n, t: it.nom, sub: it.sub, color: it.color, shape: it.shape, group: it.group }));
   const badgeBoxes: Box[] = [];
-  for (const l of layers.filter((x) => x.labelMode === "number" && x.labelProperty)) {
-    const color = l.labelColor ?? POSTER.violet;
-    const shape = l.kind === "points" ? (l.style?.symbol ?? "circle") : "circle";
-    for (const f of l.data.features) {
-      const p = (f.properties ?? {}) as Record<string, unknown>;
-      const a = anchorOf(f);
-      const xy0 = a ? proj(a) : null;
-      if (!xy0) continue;
-      const n = ++counter;
-      nums.push({ n, t: String(p[l.labelProperty!] ?? ""), sub: l.sublabelProperty ? String(p[l.sublabelProperty] ?? "") : "", color, shape, group: l.legendItem?.label ?? l.label });
-      // Décalage en spirale si une autre pastille occupe déjà la place, avec trait de rappel.
-      const r = 10.5;
-      let xy: [number, number] = [xy0[0], xy0[1]];
-      for (let k = 0; k < 24; k++) {
-        const ang = k * 0.9;
-        const d = k === 0 ? 0 : 14 + k * 3;
-        const cand: [number, number] = [xy0[0] + Math.cos(ang) * d, xy0[1] + Math.sin(ang) * d];
-        const b = { x: cand[0] - r - 1, y: cand[1] - r - 1, w: 2 * r + 2, h: 2 * r + 2 };
-        if (!badgeBoxes.some((x) => overlap(x, b))) {
-          xy = cand;
-          badgeBoxes.push(b);
-          break;
-        }
+  let badges = "";
+  for (const it of items) {
+    const xy0 = proj(it.at);
+    if (!xy0) continue;
+    // Décalage en spirale si une autre pastille occupe déjà la place, avec trait de rappel.
+    const r = 10.5;
+    let xy: [number, number] = [xy0[0], xy0[1]];
+    for (let k = 0; k < 24; k++) {
+      const ang = k * 0.9;
+      const d = k === 0 ? 0 : 14 + k * 3;
+      const cand: [number, number] = [xy0[0] + Math.cos(ang) * d, xy0[1] + Math.sin(ang) * d];
+      const b = { x: cand[0] - r - 1, y: cand[1] - r - 1, w: 2 * r + 2, h: 2 * r + 2 };
+      if (!badgeBoxes.some((x) => overlap(x, b))) {
+        xy = cand;
+        badgeBoxes.push(b);
+        break;
       }
-      if (xy[0] !== xy0[0] || xy[1] !== xy0[1]) labels += `<line x1="${xy0[0].toFixed(1)}" y1="${xy0[1].toFixed(1)}" x2="${xy[0].toFixed(1)}" y2="${xy[1].toFixed(1)}" stroke="${POSTER.charbon}" stroke-width="1"/><circle cx="${xy0[0].toFixed(1)}" cy="${xy0[1].toFixed(1)}" r="2.2" fill="${POSTER.charbon}"/>`;
-      labels += badgeSvg(shape, xy[0], xy[1], r, color, n);
+    }
+    if (xy[0] !== xy0[0] || xy[1] !== xy0[1]) badges += `<line x1="${xy0[0].toFixed(1)}" y1="${xy0[1].toFixed(1)}" x2="${xy[0].toFixed(1)}" y2="${xy[1].toFixed(1)}" stroke="${POSTER.charbon}" stroke-width="1"/><circle cx="${xy0[0].toFixed(1)}" cy="${xy0[1].toFixed(1)}" r="2.2" fill="${POSTER.charbon}"/>`;
+    badges += badgeSvg(it.shape, xy[0], xy[1], r, it.color, it.n);
+  }
+  boxes.push(...badgeBoxes);
+
+  // Petits textes au centre (noms des quartiers prioritaires, numéros des bureaux) : omis s'ils chevauchent.
+  for (const l of layers.filter((x) => x.labelMode === "tag" && x.labelProperty)) {
+    const qpvLike = l.labelColor && l.labelColor !== "#8a8170";
+    for (const f of l.data.features) {
+      const t = String((f.properties as Record<string, unknown>)?.[l.labelProperty!] ?? "");
+      if (!t) continue;
+      let a: [number, number] | null = null;
+      try {
+        a = anchorOf(bboxClip(f as GeoJSON.Feature<GeoJSON.Polygon>, bb) as GeoJSON.Feature);
+      } catch {
+        a = anchorOf(f);
+      }
+      const xy = a ? proj(a) : null;
+      if (!xy) continue;
+      const size = qpvLike ? 10.5 : 9;
+      const w = textW(t, size, !qpvLike);
+      const bx = { x: xy[0] - w / 2, y: xy[1] - size, w, h: size + 4 };
+      if (!inside(bx) || boxes.some((x) => overlap(x, bx))) continue;
+      boxes.push(bx);
+      labels += `<text x="${xy[0].toFixed(1)}" y="${xy[1].toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="${qpvLike ? 700 : 600}"${qpvLike ? ` font-style="italic"` : ""} fill="${l.labelColor ?? "#8a8170"}" stroke="#fff" stroke-width="2.4" paint-order="stroke" ${FONT}>${esc(t)}</text>`;
     }
   }
 
+  // Noms de rues : le long du plus long tronçon de chaque voie, rues ciblées d'abord.
+  for (const l of layers.filter((x) => x.labelMode === "road" && x.labelProperty)) {
+    const best = new Map<string, { pts: [number, number][]; len: number; rank: number }>();
+    for (const f of l.data.features) {
+      const p = (f.properties ?? {}) as Record<string, unknown>;
+      const n = String(p[l.labelProperty!] ?? "");
+      if (!n || f.geometry?.type !== "LineString") continue;
+      const pts = (f.geometry.coordinates as [number, number][]).map((c) => proj(c)).filter((x): x is [number, number] => !!x);
+      let len = 0;
+      for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      const prev = best.get(n);
+      if (!prev || len > prev.len) best.set(n, { pts, len, rank: Number(p._rank ?? 5) });
+    }
+    const at = (pts: [number, number][], d: number): [number, number] => {
+      let acc = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const sl = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+        if (acc + sl >= d) {
+          const t = sl ? (d - acc) / sl : 0;
+          return [pts[i - 1][0] + t * (pts[i][0] - pts[i - 1][0]), pts[i - 1][1] + t * (pts[i][1] - pts[i - 1][1])];
+        }
+        acc += sl;
+      }
+      return pts[pts.length - 1];
+    };
+    let count = 0;
+    for (const [n, r] of [...best].sort((x, y) => x[1].rank - y[1].rank || y[1].len - x[1].len)) {
+      if (count >= 28) break;
+      const size = r.rank === 0 ? 10 : 9;
+      const tw = textW(n, size) * 0.95;
+      if (r.len < tw + 16) continue;
+      const c = at(r.pts, r.len / 2);
+      const p1 = at(r.pts, r.len / 2 - tw / 2);
+      const p2 = at(r.pts, r.len / 2 + tw / 2);
+      let ang = (Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) * 180) / Math.PI;
+      if (ang > 90) ang -= 180;
+      if (ang < -90) ang += 180;
+      const rad = (ang * Math.PI) / 180;
+      const W = Math.abs(tw * Math.cos(rad)) + Math.abs(size * Math.sin(rad));
+      const H = Math.abs(tw * Math.sin(rad)) + Math.abs(size * Math.cos(rad));
+      const bx = { x: c[0] - W / 2, y: c[1] - H / 2, w: W, h: H };
+      if (!inside(bx) || boxes.some((x) => overlap(x, bx))) continue;
+      boxes.push(bx);
+      count++;
+      labels += `<text transform="translate(${c[0].toFixed(1)} ${c[1].toFixed(1)}) rotate(${ang.toFixed(1)})" y="${(size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}"${r.rank === 0 ? ` font-weight="700"` : ""} font-style="italic" fill="${r.rank === 0 ? "#5f574a" : "#857c6c"}" stroke="${POSTER.creme}" stroke-width="2.6" paint-order="stroke" ${FONT}>${esc(n)}</text>`;
+    }
+  }
+  labels += badges;
+
   // Légende encadrée (deux colonnes).
-  const items = layers.filter((l) => l.legendItem).map((l) => ({ l, it: l.legendItem! }));
+  const legItems = layers.filter((l) => l.legendItem).map((l) => ({ l, it: l.legendItem! }));
   // Trois colonnes si les libellés y tiennent (≈ 6,2 px par caractère à 11,5 px), sinon deux, sinon une.
-  const longest = Math.max(0, ...items.map(({ it }) => it.label.length)) * 6.2 + 44;
-  const cols = [items.length > 4 ? 3 : 2, 2, 1].find((n) => frameW / n >= longest) ?? 1;
-  const rows = Math.ceil(items.length / cols);
+  const longest = Math.max(0, ...legItems.map(({ it }) => it.label.length)) * 6.2 + 44;
+  const cols = [legItems.length > 4 ? 3 : 2, 2, 1].find((n) => frameW / n >= longest) ?? 1;
+  const rows = Math.ceil(legItems.length / cols);
   const legY = fy + frameH + 16;
-  const legH = items.length ? 26 + rows * 26 : 0;
+  const legH = legItems.length ? 26 + rows * 26 : 0;
   let legend = "";
-  if (items.length) {
+  if (legItems.length) {
     legend += `<rect x="${fx}" y="${legY}" width="${frameW}" height="${legH}" fill="#fff" stroke="${POSTER.charbon}" stroke-width="1.2"/>`;
     const colW = frameW / cols;
-    items.forEach(({ l, it }, i) => {
+    legItems.forEach(({ l, it }, i) => {
       const x = fx + 30 + (i % cols) * colW;
       const y = legY + 26 + Math.floor(i / cols) * 26;
       legend += swatch(it.swatch, x, y, l) + `<text x="${x + 34}" y="${y + 4}" font-size="11.5" fill="${POSTER.charbon}" ${FONT}>${esc(it.label)}</text>`;
@@ -288,7 +353,7 @@ export function posterMapSvg(map: MapSpec, width = 900): string {
   // Liste « Où agir » : lieux numérotés, regroupés par type d'action, sur deux colonnes.
   let key = "";
   let keyH = 0;
-  if (nums.length) {
+  if (nums.length && withList) {
     const keyY = legY + legH + (legH ? 14 : 0);
     const cols2 = nums.length > 5 ? 2 : 1;
     const colW = frameW / cols2;

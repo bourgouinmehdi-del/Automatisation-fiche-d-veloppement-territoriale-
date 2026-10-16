@@ -12,6 +12,7 @@ import { cellText, Citations, inlineParts, sourceLabel } from "@/lib/render/cite
 import ChartView from "./ChartView";
 import { useRole } from "./useRole";
 
+const ActionMap = dynamic(() => import("./ActionMap"), { ssr: false, loading: () => <div className="h-[520px] animate-pulse rounded-lg bg-[var(--line)]" /> });
 const MapView = dynamic(() => import("./MapView"), { ssr: false, loading: () => <div className="h-[420px] animate-pulse rounded-lg bg-[var(--line)]" /> });
 
 const LEVEL: Record<string, string> = { commune: "Commune", epci: "Intercommunalité", departement: "Département", region: "Région", france: "France" };
@@ -661,7 +662,10 @@ function MapBlock({ maps, cite, exp }: { maps: Report["maps"]; cite: (s: Report[
           <a href={exp("geojson", `?id=${m.id}`)}>GeoJSON</a>
         </span>
       </figcaption>
-      {m.poster ? (
+      {m.poster && m.layers.some((l) => l.labelMode === "number") ? (
+        // Carte « Où agir » : version interactive ; la carte imprimée reste en PNG / SVG / PDF.
+        <ActionMap key={m.id} map={m} />
+      ) : m.poster ? (
         // Carte « affiche » : l'image mise en page (titre, étiquettes, légende), identique au PDF.
         // eslint-disable-next-line @next/next/no-img-element
         <img src={exp("map-svg", `?id=${m.id}&inline=1`)} alt={m.title} className="w-full rounded border border-[var(--line)] bg-[var(--surface)]" loading="lazy" />

@@ -1,3 +1,4 @@
+import { posterItems } from "../render/poster";
 import { Resvg } from "@resvg/resvg-js";
 import {
   AlignmentType,
@@ -69,6 +70,33 @@ const p = (text: string, opts: { bold?: boolean; size?: number; color?: string; 
   new Paragraph({ spacing: { after: 120 }, children: [new TextRun({ text, font: FONT, bold: opts.bold, size: opts.size ?? 21, color: opts.color, italics: opts.italics })] });
 
 const small = (text: string) => new Paragraph({ spacing: { after: 160 }, children: [new TextRun({ text, font: FONT, size: 16, color: "52514E" })] });
+
+/** Liste « Où agir » sous la carte affiche (texte Word, et non dans l'image). */
+function posterListDocx(m: Parameters<typeof posterItems>[0]): Paragraph[] {
+  const items = posterItems(m);
+  if (!items.length) return [];
+  const out: Paragraph[] = [new Paragraph({ spacing: { before: 120, after: 60 }, keepNext: true, children: [new TextRun({ text: "Où agir", font: FONT, bold: true, size: 22, color: "4C0297" })] })];
+  let group = "";
+  for (const it of items) {
+    if (it.group !== group) {
+      group = it.group;
+      out.push(new Paragraph({ spacing: { before: 80, after: 30 }, keepNext: true, children: [new TextRun({ text: it.action !== it.group ? `${it.action} — ${it.group}` : it.group, font: FONT, bold: true, size: 18, color: "52514E" })] }));
+    }
+    const lines = [...(it.det.length ? it.det : [it.sub]).filter(Boolean), ...(it.quand ? [`Quand : ${it.quand}`] : [])];
+    out.push(
+      new Paragraph({
+        spacing: { after: 50 },
+        indent: { left: 360, hanging: 360 },
+        children: [
+          new TextRun({ text: `${it.n}. `, font: FONT, bold: true, size: 19, color: it.color.replace("#", "").toUpperCase() }),
+          new TextRun({ text: it.nom, font: FONT, bold: true, size: 19 }),
+          ...lines.map((l) => new TextRun({ text: l, font: FONT, size: 18, color: "3A3936", break: 1 })),
+        ],
+      }),
+    );
+  }
+  return out;
+}
 
 const caption = (text: string) => new Paragraph({ spacing: { before: 200, after: 80 }, keepNext: true, children: [new TextRun({ text, font: FONT, bold: true, size: 20 })] });
 
@@ -152,7 +180,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       const m = r.maps.find((x) => x.id === b.mapId);
       if (!m) return [];
       const srcs = [...new Map(m.layers.map((l) => [l.source.id + l.source.url, l.source])).values()];
-      if (m.poster) return [image(mapSvg(m), 600), small(`Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")}${m.note ? ` — ${m.note}` : ""}`)];
+      if (m.poster) return [image(mapSvg(m, 720, 540, { posterList: false }), 600), ...posterListDocx(m), small(`Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")}${m.note ? ` — ${m.note}` : ""}`)];
       return [caption(m.title), image(mapSvg(m), 560), small(`Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")} · Fond : contours ADMIN EXPRESS (IGN) via geo.api.gouv.fr${m.note ? ` — ${m.note}` : ""}`)];
     }
     case "locator": {

@@ -329,18 +329,28 @@ describe("chaîne de génération (API simulées)", () => {
 
   it("logements sociaux (RPLS) : résidences, bureaux, carte, porte-à-porte", async () => {
     const t = report.tables.find((x) => x.id === "lfi_hlm")!;
-    expect(t.rows[0]).toMatchObject({ nom: "Les Musiciens", logements: expect.stringMatching(/^320$/) });
+    // Fiche : rue par rue (les deux programmes de la rue des Roses ensemble).
+    expect(t.rows[0]).toMatchObject({ rue: "Rue des Roses (n° 4 et 12)", nom: "Les Musiciens, Clos des Roses", logements: "500" });
     expect(String(t.rows[0].bv)).toMatch(/prioritaire/);
     const prioT = report.tables.find((x) => x.id === "lfi_bureaux_prio")!;
     expect(prioT.columns.map((c) => c.key)).toContain("hlm");
     const m = report.maps.find((x) => x.id === "lfi_affiche")!;
     const hl = m.layers.find((l) => l.id === "hlm")!;
-    // Les deux résidences voisines (moins de 120 m) forment un seul ensemble de 500 logements.
-    expect(hl.data.features).toHaveLength(1);
-    expect(hl.data.features[0].properties?.sub).toBe("environ 500 logements sociaux");
+    // Rue par rue : les deux programmes de la rue des Roses forment un seul lieu numéroté (500 logements, bureau prioritaire).
+    expect(hl.data.features[0].properties).toMatchObject({ nom: "Rue des Roses (n° 4 et 12)", sub: expect.stringMatching(/^500 logements sociaux · bureau 2 \(prioritaire\)/) });
     expect(m.layers.find((l) => l.id === "qpv")?.style?.fill).toBe("none");
+    // Une seule numérotation : la carte, la liste HTML et la carte interactive.
+    const { posterItems } = await import("@/lib/render/poster");
+    const items = posterItems(m);
+    expect(items.map((i) => i.n)).toEqual(items.map((_, k) => k + 1));
+    expect(items.some((i) => i.layerId === "hlm" && i.quand)).toBe(true);
+    const { mapSvg } = await import("@/lib/render/svg");
+    expect(mapSvg(m, 720, 540, { posterList: false })).not.toContain("OÙ AGIR");
+    expect(mapSvg(m)).toContain("OÙ AGIR");
+    // Nom de la rue ciblée écrit le long de la voie.
+    expect(mapSvg(m)).toContain("Rue des Roses</text>");
     const fiche = report.sections[0];
-    expect(fiche.blocks.some((b) => b.type === "paragraph" && /en commençant par les résidences HLM Les Musiciens \(320 logements\)/.test(b.text))).toBe(true);
+    expect(fiche.blocks.some((b) => b.type === "paragraph" && /en commençant par les logements sociaux de la rue des Roses \(500 logements\)/.test(b.text))).toBe(true);
     const porte = report.sections.find((s) => s.id === "PORTE")!;
     expect(porte.blocks.some((b) => b.type === "paragraph" && /Résidences HLM du bureau/.test(b.text))).toBe(true);
   });

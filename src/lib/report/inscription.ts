@@ -126,7 +126,15 @@ export function buildInscription(c: Collected, ranked: BvRow[], dv: (bv: string)
   const dep = out.departement?.taux;
   if (ecart > 100 && taux < 100 && (dep == null ? taux < 92 : taux < dep - 2)) {
     const bvTxt = out.bureaux.length ? ` L'écart semble le plus fort dans ${out.bureaux.length > 1 ? "les bureaux" : "le bureau"} ${out.bureaux.map((b) => dv(b.bv)).join(", ").replace(/, ([^,]*)$/, " et $1")} : à vérifier sur le terrain avant une campagne d'inscription.` : "";
-    out.ficheText = `**Des habitants absents des listes électorales** : environ ${fmtNumber(Math.round(ecart / 100) * 100)} adultes de nationalité française ne sont pas inscrits dans la commune (${pct(100 - taux)} des adultes${dep != null ? `, contre ${pct(100 - dep)} dans le département` : ""}), qu'ils ne soient inscrits nulle part ou ailleurs.${bvTxt}`;
+    // Ville étudiante : beaucoup de 18-24 ans restent inscrits chez leurs parents ; l'écart ne mesure pas une non-inscription.
+    const adultes = comRows.reduce((s, r) => s + r.adultes, 0);
+    const jeunes = comRows.every((r) => r.jeunes != null) ? comRows.reduce((s, r) => s + (r.jeunes ?? 0), 0) : null;
+    const partJeunes = jeunes != null && adultes ? (100 * jeunes) / adultes : null;
+    const n = fmtNumber(Math.round(ecart / 100) * 100);
+    out.ficheText =
+      partJeunes != null && partJeunes >= 15
+        ? `**Des jeunes à inscrire sur les listes** : la commune compte beaucoup de 18-24 ans (${pct(partJeunes)} des adultes, contre 10 % environ en France), souvent étudiants et encore inscrits chez leurs parents. Environ ${n} adultes de nationalité française ne sont pas inscrits dans la commune : une campagne d'inscription vise d'abord les résidences étudiantes et les jeunes qui viennent de s'installer.${bvTxt}`
+        : `**Des habitants absents des listes électorales** : environ ${n} adultes de nationalité française ne sont pas inscrits dans la commune (${pct(100 - taux)} des adultes${dep != null ? `, contre ${pct(100 - dep)} dans le département` : ""}), qu'ils ne soient inscrits nulle part ou ailleurs.${bvTxt}`;
   }
   return out;
 }
