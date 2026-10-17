@@ -124,3 +124,20 @@ describe("articles des départements", () => {
     expect(circoLabel(1, "Creuse")).toMatch(/circonscription de la Creuse$/);
   });
 });
+
+describe("noms lisibles et horaires du week-end", () => {
+  it("développe les abréviations et rétablit les accents", async () => {
+    const { prettyFr } = await import("@/lib/format");
+    expect(prettyFr("Rue du Mal de Lattre Tassigny")).toBe("Rue du Maréchal de Lattre Tassigny");
+    expect(prettyFr("Allee Paul Signac")).toBe("Allée Paul Signac");
+    expect(prettyFr("Res.university Berges de Seine")).toBe("Résidence universitaire Berges de Seine");
+    expect(prettyFr("Résidence de clichy", "Clichy")).toBe("Résidence de Clichy");
+    expect(prettyFr("École Jean Jaures")).toBe("École Jean Jaurès");
+  });
+  it("ne garde que les créneaux du samedi et du dimanche", async () => {
+    const { weekendHours } = await import("@/lib/report/affiche");
+    expect(weekendHours("mercredi, samedi et dimanche, 8 h – 13 h")).toBe("samedi et dimanche, 8 h – 13 h");
+    expect(weekendHours("vendredi, 12 h – 21 h ; dimanche, 8 h – 14 h")).toBe("dimanche, 8 h – 14 h");
+    expect(weekendHours("mardi et jeudi, 8 h – 12 h")).toBe("");
+  });
+});

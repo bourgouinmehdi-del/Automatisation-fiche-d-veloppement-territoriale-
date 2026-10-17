@@ -444,3 +444,58 @@ out skel;`;
     return { list: list.sort((a, b) => Number(b.hyper) - Number(a.hyper) || b.arrets - a.arrets), url: `${r.url}?data=${encodeURIComponent(q)}`, retrievedAt: r.retrievedAt };
   });
 }
+
+/* ------------------------------------------------ stations de transport */
+
+export interface StationTC {
+  nom: string;
+  /** « métro », « RER », « tram », « gare ». */
+  mode: string;
+  lon: number;
+  lat: number;
+}
+
+/** Stations nommées de métro, RER, tram et gares (OpenStreetMap), pour les points de rendez-vous. */
+export async function collectStationsTC(http: TrackedHttp, bbox: Bbox): Promise<{ list: StationTC[]; url: string; retrievedAt: string }> {
+  const key = bbox.map((v) => v.toFixed(3)).join(",");
+  return cachedExtract(`stationstc|${key}`, 24 * 30, async () => {
+    const [w, s, e, n] = bbox;
+    const b = `(${s},${w},${n},${e})`;
+    const q = `[out:json][timeout:60];
+(
+  node["railway"~"^(station|halt|tram_stop)$"]["name"]${b};
+  node["public_transport"="station"]["name"]${b};
+);
+out tags;`;
+    const r = await overpass<{ elements?: El[] }>(http, q);
+    const list: StationTC[] = [];
+    for (const el of r.data?.elements ?? []) {
+      const t = el.tags ?? {};
+      if (el.lon == null || el.lat == null || !t.name) continue;
+      const mode =
+        t.station === "subway" || t.subway === "yes"
+          ? "métro"
+          : /\bRER\b/.test(`${t.network ?? ""} ${t.line ?? ""}`)
+            ? "RER"
+            : t.railway === "tram_stop" || t.tram === "yes" || t.station === "light_rail"
+              ? "tram"
+              : t.railway === "station" || t.railway === "halt" || t.train === "yes"
+                ? "gare"
+                : "";
+      if (!mode) continue;
+      if (list.some((x) => x.nom === t.name && x.mode === mode)) continue;
+      list.push({ nom: t.name, mode, lon: el.lon, lat: el.lat });
+    }
+    return { list, url: `${r.url}?data=${encodeURIComponent(q)}`, retrievedAt: r.retrievedAt };
+  });
+}
+
+/** Station la plus proche d'un point, à moins de `maxKm` : « métro Mairie de Clichy (250 m) ». */
+export function nearestStation(list: StationTC[], lon: number, lat: number, maxKm = 0.8): (StationTC & { m: number }) | null {
+  let best: (StationTC & { m: number }) | null = null;
+  for (const st of list) {
+    const m = Math.round(turf.distance([lon, lat], [st.lon, st.lat]) * 1000);
+    if (m <= maxKm * 1000 && (!best || m < best.m)) best = { ...st, m };
+  }
+  return best;
+}

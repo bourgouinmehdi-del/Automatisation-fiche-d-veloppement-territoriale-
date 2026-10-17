@@ -1,3 +1,4 @@
+import { prettyFr } from "../format";
 import * as turf from "@turf/turf";
 import {
   referentiel,
@@ -29,7 +30,7 @@ import { BureauGeo, collectBureauxGeo } from "../collectors/bureaux-geo";
 import { InternalData, loadInternalData } from "../collectors/interne";
 import { loadStmt, type StmtSeries } from "../collectors/emploi";
 import { CATALOGUE_URL, isPorteAPorte, loadCatalogue, residencesOf, residencesOfGeocoded, type ResidenceEtudiante } from "../collectors/residences-etudiantes";
-import { circoCommunes, circoLabel, collectCirconscriptions, collectConvivialite, collectDepartementsVoisins, collectFondOsm, collectGrandesSurfaces, fitAspect, type Bbox, type Circo, type FondOsm, type GrandeSurface, type LieuConvivial, type Residence } from "../collectors/carto";
+import { circoCommunes, circoLabel, collectCirconscriptions, collectConvivialite, collectDepartementsVoisins, collectFondOsm, collectGrandesSurfaces, collectStationsTC, fitAspect, type Bbox, type Circo, type FondOsm, type GrandeSurface, type LieuConvivial, type StationTC, type Residence } from "../collectors/carto";
 import { rankBureaux } from "../analysis/political";
 import { collectRpls, type RplsResult } from "../collectors/rpls";
 import { collectAdultes, type AdultesDep } from "../collectors/adultes";
@@ -176,6 +177,8 @@ export interface Collected {
   convivialite?: { list: LieuConvivial[]; source: SourceRef };
   /** Hypermarchés et supermarchés des grands groupes desservis en transports en commun. */
   grandesSurfaces?: { list: GrandeSurface[]; source: SourceRef };
+  /** Stations nommées (métro, RER, tram, gares) autour de la commune. */
+  stationsTC?: { list: StationTC[]; source: SourceRef };
   residences?: { list: (ResidenceEtudiante & { porte: boolean })[]; source: SourceRef };
   /** Cartes « affiche » (département) : circonscriptions et départements voisins. */
   circos?: { list: Circo[]; source: SourceRef };
@@ -881,7 +884,11 @@ export async function collect(
       async (http) => {
         const plmR = plmInfo(commune.code);
         const r = await collectRpls(http, commune.code, { parent: plmR?.parent, contour: commune.contour });
-        if (r.total) c.rpls = { ...r, source: ctx.ref("rpls", r.url, r.retrievedAt, { vintage: r.millesime ?? undefined }) };
+        // Noms lisibles (« Mal » → « Maréchal », « Allee » → « Allée »), y compris pour les extractions en cache.
+        const pf = (t: string) => prettyFr(t, commune.nom);
+        const residences = r.residences.map((x) => ({ ...x, nom: pf(x.nom), adresse: pf(x.adresse), ...(x.voie ? { voie: pf(x.voie) } : {}) }));
+        const ensembles = r.ensembles.map((x) => ({ ...x, nom: pf(x.nom) }));
+        if (r.total) c.rpls = { ...r, residences, ensembles, source: ctx.ref("rpls", r.url, r.retrievedAt, { vintage: r.millesime ?? undefined }) };
         else http.notes.push("Aucun logement social recensé dans la commune");
       },
       { theme: "logement", label: "Résidences de logements sociaux (RPLS)" },
@@ -1296,7 +1303,7 @@ export async function collect(
       // Positions du catalogue parfois arrondies (≈ 1 km) : précisées par la Base adresse nationale.
       const list = enabled("ban") ? await residencesOfGeocoded(http, cat.list, commune) : residencesOf(cat.list, commune);
       c.residences = {
-        list: list.map((r) => ({ ...r, porte: isPorteAPorte(r) })),
+        list: list.map((r) => ({ ...r, nom: prettyFr(r.nom, commune.nom), porte: isPorteAPorte(r) })),
         source: ctx.ref("residences_etudiantes", CATALOGUE_URL, cat.retrievedAt || new Date().toISOString(), {
           dataset: cat.origin === "interne" ? "classeur déposé dans « Données internes »" : "copie embarquée dans l'application",
         }),
@@ -1316,6 +1323,11 @@ export async function collect(
         }
       });
       c.convivialite = { list: inside, source: ctx.ref("osm", r.url, r.retrievedAt) };
+    });
+    // Stations de métro, RER, tram et gares (points de rendez-vous du convoi), un peu au-delà de la commune.
+    await ctx.step("osm", "cartes:transports", async (http) => {
+      const r = await collectStationsTC(http, [cb[0] - 0.008, cb[1] - 0.006, cb[2] + 0.008, cb[3] + 0.006]);
+      c.stationsTC = { list: r.list, source: ctx.ref("osm", r.url, r.retrievedAt) };
     });
     // Grandes surfaces des grands groupes, desservies en transports en commun (tractage du samedi).
     await ctx.step("osm", "cartes:grandes-surfaces", async (http) => {

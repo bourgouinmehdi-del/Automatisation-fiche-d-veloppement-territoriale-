@@ -115,3 +115,59 @@ export function scoreColor(v: number): string {
   const c = a.map((v0, i) => Math.round(v0 + (b[i] - v0) * t));
   return `#${c.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
 }
+
+/* ------------------------------------------------- noms de lieux lisibles */
+
+// Abréviations des répertoires (logements sociaux, lieux de vote, catalogues).
+const ABBR: [RegExp, string][] = [
+  [/\bMal\b\.?/g, "Maréchal"],
+  [/\bMme\b\.?/g, "Madame"],
+  [/\bMlle\b\.?/g, "Mademoiselle"],
+  [/\b(Gal|Gl|Gén)\b\.?/g, "Général"],
+  [/\b(Pdt|Pres|Prés)\b\.?(?= )/g, "Président"],
+  [/\bDr\b\.?(?= )/g, "Docteur"],
+  [/\bCdt\b\.?/g, "Commandant"],
+  [/\bLt\b\.?(?= )/g, "Lieutenant"],
+  [/\bCne\b\.?(?= )/g, "Capitaine"],
+  [/\bSte\b\.?(?=[ -][A-ZÀ-Ý])/g, "Sainte"],
+  [/\bSt\b\.?(?=[ -][A-ZÀ-Ý])/g, "Saint"],
+  [/\bR[ée]s\b\.?\s*(?=univ)/gi, "Résidence "],
+  [/\buniversity\b/gi, "universitaire"],
+  [/^R[ée]s\b\.?\s*/i, "Résidence "],
+  [/\bAv\b\.?(?= )/g, "Avenue"],
+  [/\bBd\b\.?(?= )/g, "Boulevard"],
+  [/\bImp\b\.?(?= )/g, "Impasse"],
+  [/\bChem\b\.?(?= )/g, "Chemin"],
+  [/\bRte\b\.?(?= )/g, "Route"],
+  [/\bSq\b\.?(?= )/g, "Square"],
+  [/\bFg\b\.?(?= )/g, "Faubourg"],
+];
+// Accents absents des fichiers en capitales (mots et prénoms fréquents dans les noms de rues).
+const ACCENTS: Record<string, string> = {
+  Allee: "Allée", Ecole: "École", Eglise: "Église", Jaures: "Jaurès", Republique: "République", Liberte: "Liberté", Egalite: "Égalité",
+  Fraternite: "Fraternité", General: "Général", Marechal: "Maréchal", Hotel: "Hôtel", Theatre: "Théâtre", Cite: "Cité", Residence: "Résidence",
+  Prefecture: "Préfecture", Hopital: "Hôpital", Elysees: "Élysées", Etoile: "Étoile", Etienne: "Étienne", Emile: "Émile", Edouard: "Édouard",
+  Eugene: "Eugène", Andre: "André", Rene: "René", Frederic: "Frédéric", Leon: "Léon", Celestin: "Célestin", Felix: "Félix", Helene: "Hélène",
+  Therese: "Thérèse", Genevieve: "Geneviève", Pere: "Père", College: "Collège", Lycee: "Lycée", Mediatheque: "Médiathèque",
+  Bibliotheque: "Bibliothèque", Elementaire: "Élémentaire", Chateau: "Château", Foret: "Forêt", Vallee: "Vallée", Prevert: "Prévert",
+  Moliere: "Molière", Peguy: "Péguy", Peri: "Péri", Desire: "Désiré", Gymnase: "Gymnase", Salle: "Salle", Clement: "Clément",
+  Jerome: "Jérôme", Severine: "Séverine", Aime: "Aimé", Cesaire: "Césaire", Lenine: "Lénine", Defense: "Défense", Resistance: "Résistance",
+  Liberation: "Libération", Federation: "Fédération", Nevers: "Nevers",
+};
+
+/**
+ * Nom de rue, de résidence ou de lieu de vote lisible : abréviations développées
+ * (« Mal » → « Maréchal », « Mme » → « Madame »), accents rétablis (« Allee » →
+ * « Allée », « Jaures » → « Jaurès »), nom de la commune remis en forme
+ * (« Résidence de clichy » → « Résidence de Clichy »).
+ */
+export function prettyFr(name: string, communeNom?: string): string {
+  let t = name.replace(/\s+/g, " ").trim();
+  for (const [re, rep] of ABBR) t = t.replace(re, rep);
+  t = t.replace(/\b[A-Z][a-z]+\b/g, (w) => ACCENTS[w] ?? w);
+  if (communeNom) {
+    const esc = communeNom.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/[-\s]/g, "[-\\s]");
+    t = t.replace(new RegExp(`(?<![\\p{L}])${esc}(?![\\p{L}])`, "giu"), communeNom);
+  }
+  return t.replace(/\s+/g, " ").replace(/^./, (c) => c.toUpperCase());
+}

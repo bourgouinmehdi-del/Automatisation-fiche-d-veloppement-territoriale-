@@ -15,6 +15,7 @@
  *    (« marge de mobilisation ») ; priorités par tiers de potentiel ;
  *  - aucune donnée individuelle ; aucune variable d'origine ou de nationalité.
  */
+import { prettyFr } from "../format";
 import type { BureauResult, ElectionResult } from "../collectors/elections";
 
 export interface Family {
@@ -169,7 +170,7 @@ export function prettyBvLabel(raw: string): string {
     })
     .join(" ")
     .replace(/\b([ld]) ([A-ZÉÈ])/g, "$1'$2");
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  return prettyFr(s.charAt(0).toUpperCase() + s.slice(1));
 }
 
 export interface BvRow {
