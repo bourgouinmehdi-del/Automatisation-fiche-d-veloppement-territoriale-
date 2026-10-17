@@ -2123,7 +2123,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (has("lfi_inscription")) detail.push({ type: "heading", text: "Inscription sur les listes électorales" }, ...(insc.commune ? [{ type: "paragraph" as const, text: `Environ ${fmtNumber(Math.round(insc.commune.adultesFr / 100) * 100)} adultes de nationalité française recensés pour ${fmtNumber(insc.commune.inscrits)} électeurs inscrits, soit ${Math.round(insc.commune.taux)} inscrits pour 100 adultes${insc.departement ? ` (département : ${Math.round(insc.departement.taux)})` : ""}.` }] : []), { type: "table", tableId: "lfi_inscription" });
   if (c.emploi?.commune.length) detail.push({ type: "heading", text: "Demandeurs d'emploi" }, { type: "table", tableId: "table_demandeurs" }, { type: "chart", chartId: "chart_demandeurs" });
 
-  /* ---------------------------------------------------------- le convoi, heure par heure */
+  /* ---------------------------------------------------------- effectifs */
   // Estimation des portes : 1,4 électeur inscrit par logement ; un binôme frappe à environ 30 portes par heure.
   const PAR_LOGEMENT = 1.4;
   const PORTES_HEURE = 30;
@@ -2133,54 +2133,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   });
   const totalBinomes = portesBv.reduce((n, x) => n + x.binomes, 0);
   const totalPortes = portesBv.reduce((n, x) => n + x.portes, 0);
-  // Point de rendez-vous : la station la plus proche du cœur des bureaux prioritaires, sinon le premier lieu de vote.
-  const prioPts = prio.map((p) => centroids.get(p.bv)).filter((x): x is [number, number] => !!x);
-  const coeur: [number, number] | null = prioPts.length ? [prioPts.reduce((a, x) => a + x[0], 0) / prioPts.length, prioPts.reduce((a, x) => a + x[1], 0) / prioPts.length] : null;
-  const rdvSt = coeur ? nearestStation(c.stationsTC?.list ?? [], coeur[0], coeur[1], 1.2) : null;
-  const rdv = rdvSt
-    ? rdvSt.mode === "gare"
-      ? gareNom(rdvSt.nom)
-      : `${cap(rdvSt.mode)} ${rdvSt.nom}`
-    : prio[0] && labels.has(prio[0].bv)
-      ? `${labels.get(prio[0].bv)} (lieu de vote du bureau ${dv(prio[0].bv)})`
-      : "";
-  const ruesTop = ruesRank.filter((r) => r.bv && prioBvSet.has(r.bv)).slice(0, 2);
-  const samediMarche = markets.find((m) => /samedi/.test(weekendHours(m.infos)));
-  const dimancheMarche = markets.find((m) => /dimanche/.test(weekendHours(m.infos)) && m !== samediMarche) ?? markets.find((m) => /dimanche/.test(weekendHours(m.infos)));
-  const parc = conv.find((x) => x.kind === "parc");
-  const bar = conv.find((x) => x.kind === "bar");
-  const crous = resPorte.find((r) => !/foyer/i.test(resType(r)));
-  const journee: Record<string, string>[] = [];
   if (prio.length) {
-    journee.push({ quand: "Samedi 9 h 45", quoi: "Rendez-vous", ou: rdv || "À fixer avec les militants locaux", detail: "Accueil, binômes, tracts et feuilles de porte-à-porte (une par bureau)" });
-    journee.push({
-      quand: "10 h – 12 h 30",
-      quoi: "Porte-à-porte",
-      ou: `${prio.length > 1 ? "Bureaux" : "Bureau"} ${joinFr(prio.map((p) => dv(p.bv)))}`,
-      detail: `Environ ${fmtNumber(totalPortes)} portes${ruesTop.length ? ` ; commencer par ${joinFr(ruesTop.map((r) => `${deVoie(r.voie).replace(/^de la /, "la ").replace(/^du /, "le ").replace(/^de l'/, "l'").replace(/^des /, "les ").replace(/^de /, "")}${r.nums.length ? ` (${numsLabel(r.nums)})` : ""}`))}` : ""}`,
-    });
-    if (samediMarche) journee.push({ quand: "10 h – 12 h", quoi: "Tractage au marché (en parallèle, 3 ou 4 militants)", ou: samediMarche.nom, detail: cap(weekendHours(samediMarche.infos)) });
-    journee.push({ quand: "12 h 30 – 14 h", quoi: parc ? "Pique-nique" : "Pause déjeuner", ou: parc ? parc.nom : rdv || "Près du point de rendez-vous", detail: parc ? `Parc d'environ ${fmtNumber(parc.ha ?? 0)} ha ; y inviter les sympathisants rencontrés le matin` : "Point d'étape : rues faites, contacts pris" });
-    const tract = sup[0] ?? gares[0];
-    if (tract) journee.push({ quand: "14 h 30 – 16 h", quoi: sup[0] ? "Tractage à la grande surface" : "Tractage à la gare", ou: sup[0] ? sup[0].nom : gareNom(tract.nom), detail: sup[0] ? `Affluence du samedi${/ ; (à|desservi)/.test(sup[0].infos) ? ` ; ${sup[0].infos.split(" ; ")[1]}` : ""}` : tract.infos });
-    journee.push({ quand: "16 h 30 – 19 h", quoi: "Porte-à-porte, second passage", ou: "Mêmes bureaux", detail: "Les portes qui n'ont pas ouvert le matin : beaucoup d'habitants rentrent en fin d'après-midi" });
-    if (bar) journee.push({ quand: "19 h", quoi: "Moment convivial", ou: bar.nom, detail: `${convTxt(bar)} ; avec les militants et les sympathisants de la journée` });
-    if (dimancheMarche) journee.push({ quand: "Dimanche matin", quoi: "Tractage au marché", ou: dimancheMarche.nom, detail: cap(weekendHours(dimancheMarche.infos)) });
-    if (crous) journee.push({ quand: "Dimanche 18 h – 20 h", quoi: "Porte-à-porte en résidence étudiante", ou: crous.nom, detail: `${crous.logements ? `${fmtNumber(crous.logements)} logements ; ` : ""}inscription sur les listes` });
-    out.tables.push({
-      id: "lfi_journee",
-      title: "Le convoi, heure par heure (proposition)",
-      theme: "strategie",
-      columns: [
-        { key: "quand", label: "Quand" },
-        { key: "quoi", label: "Quoi" },
-        { key: "ou", label: "Où", wide: true },
-        { key: "detail", label: "Précisions", wide: true },
-      ],
-      rows: journee,
-      sources: [...(bvRef ? [bvRef.source] : []), ...(c.stationsTC ? [c.stationsTC.source] : [])],
-      note: "Proposition à adapter avec les militants locaux : horaires du marché à confirmer, autorisation à demander pour tracter devant un magasin.",
-    });
     out.tables.push({
       id: "lfi_effectifs",
       title: "Combien de militants pour les bureaux prioritaires",
@@ -2200,53 +2153,33 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     });
   }
 
-  /* ---------------------------------------------------------- sujets à aborder à la porte */
-  // Les trois sujets où la commune se distingue le plus du département, chacun avec un chiffre local
-  // et une question pour ouvrir la discussion.
-  type Sujet = { sujet: string; chiffre: string; question: string; poids: number };
-  const sujets: Sujet[] = [];
+  /* ---------------------------------------------------------- chiffres à avoir en tête à la porte */
+  // Deux ou trois chiffres où la commune s'écarte nettement du département, dits simplement.
+  type Fait = { txt: string; dep: string; poids: number };
+  const faits: Fait[] = [];
   const sc = (id: string) => socioCmp.find((x) => x.id === id || x.d.id === id);
   const up = (x: ReturnType<typeof sc>) => !!x && x.dir === "superieur" && Math.abs(x.a.value! - x.b.value!) >= 2;
-  const povS = sc("taux_pauvrete");
-  if (up(povS)) sujets.push({ sujet: "Vie chère", chiffre: `${pp(povS!.a.value)} des habitants vivent sous le seuil de pauvreté (département : ${pp(povS!.b.value)})`, question: "Comment vous en sortez-vous avec les prix, les factures ?", poids: povS!.score + 0.3 });
-  const hlmS = sc("part_locataires_hlm");
-  if (up(hlmS)) sujets.push({ sujet: "Logement", chiffre: `${pp(hlmS!.a.value)} des foyers vivent en HLM (département : ${pp(hlmS!.b.value)})`, question: "Votre logement est-il bien entretenu ? Les loyers et les charges ont-ils augmenté ?", poids: hlmS!.score });
-  const carS = sc("part_menages_sans_voiture");
-  if (up(carS)) sujets.push({ sujet: "Transports", chiffre: `${pp(carS!.a.value)} des foyers n'ont pas de voiture (département : ${pp(carS!.b.value)})`, question: "Les transports vous permettent-ils d'aller travailler, de faire vos courses, de voir un médecin ?", poids: carS!.score });
-  const chomS = sc("taux_chomage_rp");
-  if (up(chomS)) sujets.push({ sujet: "Emploi", chiffre: `${pp(chomS!.a.value)} de chômage (département : ${pp(chomS!.b.value)})`, question: "Trouver un emploi stable ici, c'est possible ?", poids: chomS!.score });
-  const jeunesS = sc("part_moins_25");
-  if (up(jeunesS)) sujets.push({ sujet: "Jeunesse", chiffre: `${pp(jeunesS!.a.value)} des habitants ont moins de 25 ans (département : ${pp(jeunesS!.b.value)})`, question: "Les jeunes trouvent-ils ici un logement, une formation, un travail ?", poids: jeunesS!.score * 0.8 });
-  const ageS = sc("part_65_plus");
-  if (up(ageS)) sujets.push({ sujet: "Retraites", chiffre: `${pp(ageS!.a.value)} des habitants ont plus de 65 ans (département : ${pp(ageS!.b.value)})`, question: "Votre pension suffit-elle pour vivre correctement ?", poids: ageS!.score * 0.8 });
+  const fait = (id: string, f: (a: string) => string, k = 1) => {
+    const x = sc(id);
+    if (up(x)) faits.push({ txt: f(pp(x!.a.value)), dep: pp(x!.b.value), poids: x!.score * k });
+  };
+  fait("taux_pauvrete", (a) => `${a} des habitants sous le seuil de pauvreté`, 1.3);
+  fait("taux_chomage_rp", (a) => `${a} de chômage`);
+  fait("part_locataires_hlm", (a) => `${a} des foyers en HLM`);
+  fait("part_menages_sans_voiture", (a) => `${a} des foyers sans voiture`);
   const medC = out.indicators.find((i) => i.id === "medecins_10k" && i.geo.level === "commune");
   const medD = out.indicators.find((i) => i.id === "medecins_10k" && i.geo.level === "departement");
   if (medC?.value != null && medD?.value && medC.value < medD.value * 0.75)
-    sujets.push({ sujet: "Santé", chiffre: `${fmtNumber(medC.value, 1)} médecins généralistes pour 10 000 habitants (département : ${fmtNumber(medD.value, 1)})`, question: "Arrivez-vous à voir un médecin quand vous en avez besoin ?", poids: 1 - medC.value / medD.value });
-  const sujetsTop = sujets.sort((a, b) => b.poids - a.poids).slice(0, 3);
-  if (sujetsTop.length >= 2)
-    out.tables.push({
-      id: "lfi_sujets",
-      title: `${sujetsTop.length === 3 ? "Trois" : "Deux"} sujets à aborder à la porte`,
-      theme: "strategie",
-      columns: [
-        { key: "sujet", label: "Sujet" },
-        { key: "chiffre", label: "Ce que disent les chiffres", wide: true },
-        { key: "question", label: "Pour ouvrir la discussion", wide: true },
-      ],
-      rows: sujetsTop.map(({ sujet, chiffre, question }) => ({ sujet, chiffre, question })),
-      sources: [...new Map(socioCmp.map((x) => [x.a.source.dataset ?? x.a.source.id, x.a.source])).values()].slice(0, 4),
-      note: "Les sujets où la commune se distingue le plus du département. Écouter d'abord : la question sert à lancer la conversation.",
-    });
+    faits.push({ txt: `${fmtNumber(medC.value, 1)} médecins généralistes pour 10 000 habitants`, dep: fmtNumber(medD.value, 1), poids: 1 - medC.value / medD.value });
+  const faitsTop = faits.sort((x, y) => y.poids - x.poids).slice(0, 3);
+  const faitsTxt = faitsTop.map((f, i) => `${f.txt} (${f.dep}${i === 0 ? " dans le département" : ""})`).join(" ; ");
 
   blocks.push({ type: "heading", text: "Actions recommandées" });
   if (planIntro) blocks.push({ type: "paragraph", text: planIntro });
-  if (has("lfi_journee")) blocks.push({ type: "table", tableId: "lfi_journee" });
   if (has("lfi_effectifs")) blocks.push({ type: "table", tableId: "lfi_effectifs" });
-  if (has("lfi_sujets")) blocks.push({ type: "table", tableId: "lfi_sujets" });
+  if (faitsTop.length >= 2) blocks.push({ type: "paragraph", text: `${B("À avoir en tête à la porte")} : ${faitsTxt}.` });
   if (affiche) blocks.push({ type: "map", mapId: "lfi_affiche" });
-  // Plan détaillé (une ligne par action, avec le pourquoi) : en annexe, la journée heure par heure le remplace.
-  if (has("lfi_plan")) (has("lfi_journee") ? detail : blocks).push({ type: "heading", text: "Toutes les actions, une par une" }, { type: "table", tableId: "lfi_plan" });
+  if (has("lfi_plan")) blocks.push({ type: "table", tableId: "lfi_plan" });
   if (has("lfi_hlm")) blocks.push({ type: "table", tableId: "lfi_hlm" });
   else blocks.push({ type: "note", text: "Aucun lieu d'action identifié automatiquement (marchés, gares, commerces, établissements) : à compléter avec les militants locaux." });
   if (access.length) blocks.push({ type: "paragraph", text: `${B("Accès")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });

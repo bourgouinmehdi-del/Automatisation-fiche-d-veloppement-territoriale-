@@ -247,10 +247,10 @@ describe("chaîne de génération (API simulées)", () => {
     expect(plan.rows.find((r) => /hypermarché/.test(String(r.action)))).toMatchObject({ ou: "E.Leclerc (Avenue fictive)" });
     const gs = actions.groups.find((g) => g.title === "Grandes surfaces")!.items.join(" ");
     expect(gs).not.toMatch(/Carrefour City|Auchan/);
-    // Le convoi heure par heure : rendez-vous à la station la plus proche, pique-nique au parc, effectifs estimés.
-    const jour = report.tables.find((t) => t.id === "lfi_journee")!;
-    expect(jour.rows[0]).toMatchObject({ quoi: "Rendez-vous", ou: "Métro Mairie fictive" });
-    expect(jour.rows.some((r) => r.quoi === "Pique-nique" && r.ou === "Parc fictif")).toBe(true);
+    // Effectifs estimés pour les bureaux prioritaires.
+    const tete = report.sections.find((x) => x.id === "LFI")!.blocks.find((b) => b.type === "paragraph" && /À avoir en tête/.test(b.text));
+    expect(tete && "text" in tete ? tete.text : "").toMatch(/médecins généralistes .*\(6,3 dans le département\) ; .* de chômage/);
+    expect(report.tables.some((t) => t.id === "lfi_sujets")).toBe(false);
     const eff = report.tables.find((t) => t.id === "lfi_effectifs")!;
     expect(String(eff.rows[eff.rows.length - 1].binomes)).toMatch(/militants/);
     // Grande surface : desserte nommée.
