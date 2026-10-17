@@ -216,6 +216,15 @@ function overpass(body: string) {
       ],
     };
   }
+  // Stations (points de rendez-vous) : un métro près des bureaux prioritaires.
+  if (q.includes('"public_transport"="station"')) {
+    return {
+      elements: [
+        { type: "node", id: 901, lat: LAT0 + 0.016, lon: LON0 + 0.012, tags: { railway: "station", station: "subway", name: "Mairie fictive" } },
+        { type: "node", id: 902, lat: LAT0 + 0.0065, lon: LON0 + 0.0305, tags: { railway: "tram_stop", name: "Centre commercial" } },
+      ],
+    };
+  }
   // Moment convivial : un grand parc nommé, un bar de 80 places, un petit bar (écarté).
   if (q.includes("biergarten")) {
     return {

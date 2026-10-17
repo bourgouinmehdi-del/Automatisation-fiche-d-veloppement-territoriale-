@@ -54,6 +54,37 @@ export const WEEKEND = {
   supermarche: "Samedi 10 h – 12 h ou dimanche matin, avec l'accord du magasin",
 };
 
+/**
+ * Horaires réduits au week-end : « mercredi, samedi et dimanche, 8 h – 13 h » → « samedi et dimanche,
+ * 8 h – 13 h » ; « vendredi, 12 h – 21 h ; dimanche, 8 h – 14 h » → « dimanche, 8 h – 14 h ».
+ * Chaîne vide si aucun créneau du week-end n'est connu.
+ */
+export function weekendHours(h: string): string {
+  const JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+  const out: string[] = [];
+  for (const part of h.split(/\s*;\s*/)) {
+    const m = part.match(/^(.*?),\s*(\d.*)$/);
+    if (!m) continue;
+    const [, days, hours] = m;
+    let we: string[] = [];
+    if (/tous les jours/i.test(days)) we = ["samedi", "dimanche"];
+    else {
+      for (const r of days.matchAll(/du (\w+) au (\w+)/gi)) {
+        const a = JOURS.indexOf(r[1].toLowerCase());
+        const b = JOURS.indexOf(r[2].toLowerCase());
+        if (a >= 0 && b >= a) we.push(...JOURS.slice(Math.max(a, 5), b + 1));
+      }
+      for (const d of days.replace(/du \w+ au \w+/gi, "").split(/,|\bet\b/)) {
+        const j = d.trim().toLowerCase();
+        if (j === "samedi" || j === "dimanche") we.push(j);
+      }
+    }
+    we = [...new Set(we)].sort((x, y) => JOURS.indexOf(x) - JOURS.indexOf(y));
+    if (we.length) out.push(`${we.join(" et ")}, ${hours}`);
+  }
+  return out.join(" ; ");
+}
+
 /** Horaires (« du mardi au samedi, 8 h – 13 h ») : ouvert le week-end ? null si inconnu. */
 export function openWeekend(h: string): boolean | null {
   if (!/\d+ h/.test(h)) return null;
@@ -352,8 +383,8 @@ export function communePoster(
   const tract = [
     ...markets.map((m) => {
       const nom = /^march[ée]$/i.test(m.nom.trim()) ? "Marché" : m.nom;
-      const h = /à (compléter|vérifier)/.test(m.infos) || !m.infos ? "" : m.infos;
-      return { nom, sub: h ? `Marché · ${h}` : "Marché · jour du week-end à confirmer en mairie", det: ["Lieu de passage régulier des habitants", h ? `Horaires (OpenStreetMap, à confirmer) : ${h}` : "Jours et horaires à confirmer en mairie"], quand: m.quand ?? (h ? `${h} (matinée du week-end)` : WEEKEND.marche), lon: m.lon!, lat: m.lat! };
+      const h = /à (compléter|vérifier)/.test(m.infos) || !m.infos ? "" : weekendHours(m.infos) || m.infos;
+      return { nom, sub: h ? `Marché · ${h}` : "Marché · jour du week-end à confirmer en mairie", det: ["Lieu de passage régulier des habitants", h ? `Horaires (OpenStreetMap, à confirmer) : ${h}` : "Jours et horaires à confirmer en mairie"], quand: m.quand ?? (h ? cap(h) : WEEKEND.marche), lon: m.lon!, lat: m.lat! };
     }),
     ...gares.map((g) => ({ nom: gareNom(g.nom), sub: g.voyageurs ? `${perDay(g.voyageurs)} · départs et retours de week-end` : "Départs et retours de week-end", det: [g.voyageurs ? `${perDay(g.voyageurs)} (moyenne de la semaine)` : "", "Départs et retours de week-end, étudiants"].filter(Boolean), quand: g.quand ?? WEEKEND.gare, lon: g.lon!, lat: g.lat! })),
     ...pts(o.supermarches ?? []).slice(0, 2).map((v) => {

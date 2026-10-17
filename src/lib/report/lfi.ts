@@ -4,12 +4,12 @@ import type { BureauResult, ElectionResult } from "../collectors/elections";
 import { abstention, BvRow, FAMILIES, familyPerformance, frenchHours, lfiOverperformance, prettyBvLabel, rankBureaux, score } from "../analysis/political";
 import { gap, haversineKm, quantileBreaks } from "../analysis/stats";
 import { evidenceId } from "../analysis/findings";
-import { aNom, deNom, fmtNumber, fmtSigned, fmtValue } from "../format";
+import { aNom, deNom, fmtNumber, fmtSigned, fmtValue, prettyFr } from "../format";
 import type { Block, ChartSpec, DataTable, Finding, GeoRef, Indicator, MapLegend, MapSpec, Section, SourceRef } from "../types";
 import { MISSING_COLOR, SEQ_COLORS } from "./assemble";
 import { buildPorte } from "./porte";
 import { plmInfo } from "../collectors/plm";
-import { communePoster, GARE_MIN_JOUR, gareNom, openWeekend, perDay, WEEKEND } from "./affiche";
+import { communePoster, GARE_MIN_JOUR, gareNom, openWeekend, perDay, weekendHours, WEEKEND } from "./affiche";
 import { buildInscription } from "./inscription";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
@@ -17,6 +17,7 @@ import { NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collecto
 import { BPE_TYPES } from "../collectors/bpe";
 import { fmtDuration } from "../collectors/routes";
 import { hlmByStreet, numsLabel } from "../collectors/rpls";
+import { nearestStation } from "../collectors/carto";
 import type { Collected } from "./collect";
 
 /**
@@ -331,7 +332,14 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // Indicateurs déterminants : écarts significatifs, les plus forts d'abord (7 au plus) ;
   // complétés par les indicateurs de base (pauvreté, revenu, chômage, HLM) jusqu'à 4 colonnes
   // de chiffres (5 avec le territoire).
-  const signif = socioCmp.filter((x) => x.dir === "superieur" || x.dir === "inferieur").sort((x, y) => y.score - x.score);
+  // Écart significatif ET parlant : au moins 3 points (parts en %), et un message à en tirer dans ce sens
+  // (7 % d'ouvriers contre 5 %, ou peu de logements vides, n'apprennent rien au militant).
+  const parlant = (x: (typeof socioCmp)[number]) => {
+    const desc = x.dir === "superieur" ? x.d.up : x.d.down;
+    if (!desc.adj && !desc.avec) return false;
+    return x.a.unit === "€" || Math.abs(x.a.value! - x.b.value!) >= 3;
+  };
+  const signif = socioCmp.filter((x) => (x.dir === "superieur" || x.dir === "inferieur") && parlant(x)).sort((x, y) => y.score - x.score);
   // « Plus jeune » et « plus âgée » ne doivent pas se contredire : une seule mesure d'âge par sens.
   const kept: typeof signif = [];
   for (const x of signif) {
@@ -1405,7 +1413,24 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     reasons.push("beaucoup de logements sociaux");
     ev.push(hlmI, hlmDep);
   }
-  if (reasons.length)
+  // Question précise : les bureaux qui concentrent le plus de logements sociaux sans être prioritaires.
+  const prioQ = new Set(prio.map((p) => p.bv));
+  const hlmHors = [...hlmByBv]
+    .filter(([bv, n]) => !prioQ.has(bv) && n >= 100)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([bv, n]) => ({ bv, n, r: ranked.find((x) => x.bv === bv) }))
+    .filter((x) => x.r);
+  if (reasons.length && hlmHors.length)
+    ids.hyp.push(
+      addF({
+        kind: "hypothese",
+        text: `${B(`Logements sociaux hors des bureaux prioritaires`)} : ${hlmHors.map((x) => `bureau ${dv(x.bv)}${labels.has(x.bv) ? ` (${labels.get(x.bv)})` : ""}, ${fmtNumber(x.n)} logements, vote LFI à ${pp(x.r!.lfiPctExp)}, ${pp(x.r!.abstPct)} d'abstention`).join(" ; ")}. Y a-t-il des contacts sur place pour ${hlmHors.length > 1 ? "les " : "l'"}ajouter au convoi ?`,
+        evidence: ev.map(evidenceId),
+        weight: 75,
+      }),
+    );
+  else if (reasons.length)
     ids.hyp.push(
       addF({
         kind: "hypothese",
@@ -1503,7 +1528,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // Grandes surfaces : enseignes des grands groupes encore ouvertes (OpenStreetMap) et desservies en transports en commun.
   // La BPE n'est pas utilisée ici : raisons sociales et établissements fermés (« Aldachanie »).
   for (const g of c.grandesSurfaces?.list ?? [])
-    pushLieu("Supermarché", `${g.nom}${g.adresse ? ` (${g.adresse})` : ""}`, `${g.hyper ? "hypermarché" : "supermarché"} ; ${g.arrets} arrêt${g.arrets > 1 ? "s" : ""} de transport en commun à moins de 400 m`, g.lon, g.lat);
+  {
+    // Desserte parlante : la station la plus proche plutôt qu'un nombre d'arrêts.
+    const st = nearestStation(c.stationsTC?.list ?? [], g.lon, g.lat, 0.7);
+    pushLieu("Supermarché", `${g.nom}${g.adresse ? ` (${prettyFr(g.adresse)})` : ""}`, `${g.hyper ? "hypermarché" : "supermarché"} ; ${st ? `à ${fmtNumber(Math.round(st.m / 50) * 50)} m ${st.mode === "gare" ? `de la ${gareNom(st.nom).replace(/^G/, "g")}` : `du ${st.mode} ${st.nom}`}` : "desservi par le bus"}`, g.lon, g.lat);
+  }
   for (const e of c.bpe?.commune.filter((e) => ["A122", "A128", "A206"].includes(e.type)) ?? []) pushLieu("Service public", bpeName(e), singular(e.type), e.lon, e.lat);
   // Un même site accueille souvent plusieurs établissements (lycée général, lycée professionnel,
   // collège) : une seule sortie à tenir, regroupée par nom de base ou par position (~100 m).
@@ -1659,7 +1688,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       action: "Tractage au marché",
       ou: m.nom,
       infos: "Lieu de passage régulier des habitants du quartier",
-      quand: hasHours(m.infos) ? `${cap(m.infos)} (matinée du week-end)` : WEEKEND.marche,
+      quand: weekendHours(m.infos) ? cap(weekendHours(m.infos)) : WEEKEND.marche,
       bv: m.bv,
     });
   for (const g of gares.slice(0, 2)) {
@@ -1755,7 +1784,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     });
   }
   const resMsg = resPorte.length
-    ? `, ${porteMsg ? "et " : ""}dans ${resPorte.length > 1 ? `les ${resPorte.length} résidences du Crous et foyers de jeunes travailleurs` : `la résidence ${resPorte[0].nom} (${resType(resPorte[0])})`}`
+    ? `, ${porteMsg ? "et " : ""}dans ${resPorte.length > 1 ? `les ${resPorte.length} résidences du Crous et foyers de jeunes travailleurs` : `${/^r[ée]sidence\b/i.test(resPorte[0].nom) ? `la r${resPorte[0].nom.slice(1)}` : `la résidence ${resPorte[0].nom}`} (${resType(resPorte[0])})`}`
     : "";
   if (residences.length && c.residences)
     out.tables.push({
@@ -1896,11 +1925,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     return q ? ` ${leQuartier(q).replace(/^(le|la|les|l')\s?/i, (m) => `dans ${m}`)}` : labels.has(nb.bv) ? `, près de ${labels.get(nb.bv)} (bureau ${dv(nb.bv)})` : ` (bureau ${dv(nb.bv)})`;
   };
   const named = (n: string) => !/^(march[ée]|supermarch[ée]|gare)$/i.test(n.trim());
-  const weHours = (h: string) =>
-    h
-      .split(" ; ")
-      .filter((p) => /samedi|dimanche|tous les jours/i.test(p))
-      .join(" ; ");
+  const weHours = weekendHours;
   const leviers = [
     ...markets.slice(0, 2).map((m) => {
       const h = weHours(m.infos);
@@ -2098,10 +2123,130 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (has("lfi_inscription")) detail.push({ type: "heading", text: "Inscription sur les listes électorales" }, ...(insc.commune ? [{ type: "paragraph" as const, text: `Environ ${fmtNumber(Math.round(insc.commune.adultesFr / 100) * 100)} adultes de nationalité française recensés pour ${fmtNumber(insc.commune.inscrits)} électeurs inscrits, soit ${Math.round(insc.commune.taux)} inscrits pour 100 adultes${insc.departement ? ` (département : ${Math.round(insc.departement.taux)})` : ""}.` }] : []), { type: "table", tableId: "lfi_inscription" });
   if (c.emploi?.commune.length) detail.push({ type: "heading", text: "Demandeurs d'emploi" }, { type: "table", tableId: "table_demandeurs" }, { type: "chart", chartId: "chart_demandeurs" });
 
+  /* ---------------------------------------------------------- le convoi, heure par heure */
+  // Estimation des portes : 1,4 électeur inscrit par logement ; un binôme frappe à environ 30 portes par heure.
+  const PAR_LOGEMENT = 1.4;
+  const PORTES_HEURE = 30;
+  const portesBv = prio.map((p) => {
+    const portes = Math.round(p.inscrits / PAR_LOGEMENT / 10) * 10;
+    return { p, portes, binomes: Math.max(1, Math.ceil(portes / (PORTES_HEURE * 2.5))) };
+  });
+  const totalBinomes = portesBv.reduce((n, x) => n + x.binomes, 0);
+  const totalPortes = portesBv.reduce((n, x) => n + x.portes, 0);
+  // Point de rendez-vous : la station la plus proche du cœur des bureaux prioritaires, sinon le premier lieu de vote.
+  const prioPts = prio.map((p) => centroids.get(p.bv)).filter((x): x is [number, number] => !!x);
+  const coeur: [number, number] | null = prioPts.length ? [prioPts.reduce((a, x) => a + x[0], 0) / prioPts.length, prioPts.reduce((a, x) => a + x[1], 0) / prioPts.length] : null;
+  const rdvSt = coeur ? nearestStation(c.stationsTC?.list ?? [], coeur[0], coeur[1], 1.2) : null;
+  const rdv = rdvSt
+    ? rdvSt.mode === "gare"
+      ? gareNom(rdvSt.nom)
+      : `${cap(rdvSt.mode)} ${rdvSt.nom}`
+    : prio[0] && labels.has(prio[0].bv)
+      ? `${labels.get(prio[0].bv)} (lieu de vote du bureau ${dv(prio[0].bv)})`
+      : "";
+  const ruesTop = ruesRank.filter((r) => r.bv && prioBvSet.has(r.bv)).slice(0, 2);
+  const samediMarche = markets.find((m) => /samedi/.test(weekendHours(m.infos)));
+  const dimancheMarche = markets.find((m) => /dimanche/.test(weekendHours(m.infos)) && m !== samediMarche) ?? markets.find((m) => /dimanche/.test(weekendHours(m.infos)));
+  const parc = conv.find((x) => x.kind === "parc");
+  const bar = conv.find((x) => x.kind === "bar");
+  const crous = resPorte.find((r) => !/foyer/i.test(resType(r)));
+  const journee: Record<string, string>[] = [];
+  if (prio.length) {
+    journee.push({ quand: "Samedi 9 h 45", quoi: "Rendez-vous", ou: rdv || "À fixer avec les militants locaux", detail: "Accueil, binômes, tracts et feuilles de porte-à-porte (une par bureau)" });
+    journee.push({
+      quand: "10 h – 12 h 30",
+      quoi: "Porte-à-porte",
+      ou: `${prio.length > 1 ? "Bureaux" : "Bureau"} ${joinFr(prio.map((p) => dv(p.bv)))}`,
+      detail: `Environ ${fmtNumber(totalPortes)} portes${ruesTop.length ? ` ; commencer par ${joinFr(ruesTop.map((r) => `${deVoie(r.voie).replace(/^de la /, "la ").replace(/^du /, "le ").replace(/^de l'/, "l'").replace(/^des /, "les ").replace(/^de /, "")}${r.nums.length ? ` (${numsLabel(r.nums)})` : ""}`))}` : ""}`,
+    });
+    if (samediMarche) journee.push({ quand: "10 h – 12 h", quoi: "Tractage au marché (en parallèle, 3 ou 4 militants)", ou: samediMarche.nom, detail: cap(weekendHours(samediMarche.infos)) });
+    journee.push({ quand: "12 h 30 – 14 h", quoi: parc ? "Pique-nique" : "Pause déjeuner", ou: parc ? parc.nom : rdv || "Près du point de rendez-vous", detail: parc ? `Parc d'environ ${fmtNumber(parc.ha ?? 0)} ha ; y inviter les sympathisants rencontrés le matin` : "Point d'étape : rues faites, contacts pris" });
+    const tract = sup[0] ?? gares[0];
+    if (tract) journee.push({ quand: "14 h 30 – 16 h", quoi: sup[0] ? "Tractage à la grande surface" : "Tractage à la gare", ou: sup[0] ? sup[0].nom : gareNom(tract.nom), detail: sup[0] ? `Affluence du samedi${/ ; (à|desservi)/.test(sup[0].infos) ? ` ; ${sup[0].infos.split(" ; ")[1]}` : ""}` : tract.infos });
+    journee.push({ quand: "16 h 30 – 19 h", quoi: "Porte-à-porte, second passage", ou: "Mêmes bureaux", detail: "Les portes qui n'ont pas ouvert le matin : beaucoup d'habitants rentrent en fin d'après-midi" });
+    if (bar) journee.push({ quand: "19 h", quoi: "Moment convivial", ou: bar.nom, detail: `${convTxt(bar)} ; avec les militants et les sympathisants de la journée` });
+    if (dimancheMarche) journee.push({ quand: "Dimanche matin", quoi: "Tractage au marché", ou: dimancheMarche.nom, detail: cap(weekendHours(dimancheMarche.infos)) });
+    if (crous) journee.push({ quand: "Dimanche 18 h – 20 h", quoi: "Porte-à-porte en résidence étudiante", ou: crous.nom, detail: `${crous.logements ? `${fmtNumber(crous.logements)} logements ; ` : ""}inscription sur les listes` });
+    out.tables.push({
+      id: "lfi_journee",
+      title: "Le convoi, heure par heure (proposition)",
+      theme: "strategie",
+      columns: [
+        { key: "quand", label: "Quand" },
+        { key: "quoi", label: "Quoi" },
+        { key: "ou", label: "Où", wide: true },
+        { key: "detail", label: "Précisions", wide: true },
+      ],
+      rows: journee,
+      sources: [...(bvRef ? [bvRef.source] : []), ...(c.stationsTC ? [c.stationsTC.source] : [])],
+      note: "Proposition à adapter avec les militants locaux : horaires du marché à confirmer, autorisation à demander pour tracter devant un magasin.",
+    });
+    out.tables.push({
+      id: "lfi_effectifs",
+      title: "Combien de militants pour les bureaux prioritaires",
+      theme: "strategie",
+      columns: [
+        { key: "bv", label: "Bureau" },
+        { key: "lieu", label: "Lieu de vote", wide: true },
+        { key: "portes", label: "Portes (estimation)", align: "right" as const },
+        { key: "binomes", label: "Binômes pour la matinée", align: "right" as const },
+      ],
+      rows: [
+        ...portesBv.map((x) => ({ bv: dv(x.p.bv), lieu: labels.get(x.p.bv) ?? "", portes: `~${fmtNumber(x.portes)}`, binomes: String(x.binomes) })),
+        { bv: "", lieu: "**Total**", portes: `~${fmtNumber(totalPortes)}`, binomes: `${totalBinomes} (${totalBinomes * 2} militants)` },
+      ],
+      sources: bvRef ? [bvRef.source] : [],
+      note: `Estimation : un logement pour ${String(PAR_LOGEMENT).replace(".", ",")} électeur inscrit, un binôme frappe à environ ${PORTES_HEURE} portes par heure, sur 2 h 30. Avec moins de monde, suivre l'ordre du tableau${portesBv.length > 1 ? ` (bureau ${dv(portesBv[0].p.bv)} d'abord)` : ""} et finir l'après-midi.`,
+    });
+  }
+
+  /* ---------------------------------------------------------- sujets à aborder à la porte */
+  // Les trois sujets où la commune se distingue le plus du département, chacun avec un chiffre local
+  // et une question pour ouvrir la discussion.
+  type Sujet = { sujet: string; chiffre: string; question: string; poids: number };
+  const sujets: Sujet[] = [];
+  const sc = (id: string) => socioCmp.find((x) => x.id === id || x.d.id === id);
+  const up = (x: ReturnType<typeof sc>) => !!x && x.dir === "superieur" && Math.abs(x.a.value! - x.b.value!) >= 2;
+  const povS = sc("taux_pauvrete");
+  if (up(povS)) sujets.push({ sujet: "Vie chère", chiffre: `${pp(povS!.a.value)} des habitants vivent sous le seuil de pauvreté (département : ${pp(povS!.b.value)})`, question: "Comment vous en sortez-vous avec les prix, les factures ?", poids: povS!.score + 0.3 });
+  const hlmS = sc("part_locataires_hlm");
+  if (up(hlmS)) sujets.push({ sujet: "Logement", chiffre: `${pp(hlmS!.a.value)} des foyers vivent en HLM (département : ${pp(hlmS!.b.value)})`, question: "Votre logement est-il bien entretenu ? Les loyers et les charges ont-ils augmenté ?", poids: hlmS!.score });
+  const carS = sc("part_menages_sans_voiture");
+  if (up(carS)) sujets.push({ sujet: "Transports", chiffre: `${pp(carS!.a.value)} des foyers n'ont pas de voiture (département : ${pp(carS!.b.value)})`, question: "Les transports vous permettent-ils d'aller travailler, de faire vos courses, de voir un médecin ?", poids: carS!.score });
+  const chomS = sc("taux_chomage_rp");
+  if (up(chomS)) sujets.push({ sujet: "Emploi", chiffre: `${pp(chomS!.a.value)} de chômage (département : ${pp(chomS!.b.value)})`, question: "Trouver un emploi stable ici, c'est possible ?", poids: chomS!.score });
+  const jeunesS = sc("part_moins_25");
+  if (up(jeunesS)) sujets.push({ sujet: "Jeunesse", chiffre: `${pp(jeunesS!.a.value)} des habitants ont moins de 25 ans (département : ${pp(jeunesS!.b.value)})`, question: "Les jeunes trouvent-ils ici un logement, une formation, un travail ?", poids: jeunesS!.score * 0.8 });
+  const ageS = sc("part_65_plus");
+  if (up(ageS)) sujets.push({ sujet: "Retraites", chiffre: `${pp(ageS!.a.value)} des habitants ont plus de 65 ans (département : ${pp(ageS!.b.value)})`, question: "Votre pension suffit-elle pour vivre correctement ?", poids: ageS!.score * 0.8 });
+  const medC = out.indicators.find((i) => i.id === "medecins_10k" && i.geo.level === "commune");
+  const medD = out.indicators.find((i) => i.id === "medecins_10k" && i.geo.level === "departement");
+  if (medC?.value != null && medD?.value && medC.value < medD.value * 0.75)
+    sujets.push({ sujet: "Santé", chiffre: `${fmtNumber(medC.value, 1)} médecins généralistes pour 10 000 habitants (département : ${fmtNumber(medD.value, 1)})`, question: "Arrivez-vous à voir un médecin quand vous en avez besoin ?", poids: 1 - medC.value / medD.value });
+  const sujetsTop = sujets.sort((a, b) => b.poids - a.poids).slice(0, 3);
+  if (sujetsTop.length >= 2)
+    out.tables.push({
+      id: "lfi_sujets",
+      title: `${sujetsTop.length === 3 ? "Trois" : "Deux"} sujets à aborder à la porte`,
+      theme: "strategie",
+      columns: [
+        { key: "sujet", label: "Sujet" },
+        { key: "chiffre", label: "Ce que disent les chiffres", wide: true },
+        { key: "question", label: "Pour ouvrir la discussion", wide: true },
+      ],
+      rows: sujetsTop.map(({ sujet, chiffre, question }) => ({ sujet, chiffre, question })),
+      sources: [...new Map(socioCmp.map((x) => [x.a.source.dataset ?? x.a.source.id, x.a.source])).values()].slice(0, 4),
+      note: "Les sujets où la commune se distingue le plus du département. Écouter d'abord : la question sert à lancer la conversation.",
+    });
+
   blocks.push({ type: "heading", text: "Actions recommandées" });
   if (planIntro) blocks.push({ type: "paragraph", text: planIntro });
+  if (has("lfi_journee")) blocks.push({ type: "table", tableId: "lfi_journee" });
+  if (has("lfi_effectifs")) blocks.push({ type: "table", tableId: "lfi_effectifs" });
+  if (has("lfi_sujets")) blocks.push({ type: "table", tableId: "lfi_sujets" });
   if (affiche) blocks.push({ type: "map", mapId: "lfi_affiche" });
-  if (has("lfi_plan")) blocks.push({ type: "table", tableId: "lfi_plan" });
+  // Plan détaillé (une ligne par action, avec le pourquoi) : en annexe, la journée heure par heure le remplace.
+  if (has("lfi_plan")) (has("lfi_journee") ? detail : blocks).push({ type: "heading", text: "Toutes les actions, une par une" }, { type: "table", tableId: "lfi_plan" });
   if (has("lfi_hlm")) blocks.push({ type: "table", tableId: "lfi_hlm" });
   else blocks.push({ type: "note", text: "Aucun lieu d'action identifié automatiquement (marchés, gares, commerces, établissements) : à compléter avec les militants locaux." });
   if (access.length) blocks.push({ type: "paragraph", text: `${B("Accès")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
