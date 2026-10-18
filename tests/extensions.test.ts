@@ -108,6 +108,27 @@ describe("ciblage départemental", () => {
     expect(dep.sections[0].blocks.some((b) => b.type === "map" && b.mapId === "ciblage_affiche")).toBe(true);
   });
 
+  it("ciblage : groupes d'action actifs repris du bilan LFI (sans liste nominative)", async () => {
+    const { buildReport } = await import("@/lib/report/build");
+    const d = path.join(dir, "interne");
+    const codes = ["60057", "60382", "60338", "60175", "60471", "60612"];
+    await fs.writeFile(path.join(d, "bilan.csv"), "code_insee;nb_actions;nb_ga_actifs;nb_parrains;inscrits;estime\n" + codes.map((k) => `${k};10;1;50;10000;0`).join("\n") + "\n");
+    await fs.rename(path.join(d, "groupes.csv"), path.join(d, "groupes.bak"));
+    try {
+      const r = await buildReport({ codeInsee: "60159", scope: "departement" });
+      const cl = r.tables.find((t) => t.id === "ciblage_classement")!;
+      expect(cl.columns.find((c) => c.key === "groupe")?.label).toBe("Groupes d'action");
+      expect(cl.rows.some((x) => x.groupe === "1 actif")).toBe(true);
+      const targets = r.sections[0].blocks.find((b) => b.type === "targets");
+      expect(JSON.stringify(targets)).not.toMatch(/Aucun groupe d'action référencé/);
+      const ga = r.maps.find((x) => x.id === "ciblage_affiche")!.layers.find((l) => l.id === "ga");
+      expect(ga?.legendItem?.label).toBe("Groupe d'action actif (5 actions ou plus)");
+    } finally {
+      await fs.rename(path.join(d, "groupes.bak"), path.join(d, "groupes.csv"));
+      await fs.rm(path.join(d, "bilan.csv"), { force: true });
+    }
+  }, 120000);
+
   it("export PDF du ciblage (si Chromium est disponible)", async () => {
     const { findChromium, reportToPdf } = await import("@/lib/export/pdf");
     const { renderReportHtml } = await import("@/lib/render/html");
