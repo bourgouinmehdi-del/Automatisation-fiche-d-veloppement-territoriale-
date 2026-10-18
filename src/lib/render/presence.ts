@@ -2,9 +2,9 @@ import type { Block } from "../types";
 
 /**
  * Encart « Présence militante LFI » : une barre par indicateur (parrains,
- * groupes d'action actifs, actions), un trait pour la moyenne nationale.
- * Deux lectures : en nombre (le trait = ce qu'aurait la commune au rythme
- * national) ou rapporté aux inscrits ; la longueur des barres est la même.
+ * groupes d'action actifs, actions), un trait pour la moyenne des communes
+ * de même taille. Deux lectures : en nombre (le trait = ce qu'aurait la
+ * commune à ce rythme moyen) ou rapporté aux inscrits ; les barres sont les mêmes.
  */
 export type PresenceBlock = Extract<Block, { type: "presence" }>;
 export type PresenceRow = PresenceBlock["rows"][number];
@@ -24,8 +24,8 @@ export function presenceValue(r: PresenceRow, mode: PresenceMode) {
 }
 
 export function presenceRef(r: PresenceRow, mode: PresenceMode) {
-  if (mode === "nombre") return `France : ${nf(Math.round(r.nRef))} à population égale`;
-  return `France : ${nf(r.rRef, r.rRef >= 10 ? 1 : 2)}`;
+  if (mode === "nombre") return `Moyenne : ${nf(Math.round(r.nRef))}`;
+  return `Moyenne : ${nf(r.rRef, r.rRef >= 10 ? 1 : 2)}`;
 }
 
 export function presenceSub(r: PresenceRow, mode: PresenceMode) {
