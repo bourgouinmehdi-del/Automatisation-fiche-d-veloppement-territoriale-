@@ -108,6 +108,13 @@ describe("ciblage départemental", () => {
     expect(dep.sections[0].blocks.some((b) => b.type === "map" && b.mapId === "ciblage_affiche")).toBe(true);
   });
 
+  it("ciblage : communes collées aux grandes villes écartées, pénalisées", async () => {
+    const cl = dep.tables.find((t) => t.id === "ciblage_classement")!;
+    expect(cl.note).toMatch(/communes collées à Beauvais et Compiègne sont pénalisés/);
+    const targets = dep.sections[0].blocks.find((b) => b.type === "targets");
+    expect(JSON.stringify(targets)).toMatch(/Commune voisine de Beauvais : score abaissé/);
+  });
+
   it("ciblage : groupes d'action actifs repris du bilan LFI (sans liste nominative)", async () => {
     const { buildReport } = await import("@/lib/report/build");
     const d = path.join(dir, "interne");
