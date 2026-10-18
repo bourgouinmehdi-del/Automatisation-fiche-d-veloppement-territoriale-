@@ -66,6 +66,9 @@ interface ChartForce {
 }
 const COLORS: Record<string, string> = { pcf: "#830E21", lfi: "#E8434B", eco: "#49C07A", ps: "#F08FB7", ens: "#FED700", lr: "#8CB0DC", rn: "#313567", rec: "#8D6E63" };
 const force = (id: string, label: string, national: number): ChartForce => ({ id, label, color: COLORS[id], national });
+/** Abstention nationale (France entière, % des inscrits) par scrutin. */
+const ABST_NAT: Record<string, number> = { PR17T1: 22.23, EU19: 49.88, PR22T1: 26.31, EU24: 48.51 };
+export const ABST_COLOR = "#C9C6BD";
 export const VOTE_CHARTS: { eid: string; id: string; title: string; tab: string; forces: ChartForce[] }[] = [
   {
     eid: "PR17T1",
@@ -115,7 +118,7 @@ const NAT_URL: Record<string, string> = {
   PR17T1: "https://www.interieur.gouv.fr/Elections/Les-resultats/Presidentielles/elecresult__presidentielle-2017/(path)/presidentielle-2017/FE.html",
 };
 
-type VoteAgg = { exprimes: number; candidates: { label: string; voix: number }[] };
+type VoteAgg = { exprimes: number; inscrits?: number; abstentions?: number; votants?: number; candidates: { label: string; voix: number }[] };
 
 export function voteChart(eid: string, a: VoteAgg, source: SourceRef, note?: string): ChartSpec | null {
   const cfg = VOTE_CHARTS.find((x) => x.eid === eid);
@@ -130,6 +133,8 @@ export function voteChart(eid: string, a: VoteAgg, source: SourceRef, note?: str
   }
   const pctOf = (v: number) => Math.round((1000 * v) / a.exprimes) / 10;
   const natAutres = Math.round(10 * (100 - cfg.forces.reduce((s2, f) => s2 + f.national, 0))) / 10;
+  const nAbst = a.abstentions ?? (a.inscrits && a.votants != null ? a.inscrits - a.votants : null);
+  const abst = a.inscrits && nAbst != null ? Math.round((1000 * nAbst) / a.inscrits) / 10 : null;
   return {
     id: cfg.id,
     title: cfg.title,
@@ -139,16 +144,17 @@ export function voteChart(eid: string, a: VoteAgg, source: SourceRef, note?: str
     xKey: "label",
     series: [
       { key: "value", label: "Commune" },
-      { key: "ref", label: "Score national" },
+      { key: "ref", label: "Niveau national" },
     ],
     colorKey: "color",
     unit: "%",
     data: [
       ...cfg.forces.map((f) => ({ label: f.label, value: pctOf(voix.get(f.id) ?? 0), ref: f.national, color: f.color })),
       { label: "Autres", value: pctOf(autres), ref: natAutres, color: EU24_AUTRES_COLOR },
+      ...(abst != null ? [{ label: "Abstention", value: abst, ref: ABST_NAT[eid] ?? null, color: ABST_COLOR }] : []),
     ],
     sources: [source, { id: "elections_nat", name: `Ministère de l'Intérieur, résultats nationaux — ${cfg.title}`, url: NAT_URL[eid], retrievedAt: VOTE_CHARTS_DATE }],
-    note: `Part des voix (hors blancs et nuls) ; trait : score national (France entière).${note ? ` ${note}` : ""}`,
+    note: `Part des voix (hors blancs et nuls)${abst != null ? ` ; abstention : part des électeurs inscrits qui n'ont pas voté` : ""} ; trait : niveau national (France entière).${note ? ` ${note}` : ""}`,
   };
 }
 const VOTE_CHARTS_DATE = "2024-06-10";
@@ -158,14 +164,18 @@ export function europeennesChart(a: VoteAgg, source: SourceRef): ChartSpec {
 }
 
 /** Résultats d'une commune reconstitués à partir de ses bureaux de vote (scrutins sans fichier communal). */
-export function sumBureaux(rows: { exprimes: number; candidates: { label: string; voix: number }[] }[]): VoteAgg {
+export function sumBureaux(rows: { exprimes: number; inscrits?: number; abstentions?: number; candidates: { label: string; voix: number }[] }[]): VoteAgg {
   const cand = new Map<string, number>();
   let exprimes = 0;
+  let inscrits = 0;
+  let abstentions = 0;
   for (const r of rows) {
     exprimes += r.exprimes;
+    inscrits += r.inscrits ?? 0;
+    abstentions += r.abstentions ?? 0;
     for (const x of r.candidates) cand.set(x.label, (cand.get(x.label) ?? 0) + x.voix);
   }
-  return { exprimes, candidates: [...cand].map(([label, voix]) => ({ label, voix })) };
+  return { exprimes, ...(inscrits && abstentions ? { inscrits, abstentions } : {}), candidates: [...cand].map(([label, voix]) => ({ label, voix })) };
 }
 
 /** Adresses du REU en majuscules : « 14 PLACE DE LA FRATERNITE 48000 mende » → « 14 Place de la Fraternite, 48000 Mende ». */
@@ -2038,37 +2048,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (socioItems.length) blocks.push({ type: "list", items: socioItems });
   blocks.push({ type: "fieldNotes", part: "socio" });
 
+  // Profil politique : chiffres et graphiques seulement ; le texte (mairie, quartiers, parrainages) passe en annexe,
+  // la lecture qualitative revient aux retours du terrain.
   blocks.push({ type: "heading", text: "Profil politique du territoire" });
-  // En bref, en langage courant : vote insoumis, participation, mairie.
-  {
-    const parts: string[] = [];
-    if (l24 && dl24) {
-      // Même règle que la synthèse (voteCompare) : jamais « autant » ici et « nettement plus » plus haut.
-      const v24 = voteCompare(l24.pctExprimes, dl24.pctExprimes);
-      const w2 = v24.words;
-      // Les deux scrutins ne disent pas toujours la même chose : on le signale plutôt que de juxtaposer les chiffres.
-      const d22 = m22 && dm22 ? voteCompare(m22.pctExprimes, dm22.pctExprimes).dir : null;
-      const sameWay = !d22 || d22 === v24.dir;
-      const p22 = m22 && dm22 ? `${pp(m22.pctExprimes)} pour J.-L. Mélenchon en 2022 (département : ${pp(dm22.pctExprimes)})` : "";
-      parts.push(
-        sameWay
-          ? `On y vote ${B(`${w2} pour la France insoumise`)} que dans le reste du département : ${pp(l24.pctExprimes)} des voix aux européennes 2024 (département : ${pp(dl24.pctExprimes)})${p22 ? `, ${p22}` : ""}.`
-          : `Aux européennes 2024, on y vote ${B(`${w2} pour la France insoumise`)} que dans le reste du département (${pp(l24.pctExprimes)} des voix, contre ${pp(dl24.pctExprimes)}) ; ${d22 === "autant" ? "l'écart disparaît" : v24.dir === "autant" ? `on y vote ${d22} qu'ailleurs` : "c'est l'inverse"} à la présidentielle 2022 : ${p22}.`,
-      );
-    }
-    if (abstMain)
-      parts.push(
-        abstMain.dir === "superieur"
-          ? `${cap(oneInV(abstMain.c, "électeur", "n'a pas voté", "n'ont pas voté"))} ${abstRef?.label ?? "en 2024"}, ${B("plus qu'ailleurs")} : il y a des électeurs à remobiliser.`
-          : abstMain.dir === "inferieur"
-            ? `On y vote plus qu'ailleurs : ${oneInV(abstMain.c, "électeur", "n'a pas voté", "n'ont pas voté")} en 2024 (département : ${pp(abstMain.d)}).`
-            : `${cap(oneInV(abstMain.c, "électeur", "n'a pas voté", "n'ont pas voté"))} ${abstRef?.label ?? "en 2024"}, comme dans le reste du département.`,
-      );
-    if (parts.length) {
-      const t = parts.join(" ");
-      blocks.push({ type: "paragraph", text: `${B("En bref")} : ${t.charAt(0).toLowerCase()}${t.slice(1)}` });
-    }
-  }
   if (groupes.length)
     blocks.push({
       type: "callout",
@@ -2101,13 +2083,17 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     });
   }
   // (Sans données internes : rien dans la fiche, qui s'adresse aux élus ; le signalement figure dans le journal de collecte.)
-  const prose = (list: string[]) => list.length && blocks.push({ type: "findings", ids: list, style: "prose" });
-  // Un tableau, puis 3 phrases au plus : mairie, quartiers où LFI surperforme, parrainages.
   if (out.charts.some((x) => x.id === "lfi_chart_eu24")) blocks.push({ type: "chart", chartId: "lfi_chart_eu24" });
   if (has("lfi_vote")) blocks.push({ type: "table", tableId: "lfi_vote" });
-  if (municipalText) blocks.push({ type: "paragraph", text: municipalText.split(/(?<=\.)\s+(?=[A-ZÀ-Ý«])/).slice(0, 2).join(" "), evidence: [] });
-  prose([...ids2.quartiers.filter((id) => out.findings.find((f) => f.id === id)?.kind === "atout"), ...ids.parrains].slice(0, 2));
   blocks.push({ type: "fieldNotes", part: "politique" });
+  const prose = (list: string[]) => list.length && blocks.push({ type: "findings", ids: list, style: "prose" });
+  // Annexe : mairie, quartiers où LFI surperforme, parrainages.
+  const politProse = [...ids2.quartiers.filter((id) => out.findings.find((f) => f.id === id)?.kind === "atout"), ...ids.parrains].slice(0, 2);
+  if (municipalText || politProse.length) {
+    detail.push({ type: "heading", text: "Profil politique : repères" });
+    if (municipalText) detail.push({ type: "paragraph", text: municipalText.split(/(?<=\.)\s+(?=[A-ZÀ-Ý«])/).slice(0, 2).join(" "), evidence: [] });
+    if (politProse.length) detail.push({ type: "findings", ids: politProse, style: "prose" });
+  }
   // Détail (annexe du diagnostic) : résultats municipaux, comparaisons, forces politiques.
   if (has("lfi_politique")) detail.push({ type: "heading", text: "Vote LFI, parrainages et abstention (en nombre de voix)" }, { type: "table", tableId: "lfi_politique" });
   if (has("lfi_municipales")) detail.push({ type: "heading", text: "Élections municipales 2026" }, { type: "table", tableId: "lfi_municipales" });
