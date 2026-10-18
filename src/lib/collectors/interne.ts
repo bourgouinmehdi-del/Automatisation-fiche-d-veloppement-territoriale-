@@ -17,6 +17,9 @@ import { detectDelimiter, findCol } from "./elections";
  *                          postal, ville, membres, date de création, type,
  *                          certification, description, nombre d'actions…) ;
  *                          la commune est retrouvée par code postal et ville.
+ *  bilan.csv             — bilan militant par commune (classeur « bilan_par_commune »
+ *                          converti au dépôt) : actions, groupes d'action actifs,
+ *                          parrains et inscrits ; complète parrains.csv.
  *
  * Seuls des agrégats par commune ou par groupe sont utilisés : les colonnes
  * nominatives éventuelles (animateurs, contacts) sont ignorées.
@@ -37,15 +40,28 @@ export interface Groupe {
   source?: string;
 }
 
+/** Bilan militant d'une commune (estimations pour les petites communes). */
+export interface Bilan {
+  actions: number;
+  ga: number;
+  parrains: number;
+  inscrits: number;
+  /** Vrai quand les chiffres sont estimés (fourchette basse et haute différentes). */
+  estime: boolean;
+}
+
 export interface InternalData {
   parrains: Map<string, number>;
+  bilan?: Map<string, Bilan>;
+  /** Totaux France entière du bilan (pour les moyennes nationales). */
+  bilanFrance?: Omit<Bilan, "estime">;
   groupes: Groupe[];
   files: string[];
   /** Lignes non rattachées à une commune (export Action Populaire). */
   unmatched?: number;
 }
 
-export const INTERNAL_FILES = ["parrains.csv", "groupes.csv", "action-populaire.csv"] as const;
+export const INTERNAL_FILES = ["parrains.csv", "groupes.csv", "action-populaire.csv", "bilan.csv"] as const;
 
 export const internalDir = () => path.join(config.dataDir, "interne");
 
@@ -125,6 +141,46 @@ export function parseGroupes(rows: Record<string, string>[], source: string): { 
   return { groupes, unmatched };
 }
 
+/** Colonnes du bilan, reconnues par leur intitulé. */
+export function parseBilan(rows: Record<string, string>[]) {
+  const out = new Map<string, Bilan>();
+  if (!rows.length) return out;
+  const cols = Object.keys(rows[0]);
+  const col = (...res: RegExp[]) => findCol(cols, ...res);
+  const cCode = col(/^code_?(insee|commune)$/i);
+  const cAct = col(/^nb_actions.*estime$/i, /^nb_actions/i, /^actions$/i);
+  const cActB = col(/^nb_actions.*_bas$/i);
+  const cActH = col(/^nb_actions.*_haut$/i);
+  const cGa = col(/^nb_ga/i, /groupes?.*actifs?/i, /^ga$/i);
+  const cPar = col(/^nb_parrains.*estime$/i, /^nb_parrains/i, /^parrains$/i);
+  const cParB = col(/^nb_parrains.*_bas$/i);
+  const cParH = col(/^nb_parrains.*_haut$/i);
+  const cIns = col(/^inscrits/i);
+  if (!cCode || !cIns || !(cAct || cGa || cPar)) return out;
+  for (const r of rows) {
+    const code = String(r[cCode] ?? "").trim().padStart(5, "0");
+    const inscrits = num(r[cIns]);
+    if (!/^\d[\dAB]\d{3}$/i.test(code) || !inscrits) continue;
+    const v = (c: string | null) => (c ? (num(r[c]) ?? 0) : 0);
+    out.set(code, {
+      actions: v(cAct),
+      ga: v(cGa),
+      parrains: v(cPar),
+      inscrits,
+      estime: (!!cActB && v(cActB) !== v(cActH)) || (!!cParB && v(cParB) !== v(cParH)),
+    });
+  }
+  return out;
+}
+
+/** Classeur ou CSV du bilan → CSV compact enregistré dans data/interne/bilan.csv. */
+export function bilanToCsv(rows: Record<string, string>[]) {
+  const b = parseBilan(rows);
+  const lines = ["code_insee;nb_actions;nb_ga_actifs;nb_parrains;inscrits;estime"];
+  for (const [k, x] of b) lines.push([k, x.actions, x.ga, x.parrains, x.inscrits, x.estime ? 1 : 0].join(";"));
+  return { csv: lines.join("\n") + "\n", n: b.size };
+}
+
 export async function loadInternalData(dir = internalDir()): Promise<InternalData> {
   const out: InternalData = { parrains: new Map(), groupes: [], files: [], unmatched: 0 };
   try {
@@ -138,6 +194,31 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
       if (v != null) out.parrains.set(String(r[cCode]).trim().padStart(5, "0"), v);
     }
     out.files.push("parrains.csv");
+  } catch {
+    /* fichier absent */
+  }
+  try {
+    const rows = await readCsv(path.join(dir, "bilan.csv"));
+    const b = new Map<string, Bilan>();
+    for (const r of rows) {
+      const code = String(r.code_insee ?? "").trim();
+      const x = { actions: num(r.nb_actions) ?? 0, ga: num(r.nb_ga_actifs) ?? 0, parrains: num(r.nb_parrains) ?? 0, inscrits: num(r.inscrits) ?? 0, estime: r.estime === "1" };
+      if (code && x.inscrits) b.set(code, x);
+    }
+    if (b.size) {
+      out.bilan = b;
+      const t = { actions: 0, ga: 0, parrains: 0, inscrits: 0 };
+      for (const x of b.values()) {
+        t.actions += x.actions;
+        t.ga += x.ga;
+        t.parrains += x.parrains;
+        t.inscrits += x.inscrits;
+      }
+      out.bilanFrance = t;
+      // Parrains manquants (pas de parrains.csv, ou commune absente) : repris du bilan.
+      for (const [k, x] of b) if (!out.parrains.has(k)) out.parrains.set(k, Math.round(x.parrains));
+      out.files.push("bilan.csv");
+    }
   } catch {
     /* fichier absent */
   }
@@ -167,5 +248,5 @@ export async function internalSummary(dir = internalDir()) {
       /* absent */
     }
   }
-  return { files, parrains: d.parrains.size, groupes: d.groupes.length, unmatched: d.unmatched ?? 0 };
+  return { files, parrains: d.parrains.size, groupes: d.groupes.length, unmatched: d.unmatched ?? 0, bilan: d.bilan?.size ?? 0 };
 }

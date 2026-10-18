@@ -259,6 +259,13 @@ export type Block =
   | { type: "heading"; text: string }
   /** Chiffres clés rédigés (valeur + comparaison). */
   | { type: "glance"; items: { label: string; value: string; detail?: string; tone?: "up" | "down" | "neutral" }[] }
+  /** Présence militante LFI : barres (parrains, groupes d'action, actions) et moyenne nationale. */
+  | {
+      type: "presence";
+      title: string;
+      note?: string;
+      rows: { label: string; sub?: string; n: number; nRef: number; r: number; rRef: number; rUnit: string }[];
+    }
   /** Actions regroupées par type de lieu (porte-à-porte, marchés, gares…). */
   | { type: "actions"; title?: string; groups: { title: string; hint?: string; items: string[] }[] }
   | { type: "missing"; themes: ThemeId[] }

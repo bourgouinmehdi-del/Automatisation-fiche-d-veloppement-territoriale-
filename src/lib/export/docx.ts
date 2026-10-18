@@ -1,3 +1,4 @@
+import { presenceSvg } from "../render/presence";
 import { posterItems } from "../render/poster";
 import { Resvg } from "@resvg/resvg-js";
 import {
@@ -271,6 +272,15 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
         ),
         new Paragraph({ spacing: { after: 120 }, children: [] }),
       ];
+    case "presence": {
+      const png = svgToPng(presenceSvg(b), 1400);
+      const w = 600;
+      return [
+        caption(b.title),
+        new Paragraph({ children: [new ImageRun({ type: "png", data: png.data, transformation: { width: w, height: Math.round((png.h / png.w) * w) } })] }),
+        ...(b.note ? [new Paragraph({ spacing: { after: 160 }, children: [new TextRun({ text: b.note, font: FONT, size: 16, color: "52514E" })] })] : []),
+      ];
+    }
     case "actions":
       return [
         ...(b.title ? [new Paragraph({ heading: HeadingLevel.HEADING_3, children: [new TextRun({ text: b.title, font: FONT })] })] : []),

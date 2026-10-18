@@ -483,7 +483,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const parrains = c.interne.parrains.get(commune.code) ?? null;
   const depParrains = [...c.interne.parrains.entries()].filter(([k]) => k.startsWith(commune.departement.code)).reduce((s, [, v]) => s + v, 0);
   const elecSources: SourceRef[] = c.elections.map((e) => e.source);
-  const interneFourni = c.interne.files.length > 0;
+  // Bilan militant (actions, groupes d'action actifs, parrains) ; Paris, Lyon, Marseille : chiffres de la ville entière.
+  const bilan = c.interne.bilan?.get(commune.code) ?? (plm ? c.interne.bilan?.get(plm.parent) : undefined);
 
   const bvRef = c.bureaux.find((b) => b.election.id === "EU24") ?? c.bureaux.find((b) => b.election.id === "PR22T1");
   const bvSecond = c.bureaux.find((b) => b.election.id === "PR22T1" && b !== bvRef);
@@ -1588,6 +1589,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
 
   // Actions recommandées, regroupées par type de lieu (comme dans les fiches de référence).
   const groupes = c.interne.groupes.filter((g) => g.code === commune.code || (commune.epci && referentiel().epcis.find((e) => e.code === commune.epci!.code)?.membres.some((m) => m.code === g.code)));
+  // « Aucun groupe » seulement si on le sait : liste des groupes fournie, ou bilan sans groupe actif.
+  const groupesFournis = c.interne.files.some((f) => f === "groupes.csv" || f === "action-populaire.csv");
+  const sansGroupe = !groupes.length && (bilan ? bilan.ga === 0 : groupesFournis);
   const actionGroups: { title: string; hint?: string; items: string[] }[] = [];
   const nearSchools = (bv: string) =>
     (c.schools?.schools ?? [])
@@ -1656,7 +1660,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const convTxt = (x: (typeof conv)[number]) => (x.kind === "parc" ? `parc d'environ ${fmtNumber(x.ha ?? 0)} ha` : x.capacite ? `${fmtNumber(x.capacite)} places` : "jardin à bière");
   if (conv.length) actionGroups.push({ title: "Moment convivial", hint: "fin de journée, pique-nique", items: conv.slice(0, 3).map((x) => `${B(x.nom)} (${convTxt(x)}${x.bv ? `, ${x.bv}` : ""}).`) });
   const implant: string[] = [];
-  if (interneFourni && !groupes.length) implant.push("Aucun groupe d'action référencé : envisager la création d'un groupe local, encadré par un groupe voisin actif.");
+  if (sansGroupe) implant.push("Aucun groupe d'action référencé : envisager la création d'un groupe local, encadré par un groupe voisin actif.");
   if (parrainsRatio && parrainsRatio.r1 < parrainsRatio.r2 * 0.8) implant.push("Prévoir l'encadrement des nouveaux sympathisants : un futur groupe serait majoritairement composé de personnes n'ayant pas encore parrainé.");
   if (implant.length) actionGroups.push({ title: "Implantation", items: implant });
   /* Plan d'action : un tableau court (où, quand, pourquoi) au lieu d'une liste de pistes. */
@@ -1914,7 +1918,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     synth.push({ text: `${B("Des électeurs à aller chercher")} : ${oneInV(abstMain.c, "électeur", "n'a pas voté", "n'ont pas voté")} ${abstRef?.label ?? "aux européennes 2024"}${cL ? ", un scrutin pourtant très suivi" : ""} (${pp(abstMain.c)}, contre ${pp(abstMain.d)} dans le département).` });
   if (insc.ficheText && insc.commune) synth.push({ text: `${B(insc.ficheText.startsWith("**Des jeunes") ? "Des jeunes à inscrire" : "Des habitants à inscrire")} : environ ${fmtNumber(Math.round(insc.commune.ecart / 100) * 100)} adultes de nationalité française absents des listes de la commune.` });
   if (parrainsRatio && parrainsRatio.r1 < parrainsRatio.r2 * 0.8) synth.push({ text: `${B("Peu de soutiens déclarés")} au regard du vote : il faudra accueillir et encadrer de nouveaux militants.` });
-  else if (interneFourni && !groupes.length) synth.push({ text: `${B("Pas encore de groupe d'action")} dans la commune ni aux alentours : tout est à construire.` });
+  else if (sansGroupe) synth.push({ text: `${B("Pas encore de groupe d'action")} dans la commune ni aux alentours : tout est à construire.` });
   if (prio.length && ranked.length <= 3) synth.push({ text: `${B("Où aller en priorité")} : toute la commune (${ranked.length} ${ranked.length > 1 ? "bureaux" : "bureau"} de vote), en commençant par le bureau ${dv(prio[0].bv)}${labels.has(prio[0].bv) ? ` (${prio[0].label})` : ""}.` });
   else if (prio.length) synth.push({ text: `${B("Où aller en priorité")} : ${prio.length > 1 ? "les bureaux de vote" : "le bureau de vote"} ${joinFr(prio.map((p) => `${dv(p.bv)}${labels.has(p.bv) ? ` (${p.label})` : ""}`))}.` });
   // Lieux nommés, avec jour et heure quand on les connaît ; rien de générique (sinon la ligne est omise).
@@ -2072,7 +2076,30 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       title: groupes.length > 1 ? `${groupes.length} groupes d'action` : "Groupe d'action",
       text: groupes.map(groupeText).join("\n"),
     });
-  else if (interneFourni) blocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action n'est référencé")} dans la commune ni dans son intercommunalité.` });
+  else if (sansGroupe) blocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif")} dans la commune ni dans son intercommunalité.` });
+  if (bilan && c.interne.bilanFrance?.inscrits) {
+    const F = c.interne.bilanFrance;
+    const row = (label: string, sub: string, n: number, nF: number, per: number, unit: string) => ({
+      label,
+      sub,
+      n,
+      nRef: (nF / F.inscrits) * bilan.inscrits,
+      r: (n / bilan.inscrits) * per,
+      rRef: (nF / F.inscrits) * per,
+      rUnit: unit,
+    });
+    blocks.push({
+      type: "presence",
+      title: `Présence militante LFI${plm ? ` (${plm.ville} entière)` : ""}`,
+      rows: [
+        row("Parrains et marraines", "", bilan.parrains, F.parrains, 100, "pour 100 inscrits"),
+        // Un groupe pour 100 inscrits n'aurait pas de sens : rapporté à 10 000.
+        row("Groupes d'action actifs", "5 actions ou plus", bilan.ga, F.ga, 10000, "pour 10 000 inscrits"),
+        row("Actions", "en 2026", bilan.actions, F.actions, 100, "pour 100 inscrits"),
+      ],
+      note: `Trait rouge : moyenne nationale${bilan.estime ? ". Petite commune : parrains et actions estimés" : ""}. Bilan LFI par commune, ${fmtNumber(bilan.inscrits)} inscrits (européennes 2024).`,
+    });
+  }
   // (Sans données internes : rien dans la fiche, qui s'adresse aux élus ; le signalement figure dans le journal de collecte.)
   const prose = (list: string[]) => list.length && blocks.push({ type: "findings", ids: list, style: "prose" });
   // Un tableau, puis 3 phrases au plus : mairie, quartiers où LFI surperforme, parrainages.

@@ -9,7 +9,13 @@ interface Summary {
   unmatched: number;
 }
 
-const KINDS = [
+const KINDS: { id: string; title: string; help: string; xlsx?: boolean }[] = [
+  {
+    id: "bilan",
+    title: "Bilan militant par commune (LFI)",
+    help: "Classeur « bilan_par_commune » (.xlsx ou .csv) : actions, groupes d'action actifs, parrains et inscrits par commune. Alimente l'encart « Présence militante LFI » des fiches et complète les parrainages.",
+    xlsx: true,
+  },
   {
     id: "action-populaire",
     title: "Export Action Populaire (groupes d'action)",
@@ -155,10 +161,10 @@ export default function DonneesInternes() {
                 </div>
                 <div className="flex shrink-0 gap-2">
                   <label className={`btn ${busy === k.id ? "opacity-60" : ""} cursor-pointer`}>
-                    {busy === k.id ? "Envoi…" : f ? "Remplacer" : "Déposer un CSV"}
+                    {busy === k.id ? "Envoi…" : f ? "Remplacer" : k.xlsx ? "Déposer le fichier" : "Déposer un CSV"}
                     <input
                       type="file"
-                      accept=".csv,text/csv"
+                      accept={k.xlsx ? ".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : ".csv,text/csv"}
                       className="hidden"
                       disabled={!!busy}
                       onChange={(e) => {

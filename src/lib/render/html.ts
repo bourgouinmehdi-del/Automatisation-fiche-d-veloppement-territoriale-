@@ -1,3 +1,4 @@
+import { presenceRef, presenceScale, presenceValue } from "./presence";
 import { posterItems } from "./poster";
 import { SOURCES } from "../collectors/catalog";
 import { KIND_LABELS, THEME_LABELS } from "../analysis/findings";
@@ -219,6 +220,13 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       return `<div class="glance">${b.items
         .map((i) => `<div class="gl ${i.tone ?? "neutral"}"><div class="gl-v">${esc(i.value)}</div><div class="gl-l">${esc(i.label)}</div>${i.detail ? `<div class="gl-d">${esc(i.detail)}</div>` : ""}</div>`)
         .join("")}</div>`;
+    case "presence":
+      return `<figure class="presence"><figcaption>${esc(b.title)}</figcaption>${b.rows
+        .map((row) => {
+          const s = presenceScale(row);
+          return `<div class="pr-row"><div class="pr-l"><b>${esc(row.label)}</b>${row.sub ? `<span>${esc(row.sub)}</span>` : ""}</div><div class="pr-bar"><i style="width:${(100 * s.fill).toFixed(1)}%"></i><em style="left:${(100 * s.tick).toFixed(1)}%"></em></div><div class="pr-v"><b>${esc(presenceValue(row, "nombre"))}</b><span>${esc(presenceValue(row, "ratio"))} ${esc(row.rUnit)}</span><span>${esc(presenceRef(row, "ratio"))}</span></div></div>`;
+        })
+        .join("")}${b.note ? `<div class="pr-n">${esc(b.note)}</div>` : ""}</figure>`;
     case "actions":
       return `${b.title ? `<h4>${esc(b.title)}</h4>` : ""}<div class="actions">${b.groups
         .map((g) => `<div class="ag"><div class="ag-t">${esc(g.title)}${g.hint ? ` <span class="ag-h">(${esc(g.hint)})</span>` : ""} :</div><ul>${g.items.map((i) => `<li>${inline(i)}</li>`).join("")}</ul></div>`)
@@ -310,6 +318,14 @@ h3.fh { font-size: 15pt; font-weight: 800; color: #4c0297; margin: 7mm 0 3mm; pa
 .glance { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin: 4mm 0 3mm; break-inside: avoid; }
 .gl { border: 0; border-left: 1mm solid #e9e3d3; padding: .5mm 0 .5mm 3mm; }
 .gl.up { border-left-color: #d1271c; } .gl.up .gl-v { color: #d1271c; } .gl.down { border-left-color: #85877f; }
+.presence { border: 1px solid #e7e6e2; border-radius: 2mm; padding: 3mm 4mm; }
+.pr-row { display: grid; grid-template-columns: 46mm 1fr 46mm; gap: 3mm; align-items: center; margin: 1.5mm 0; }
+.pr-l b { display: block; font-size: 9.5pt; } .pr-l span, .pr-v span, .pr-n { display: block; font-size: 7.6pt; color: #52514e; }
+.pr-bar { position: relative; height: 3.2mm; background: #ede5ff; border-radius: 1mm; }
+.pr-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #4c0297; border-radius: 1mm; }
+.pr-bar em { position: absolute; top: -1mm; bottom: -1mm; width: .7mm; margin-left: -.35mm; background: #d1271c; }
+.pr-v b { font-size: 12pt; color: #4c0297; font-variant-numeric: tabular-nums; }
+.pr-n { margin-top: 2mm; }
 .gl-v { font-size: 20pt; font-weight: 900; color: #4c0297; font-variant-numeric: tabular-nums; }
 .gl-l { font-size: 8.8pt; font-weight: 600; }
 .gl-d { font-size: 7.8pt; color: #52514e; }

@@ -81,7 +81,7 @@ describe("logements sociaux et population adulte", () => {
     expect(lonM).toBeCloseTo(-61, 0);
     expect(latM).toBeCloseTo(14.6, 0);
     const row = (prog: string, num: string, voie: string, x: number, y: number) => ({ DEPCOM: "75113", NUMVOIE: num, TYPVOIE: "RUE", NOMVOIE: voie, COMPLGEO: prog, X: String(x), Y: String(y), EPSG: "2154" });
-    const rows = [
+    const rows: Record<string, string>[] = [
       ...Array.from({ length: 30 }, () => row("CITE DES FLEURS", "2", "DES LILAS", 652000, 6862000)),
       ...Array.from({ length: 20 }, () => row("", "10", "DES LILAS", 652050, 6862020)),
       ...Array.from({ length: 5 }, () => row("", "3", "LOINTAINE", 655000, 6865000)),
@@ -96,7 +96,7 @@ describe("logements sociaux et population adulte", () => {
     for (const code of ["A.h.", "0401-03-5", "Bat F/28", "D09", "BATIMENT A"]) expect(isProgName(code)).toBe(false);
     expect(isProgName("Les Musiciens")).toBe(true);
     const row = (prog: string, num: string, typ: string, voie: string, x: number) => ({ DEPCOM: "35281", NUMVOIE: num, TYPVOIE: typ, NOMVOIE: voie, COMPLGEO: prog, X: String(x), Y: "6862000", EPSG: "2154" });
-    const rows = [
+    const rows: Record<string, string>[] = [
       ...Array.from({ length: 4 }, () => row("", "192", "RUE", "192 RUE ALEXANDRA DAVID NEEL", 652000)),
       ...Array.from({ length: 60 }, () => row("D09", "2", "ALL", "NICOLAS COPERNIC", 652100)),
       ...Array.from({ length: 59 }, () => row("CITE DES PERRIERES M,J", "4", "ALL", "NICOLAS COPERNIC", 652130)),
@@ -139,5 +139,21 @@ describe("noms lisibles et horaires du week-end", () => {
     expect(weekendHours("mercredi, samedi et dimanche, 8 h – 13 h")).toBe("samedi et dimanche, 8 h – 13 h");
     expect(weekendHours("vendredi, 12 h – 21 h ; dimanche, 8 h – 14 h")).toBe("dimanche, 8 h – 14 h");
     expect(weekendHours("mardi et jeudi, 8 h – 12 h")).toBe("");
+  });
+});
+
+describe("bilan militant LFI", () => {
+  it("lit le classeur par l'intitulé des colonnes et repère les estimations", async () => {
+    const { bilanToCsv, parseBilan } = await import("@/lib/collectors/interne");
+    const rows: Record<string, string>[] = [
+      { code_insee: "1007", nom_commune: "Ambronay", nb_actions_2026_estime: "2.2", nb_actions_2026_estime_bas: "1.6", nb_actions_2026_estime_haut: "2.9", nb_ga_actifs_5plus: "1", nb_parrains_estime: "13", nb_parrains_estime_bas: "9.1", nb_parrains_estime_haut: "16.9", inscrits_2024_europeenne: "2073" },
+      { code_insee: "92024", nom_commune: "Clichy", nb_actions_2026_estime: "159", nb_actions_2026_estime_bas: "159", nb_actions_2026_estime_haut: "159", nb_ga_actifs_5plus: "1", nb_parrains_estime: "766", nb_parrains_estime_bas: "766", nb_parrains_estime_haut: "766", inscrits_2024_europeenne: "33879" },
+      { code_insee: "99999", nom_commune: "Sans inscrits", nb_actions_2026_estime: "0", nb_ga_actifs_5plus: "0", nb_parrains_estime: "0", inscrits_2024_europeenne: "" },
+    ];
+    const b = parseBilan(rows);
+    expect(b.get("01007")).toEqual({ actions: 2.2, ga: 1, parrains: 13, inscrits: 2073, estime: true });
+    expect(b.get("92024")?.estime).toBe(false);
+    expect(b.has("99999")).toBe(false);
+    expect(bilanToCsv(rows).csv.split("\n")[2]).toBe("92024;159;1;766;33879;0");
   });
 });
