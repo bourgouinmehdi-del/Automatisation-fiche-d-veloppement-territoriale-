@@ -201,7 +201,10 @@ describe("chaîne de génération (API simulées)", () => {
     expect(fiche.blocks.some((b) => b.type === "list" && b.items.some((i) => /^Dans la moyenne départementale/.test(i.text)))).toBe(false);
     const parts = fiche.blocks.filter((b) => b.type === "fieldNotes").map((b) => (b as { part?: string }).part ?? "general");
     expect(parts).toEqual(expect.arrayContaining(["general", "socio", "politique", "actions"]));
-    expect(fiche.blocks.some((b) => b.type === "paragraph" && /En bref/.test(b.text))).toBe(true);
+    // Profil politique : graphiques et chiffres, pas de texte rédigé.
+    const iP = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil politique du territoire");
+    const iO = fiche.blocks.findIndex((b) => b.type === "heading" && /Où agir/.test(b.text));
+    expect(fiche.blocks.slice(iP + 1, iO).filter((b) => b.type === "paragraph" || b.type === "findings")).toEqual([]);
     // Gras rendu en HTML, retiré du CSV.
     const { renderReportHtml } = await import("@/lib/render/html");
     const { tableCsv } = await import("@/lib/export/csv");
@@ -229,7 +232,9 @@ describe("chaîne de génération (API simulées)", () => {
     expect(muni.rows).toHaveLength(3);
     expect(muni.highlight).toEqual([0]);
     const fiche = report.sections[0];
-    expect(fiche.blocks.some((b) => b.type === "paragraph" && /dirigée par Alice DURAND/.test(b.text) && /gauche battue/.test(b.text))).toBe(true);
+    expect(fiche.blocks.some((b) => b.type === "paragraph" && /dirigée par/.test(b.text))).toBe(false);
+    const annexe = report.sections.find((x) => x.id === "LFI_DETAIL")!;
+    expect(annexe.blocks.some((b) => b.type === "paragraph" && /dirigée par Alice DURAND/.test(b.text) && /gauche battue/.test(b.text))).toBe(true);
     // BPE : désert médical (2 médecins pour ~41 000 habitants, département bien mieux doté).
     const socio = fiche.blocks.find((b) => b.type === "list" && b.items.some((i) => /Désert médical/.test(i.text))) as Extract<(typeof fiche.blocks)[number], { type: "list" }>;
     expect(socio.items.some((i) => /Désert médical/.test(i.text) && /France Services/.test(i.text))).toBe(true);
@@ -332,8 +337,10 @@ describe("chaîne de génération (API simulées)", () => {
     expect(g.map((c) => c.tab)).toEqual(expect.arrayContaining(["Présidentielle 2022", "Européennes 2024"]));
     for (const c of g) {
       expect(c.type).toBe("refbar");
-      expect(c.data[c.data.length - 1].label).toBe("Autres");
-      const total = c.data.reduce((s, d) => s + Number(d.value), 0);
+      // Dernière barre : l'abstention (part des inscrits), avec l'abstention nationale.
+      expect(c.data[c.data.length - 1].label).toBe("Abstention");
+      expect(c.data[c.data.length - 2].label).toBe("Autres");
+      const total = c.data.filter((d) => d.label !== "Abstention").reduce((s, d) => s + Number(d.value), 0);
       expect(total).toBeGreaterThan(99);
       expect(total).toBeLessThan(101);
     }
@@ -354,8 +361,9 @@ describe("chaîne de génération (API simulées)", () => {
   it("graphique « Européennes 2024 » dans le profil politique", async () => {
     const ch = report.charts.find((c) => c.id === "lfi_chart_eu24")!;
     expect(ch.type).toBe("refbar");
-    expect(ch.data.map((d) => d.label)).toEqual(["PCF", "LFI", "LÉ", "PS / PP", "Ensemble", "LR", "RN", "Reconquête", "Autres"]);
+    expect(ch.data.map((d) => d.label)).toEqual(["PCF", "LFI", "LÉ", "PS / PP", "Ensemble", "LR", "RN", "Reconquête", "Autres", "Abstention"]);
     expect(ch.data.find((d) => d.label === "LFI")).toMatchObject({ color: "#E8434B", ref: 9.89 });
+    expect(ch.data.find((d) => d.label === "Abstention")).toMatchObject({ ref: 48.51 });
     const fiche = report.sections[0];
     const iPol = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil politique du territoire");
     const iOu = fiche.blocks.findIndex((b) => b.type === "heading" && /Où agir/.test(b.text));
