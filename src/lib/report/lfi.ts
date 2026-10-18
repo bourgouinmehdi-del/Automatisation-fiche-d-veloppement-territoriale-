@@ -1601,7 +1601,19 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const groupes = c.interne.groupes.filter((g) => g.code === commune.code || (commune.epci && referentiel().epcis.find((e) => e.code === commune.epci!.code)?.membres.some((m) => m.code === g.code)));
   // « Aucun groupe » seulement si on le sait : liste des groupes fournie, ou bilan sans groupe actif.
   const groupesFournis = c.interne.files.some((f) => f === "groupes.csv" || f === "action-populaire.csv");
-  const sansGroupe = !groupes.length && (bilan ? bilan.ga === 0 : groupesFournis);
+  // Bilan : groupes actifs des autres communes de l'intercommunalité (pas seulement la commune).
+  const epciMembres = commune.epci ? (referentiel().epcis.find((e) => e.code === commune.epci!.code)?.membres ?? []) : [];
+  const gaVoisins = bilan && !plm
+    ? epciMembres
+        .filter((m) => m.code !== commune.code)
+        .map((m) => ({ nom: m.nom, ga: c.interne.bilan?.get(m.code)?.ga ?? 0 }))
+        .filter((x) => x.ga > 0)
+        .sort((a, b) => b.ga - a.ga || a.nom.localeCompare(b.nom))
+    : [];
+  const sansGroupe = !groupes.length && (bilan ? bilan.ga === 0 && !gaVoisins.length : groupesFournis);
+  // Aucun groupe dans la commune, mais dans l'intercommunalité.
+  const gaAilleurs = !groupes.length && !!bilan && bilan.ga === 0 && gaVoisins.length > 0;
+  const voisinsTxt = joinFr(gaVoisins.slice(0, 4).map((x) => (x.ga > 1 ? `${x.nom} (${x.ga} groupes)` : x.nom))) + (gaVoisins.length > 4 ? ` et ${gaVoisins.length - 4} autres communes` : "");
   const actionGroups: { title: string; hint?: string; items: string[] }[] = [];
   const nearSchools = (bv: string) =>
     (c.schools?.schools ?? [])
@@ -1671,6 +1683,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (conv.length) actionGroups.push({ title: "Moment convivial", hint: "fin de journée, pique-nique", items: conv.slice(0, 3).map((x) => `${B(x.nom)} (${convTxt(x)}${x.bv ? `, ${x.bv}` : ""}).`) });
   const implant: string[] = [];
   if (sansGroupe) implant.push("Aucun groupe d'action référencé : envisager la création d'un groupe local, encadré par un groupe voisin actif.");
+  else if (gaAilleurs) implant.push(`Aucun groupe d'action actif dans la commune : s'appuyer sur ${gaVoisins.length > 1 ? "ceux" : "celui"} de ${voisinsTxt} pour en créer un.`);
   if (parrainsRatio && parrainsRatio.r1 < parrainsRatio.r2 * 0.8) implant.push("Prévoir l'encadrement des nouveaux sympathisants : un futur groupe serait majoritairement composé de personnes n'ayant pas encore parrainé.");
   if (implant.length) actionGroups.push({ title: "Implantation", items: implant });
   /* Plan d'action : un tableau court (où, quand, pourquoi) au lieu d'une liste de pistes. */
@@ -1929,6 +1942,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (insc.ficheText && insc.commune) synth.push({ text: `${B(insc.ficheText.startsWith("**Des jeunes") ? "Des jeunes à inscrire" : "Des habitants à inscrire")} : environ ${fmtNumber(Math.round(insc.commune.ecart / 100) * 100)} adultes de nationalité française absents des listes de la commune.` });
   if (parrainsRatio && parrainsRatio.r1 < parrainsRatio.r2 * 0.8) synth.push({ text: `${B("Peu de soutiens déclarés")} au regard du vote : il faudra accueillir et encadrer de nouveaux militants.` });
   else if (sansGroupe) synth.push({ text: `${B("Pas encore de groupe d'action")} dans la commune ni aux alentours : tout est à construire.` });
+  else if (gaAilleurs) synth.push({ text: `${B("Pas de groupe d'action actif dans la commune")} : ${gaVoisins.length > 1 ? "les plus proches sont" : "le plus proche est"} à ${voisinsTxt}.` });
   if (prio.length && ranked.length <= 3) synth.push({ text: `${B("Où aller en priorité")} : toute la commune (${ranked.length} ${ranked.length > 1 ? "bureaux" : "bureau"} de vote), en commençant par le bureau ${dv(prio[0].bv)}${labels.has(prio[0].bv) ? ` (${prio[0].label})` : ""}.` });
   else if (prio.length) synth.push({ text: `${B("Où aller en priorité")} : ${prio.length > 1 ? "les bureaux de vote" : "le bureau de vote"} ${joinFr(prio.map((p) => `${dv(p.bv)}${labels.has(p.bv) ? ` (${p.label})` : ""}`))}.` });
   // Lieux nommés, avec jour et heure quand on les connaît ; rien de générique (sinon la ligne est omise).
@@ -2059,6 +2073,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       text: groupes.map(groupeText).join("\n"),
     });
   else if (sansGroupe) blocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif")} dans la commune ni dans son intercommunalité.` });
+  else if (gaAilleurs) blocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif dans la commune.")} Dans l'intercommunalité : ${voisinsTxt}.` });
   if (bilan && c.interne.bilanFrance?.inscrits) {
     const F = c.interne.bilanFrance;
     const row = (label: string, sub: string, n: number, nF: number, per: number, unit: string) => ({

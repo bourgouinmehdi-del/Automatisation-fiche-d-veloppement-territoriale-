@@ -518,4 +518,15 @@ describe("chaîne de génération (API simulées)", () => {
     expect(net.length).toBeGreaterThan(0);
     for (const r of net) expect(r.fromCache).toBe(r.requests);
   }, 60000);
+
+  it("bilan : groupe d'action absent de la commune mais présent dans l'intercommunalité", async () => {
+    const d = path.join(dir, "interne");
+    await fs.rm(path.join(d, "groupes.csv"), { force: true });
+    await fs.rm(path.join(d, "action-populaire.csv"), { force: true });
+    await fs.writeFile(path.join(d, "bilan.csv"), "code_insee;nb_actions;nb_ga_actifs;nb_parrains;inscrits;estime\n60159;60;0;300;25000;0\n60325;0.4;1;5.7;1581;1\n01001;9000;1000;80000;9074100;0\n");
+    const r = await build({ codeInsee: "60159", scope: "commune" });
+    const txt = JSON.stringify(r.sections.find((x) => x.id === "LFI")!.blocks);
+    expect(txt).not.toMatch(/ni dans son intercommunalité|ni aux alentours/);
+    expect(txt).toMatch(/Aucun groupe d'action actif dans la commune\.\*\* Dans l'intercommunalité : Jaux/);
+  }, 120000);
 });
