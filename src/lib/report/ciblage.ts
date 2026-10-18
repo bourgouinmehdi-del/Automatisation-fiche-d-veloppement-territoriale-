@@ -98,6 +98,8 @@ export interface Unit {
   parrains: number | null;
   ratio: number | null;
   groupes: { nom: string; membres: number | null }[];
+  /** Groupes d'action actifs (5 actions ou plus) selon le bilan LFI ; null sans bilan. */
+  ga: number | null;
   mairie: { nuance: string; tete: string } | null;
   score: number;
 }
@@ -161,6 +163,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
     return median(peers.map((x) => x.v!));
   };
 
+  const groupesFournis = c.interne.files.some((f) => f === "groupes.csv" || f === "action-populaire.csv");
   const groupsOf = (codes: string[]) => c.interne.groupes.filter((g) => codes.includes(g.code)).map((g) => ({ nom: g.nom, membres: g.membres }));
   const mkUnit = (id: string, kind: Unit["kind"], nom: string, codes: string[], focus: string[]): Unit => {
     const a24 = merge(codes.map((k) => by24.get(k)).filter((x): x is Agg => !!x));
@@ -192,6 +195,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       parrains: par,
       ratio: par != null && v24 ? par / v24 : null,
       groupes: groupsOf(codes),
+      ga: c.interne.bilan ? codes.reduce((s, k) => s + (c.interne.bilan!.get(k)?.ga ?? 0), 0) : null,
       mairie: muni ? { nuance: muni.nuance, tete: muni.tete } : null,
       score: 0,
     };
@@ -225,9 +229,37 @@ export function buildCiblage(c: Collected): CiblageOutput {
   const zR = zs(units.map((u) => u.ratio));
   const zV = zs(units.map((u) => Math.log(1 + u.voix24)));
   const w = hasParrains ? { o: 0.35, a: 0.25, r: 0.2, v: 0.2 } : { o: 0.45, a: 0.3, r: 0, v: 0.25 };
+  const bigCities = zoom ? [] : [...communes].filter((x) => (x.population ?? 0) >= BIG_CITY_MIN).sort((a, b) => (b.population ?? 0) - (a.population ?? 0)).slice(0, 2).map((x) => x.code);
+  // Communes collées aux grandes villes écartées : leur rayonnement profite déjà de la ville voisine, moins prioritaires.
+  const featOf = new Map((c.depFeatures?.features ?? []).map((f) => [(f.properties as { code: string }).code, f]));
+  const bigFeats = bigCities.map((k) => featOf.get(k)).filter((f): f is GeoJSON.Feature => !!f);
+  const collees = new Set<string>();
+  if (bigFeats.length) {
+    const bbs = bigFeats.map((f) => turf.bbox(f));
+    for (const [code, f] of featOf) {
+      if (bigCities.includes(code)) continue;
+      const b = turf.bbox(f);
+      bigFeats.forEach((g, j) => {
+        const q = bbs[j];
+        if (b[0] > q[2] || b[2] < q[0] || b[1] > q[3] || b[3] < q[1]) return;
+        try {
+          if (turf.booleanIntersects(f, g)) collees.add(code);
+        } catch {
+          /* géométrie invalide : ignorée */
+        }
+      });
+    }
+  }
+  const voisinDe = (code: string) => {
+    const j = bigFeats.findIndex((g) => collees.has(code) && turf.booleanIntersects(featOf.get(code)!, g));
+    return j >= 0 ? ref.byCode.get((bigFeats[j].properties as { code: string }).code)?.nom : undefined;
+  };
   units.forEach((u, i) => {
-    const covered = u.groupes.some((g) => (g.membres ?? 0) >= 20) || (u.codes.includes(chefLieu ?? "") && u.groupes.length > 0);
-    u.score = w.o * zO[i] + w.a * zA[i] + w.r * zR[i] + w.v * zV[i] - (covered ? 1 : 0);
+    // Déjà couvert : un groupe de 20 membres ou plus, ou un groupe au chef-lieu (liste nominative ou bilan).
+    const nGa = Math.max(u.groupes.length, u.ga ?? 0);
+    const covered = u.groupes.some((g) => (g.membres ?? 0) >= 20) || (u.codes.includes(chefLieu ?? "") && nGa > 0);
+    const colle = u.kind === "commune" && collees.has(u.codes[0]);
+    u.score = w.o * zO[i] + w.a * zA[i] + w.r * zR[i] + w.v * zV[i] - (covered ? 1 : 0) - (colle ? 0.75 : 0);
   });
   const ranked = [...units].sort((a, b) => b.score - a.score);
   // Score lisible de 0 à 100 : 100 pour le territoire le mieux placé, 0 pour le moins bien placé.
@@ -240,7 +272,6 @@ export function buildCiblage(c: Collected): CiblageOutput {
   // mais seulement si ce sont de vraies villes (20 000 habitants et plus) : dans un département rural
   // (Creuse : Guéret 13 000 habitants), le chef-lieu est souvent le meilleur point d'appui.
   // (En circonscription, aucune ville n'est écartée : le territoire est déjà restreint.)
-  const bigCities = zoom ? [] : [...communes].filter((x) => (x.population ?? 0) >= BIG_CITY_MIN).sort((a, b) => (b.population ?? 0) - (a.population ?? 0)).slice(0, 2).map((x) => x.code);
   const chosen: Unit[] = [];
   for (const u of ranked) {
     if (u.kind === "commune" && bigCities.includes(u.codes[0])) continue;
@@ -336,8 +367,10 @@ export function buildCiblage(c: Collected): CiblageOutput {
       if (r >= 1.3) raisons.push(`Beaucoup de parrains au regard des voix LFI (${fmtNumber(r, 1)} fois plus que la moyenne du département) : ${B("de bonnes chances de trouver de futurs militants")}.`);
       else if (r <= 0.7) raisons.push(`${B("Peu de parrains")} au regard des voix LFI (${fmtNumber(r, 1)} fois la moyenne du département) : il faudra surtout accompagner les nouveaux militants.`);
     }
+    if (u.kind === "commune" && collees.has(u.codes[0])) raisons.push(`Commune voisine de ${voisinDe(u.codes[0]) ?? "la grande ville"} : score abaissé, la ville proche rayonne déjà.`);
     if (u.groupes.length) raisons.push(`Groupe${u.groupes.length > 1 ? "s" : ""} d'action : ${u.groupes.map((g) => `« ${g.nom} »${g.membres != null ? ` (${g.membres} membres)` : ""}`).join(", ")}.`);
-    else if (c.interne.files.length) raisons.push(`${B("Aucun groupe d'action référencé")} : territoire à implanter.`);
+    else if (u.ga) raisons.push(`${B(`${u.ga > 1 ? `${u.ga} groupes d'action actifs` : "Un groupe d'action actif"}`)} (5 actions ou plus, bilan LFI).`);
+    else if (u.ga === 0 || groupesFournis) raisons.push(`${B("Aucun groupe d'action actif")} : territoire à implanter.`);
     if (u.mairie) raisons.push(`Majorité municipale issue des élections de 2026 : ${(NUANCES[u.mairie.nuance] ?? u.mairie.nuance).toLowerCase()}${nuanceFamily(u.mairie.nuance) === "gauche" ? " (gauche)" : ""}.`);
     targets.push({ code: u.codes[0], codes: u.codes, nom: u.nom, kind: u.kind, focus: u.kind === "groupement" ? u.focus : undefined, color: TARGET_COLORS[k], raisons, tableId: tid, evidence: ev });
   });
@@ -355,7 +388,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       { key: "surperf", label: "Écart aux villes de même taille (points)", align: "right" },
       { key: "abst", label: `N'ont pas voté (${abstLabel})`, align: "right" },
       ...(hasParrains ? [{ key: "ratio", label: "Parrains pour 100 voix LFI", align: "right" as const }] : []),
-      ...(c.interne.files.length ? [{ key: "groupe", label: "Groupe d'action" }] : []),
+      ...(groupesFournis || c.interne.bilan ? [{ key: "groupe", label: "Groupes d'action" }] : []),
       ...(c.municipalDep ? [{ key: "mairie", label: "Mairie (2026)" }] : []),
       { key: "score", label: "Score (0 à 100)", bar: true },
     ],
@@ -367,13 +400,13 @@ export function buildCiblage(c: Collected): CiblageOutput {
       surperf: u.overperf != null ? fmtSigned(u.overperf, "points") : "n.d.",
       abst: pct(u.abst24),
       ratio: u.ratio != null ? fmtNumber(100 * u.ratio, 1) : "",
-      groupe: u.groupes.length ? u.groupes.map((g) => `${g.nom}${g.membres != null ? ` (${g.membres})` : ""}`).join(", ") : "—",
+      groupe: u.groupes.length ? u.groupes.map((g) => `${g.nom}${g.membres != null ? ` (${g.membres})` : ""}`).join(", ") : u.ga ? `${u.ga} actif${u.ga > 1 ? "s" : ""}` : "—",
       mairie: u.mairie ? (NUANCES[u.mairie.nuance] ?? u.mairie.nuance) : "",
       score: score100(u),
     })),
     highlight: ranked.slice(0, 20).map((u, i) => (chosen.includes(u) ? i : -1)).filter((i) => i >= 0),
     sources: [...src, ...(hasParrains || c.interne.files.length ? [interneSrc] : []), ...(c.municipalDep ? [c.municipalDep.source] : [])],
-    note: `${bigCities.length ? `${bigCities.length > 1 ? "Les deux villes les plus peuplées" : "La ville la plus peuplée"} (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) ${bigCities.length > 1 ? "restent" : "reste"} hors ciblage ; dans les départements sans ville de 20 000 habitants, toutes les communes sont classées. ` : "Aucune ville de 20 000 habitants ou plus : toutes les communes sont classées, chef-lieu compris. "}${partagees.length ? `Communes partagées avec une autre circonscription (résultats de toute la commune) : ${partagees.map((x) => `${x.nom} (${Math.round(100 * (shares!.get(x.code) ?? 0))} % de sa surface)`).join(", ")}. ` : ""}Score de 0 à 100 : 100 pour le territoire le mieux placé du classement, 0 pour le moins bien placé. Il combine le vote LFI comparé aux villes de même taille (${Math.round(w.o * 100)} %), l'écart d'abstention au département aux ${abstLabel} (${Math.round(w.a * 100)} %)${hasParrains ? `, les parrains au regard des voix (${Math.round(w.r * 100)} %)` : ""} et le nombre de voix LFI (${Math.round(w.v * 100)} %) ; les territoires déjà couverts par un groupe de 20 membres ou plus sont pénalisés. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
+    note: `${bigCities.length ? `${bigCities.length > 1 ? "Les deux villes les plus peuplées" : "La ville la plus peuplée"} (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) ${bigCities.length > 1 ? "restent" : "reste"} hors ciblage ; dans les départements sans ville de 20 000 habitants, toutes les communes sont classées. ` : "Aucune ville de 20 000 habitants ou plus : toutes les communes sont classées, chef-lieu compris. "}${partagees.length ? `Communes partagées avec une autre circonscription (résultats de toute la commune) : ${partagees.map((x) => `${x.nom} (${Math.round(100 * (shares!.get(x.code) ?? 0))} % de sa surface)`).join(", ")}. ` : ""}Score de 0 à 100 : 100 pour le territoire le mieux placé du classement, 0 pour le moins bien placé. Il combine le vote LFI comparé aux villes de même taille (${Math.round(w.o * 100)} %), l'écart d'abstention au département aux ${abstLabel} (${Math.round(w.a * 100)} %)${hasParrains ? `, les parrains au regard des voix (${Math.round(w.r * 100)} %)` : ""} et le nombre de voix LFI (${Math.round(w.v * 100)} %) ; les territoires déjà couverts (groupe de 20 membres ou plus, ou groupe au chef-lieu)${bigFeats.length ? ` et les communes collées à ${joinFr(bigCities.map((k) => ref.byCode.get(k)?.nom ?? k))}` : ""} sont pénalisés. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
   });
 
   // Carte des cibles.
@@ -409,7 +442,10 @@ export function buildCiblage(c: Collected): CiblageOutput {
     // Groupes certifiés et actifs (5 actions ou plus) si l'export le permet ; sinon tous les groupes.
     const detailed = gs.some((g) => g.certifie != null || g.actions != null);
     const active = gs.filter((g) => !detailed || (g.certifie === true && (g.actions ?? 0) >= 5));
-    const gaCodes = new Set(active.map((g) => g.code));
+    // Bilan LFI : communes avec au moins un groupe actif (5 actions ou plus).
+    const bilanGa = c.interne.bilan ? [...c.interne.bilan].filter(([, x]) => x.ga > 0).map(([k]) => k) : [];
+    const gaCodes = new Set([...active.map((g) => g.code), ...bilanGa]);
+    const actifs = detailed || bilanGa.length > 0;
     const targetCodes = new Set(chosen.flatMap((u) => u.codes));
     const feat = (f: GeoJSON.Feature, extra: Record<string, unknown> = {}) => ({ ...turf.truncate(f, { precision: 4 }), properties: { nom: (f.properties as { nom: string }).nom, ...extra } }) as GeoJSON.Feature;
     const all = c.depFeatures.features;
@@ -433,7 +469,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
           : []),
         { id: "communes", label: "Communes", kind: "polygons", data: { type: "FeatureCollection", features: all.map((f) => feat(f)) }, style: { fill: "#fffcf4", stroke: "#cfc8ba", strokeWidth: 0.5 }, legendItem: { label: "Commune", swatch: "line" }, visible: true, source: geoSrc },
         ...(ga.length
-          ? [{ id: "ga", label: detailed ? "Groupes d'action certifiés actifs" : "Groupes d'action", kind: "polygons" as const, data: { type: "FeatureCollection" as const, features: ga.map((f) => feat(f)) }, style: { fill: "#4c0297", stroke: "#4c0297", strokeWidth: 0.6 }, labelMode: "callout" as const, labelProperty: "nom", labelColor: "#4c0297", legendItem: { label: detailed ? "Groupe d'action certifié actif (5 actions ou plus)" : "Groupe d'action", swatch: "fill" as const }, visible: true, source: interneSrcMap }]
+          ? [{ id: "ga", label: actifs ? "Groupes d'action actifs" : "Groupes d'action", kind: "polygons" as const, data: { type: "FeatureCollection" as const, features: ga.map((f) => feat(f)) }, style: { fill: "#4c0297", stroke: "#4c0297", strokeWidth: 0.6 }, labelMode: "callout" as const, labelProperty: "nom", labelColor: "#4c0297", legendItem: { label: actifs ? "Groupe d'action actif (5 actions ou plus)" : "Groupe d'action", swatch: "fill" as const }, visible: true, source: interneSrcMap }]
           : []),
         ...(cib.length
           ? [{ id: "cibles", label: "Ciblages proposés", kind: "polygons" as const, data: { type: "FeatureCollection" as const, features: cib.map((f) => feat(f)) }, style: { fill: "#f3b51b", stroke: "#c98a00", strokeWidth: 0.6 }, labelMode: "callout" as const, labelProperty: "nom", labelColor: "#c98a00", legendItem: { label: "Ciblage proposé", swatch: "fill" as const }, visible: true, source: src[0] }]
