@@ -55,11 +55,23 @@ export interface InternalData {
   bilan?: Map<string, Bilan>;
   /** Totaux France entière du bilan (pour les moyennes nationales). */
   bilanFrance?: Omit<Bilan, "estime">;
+  /** Totaux par taille de commune (inscrits) : point de comparaison des communes de même taille. */
+  bilanTranches?: (Omit<Bilan, "estime"> & { min: number; max: number; communes: number })[];
   groupes: Groupe[];
   files: string[];
   /** Lignes non rattachées à une commune (export Action Populaire). */
   unmatched?: number;
 }
+
+/** Tailles de commune (en inscrits) pour comparer le bilan militant. */
+export const BILAN_TRANCHES: [number, number][] = [
+  [0, 1000],
+  [1000, 3500],
+  [3500, 10000],
+  [10000, 30000],
+  [30000, 100000],
+  [100000, Infinity],
+];
 
 export const INTERNAL_FILES = ["parrains.csv", "groupes.csv", "action-populaire.csv", "bilan.csv"] as const;
 
@@ -215,6 +227,20 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
         t.inscrits += x.inscrits;
       }
       out.bilanFrance = t;
+      // Les groupes d'action sont rattachés à beaucoup de petites communes : la moyenne nationale
+      // n'est pas comparable d'une taille de commune à l'autre.
+      out.bilanTranches = BILAN_TRANCHES.map(([min, max]) => {
+        const z = { min, max, communes: 0, actions: 0, ga: 0, parrains: 0, inscrits: 0 };
+        for (const x of b.values())
+          if (x.inscrits >= min && x.inscrits < max) {
+            z.communes++;
+            z.actions += x.actions;
+            z.ga += x.ga;
+            z.parrains += x.parrains;
+            z.inscrits += x.inscrits;
+          }
+        return z;
+      });
       // Parrains manquants (pas de parrains.csv, ou commune absente) : repris du bilan.
       for (const [k, x] of b) if (!out.parrains.has(k)) out.parrains.set(k, Math.round(x.parrains));
       out.files.push("bilan.csv");

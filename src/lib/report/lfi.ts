@@ -2074,8 +2074,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     });
   else if (sansGroupe) blocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif")} dans la commune ni dans son intercommunalité.` });
   else if (gaAilleurs) blocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif dans la commune.")} Dans l'intercommunalité : ${voisinsTxt}.` });
-  if (bilan && c.interne.bilanFrance?.inscrits) {
-    const F = c.interne.bilanFrance;
+  // Point de comparaison : les communes de même taille (en inscrits), pas la moyenne nationale.
+  const tranche = bilan ? c.interne.bilanTranches?.find((t) => bilan.inscrits >= t.min && bilan.inscrits < t.max && t.inscrits) : undefined;
+  if (bilan && tranche) {
+    const F = tranche;
     const row = (label: string, sub: string, n: number, nF: number, per: number, unit: string) => ({
       label,
       sub,
@@ -2094,7 +2096,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         row("Groupes d'action actifs", "5 actions ou plus", bilan.ga, F.ga, 10000, "pour 10 000 inscrits"),
         row("Actions", "en 2026", bilan.actions, F.actions, 100, "pour 100 inscrits"),
       ],
-      note: `Trait rouge : moyenne nationale${bilan.estime ? ". Petite commune : parrains et actions estimés" : ""}. Bilan LFI par commune, ${fmtNumber(bilan.inscrits)} inscrits (européennes 2024).`,
+      note: `Trait rouge : moyenne des communes de même taille (${tranche.max === Infinity ? `plus de ${fmtNumber(tranche.min)}` : `${fmtNumber(tranche.min)} à ${fmtNumber(tranche.max)}`} inscrits, ${fmtNumber(tranche.communes)} communes)${bilan.estime ? ". Petite commune : parrains et actions estimés" : ""}. Bilan LFI par commune, ${fmtNumber(bilan.inscrits)} inscrits (européennes 2024).`,
     });
   }
   // (Sans données internes : rien dans la fiche, qui s'adresse aux élus ; le signalement figure dans le journal de collecte.)
