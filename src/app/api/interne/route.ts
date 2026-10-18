@@ -1,7 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { INTERNAL_FILES, internalDir, internalSummary, parseCsv, parseGroupes } from "@/lib/collectors/interne";
+import { INTERNAL_FILES, bilanToCsv, internalDir, internalSummary, parseCsv, parseGroupes } from "@/lib/collectors/interne";
+import { readXlsx, sheetObjects } from "@/lib/collectors/xlsx";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,8 @@ export async function GET() {
 }
 
 /**
- * Dépôt d'un fichier interne : `kind` = parrains | groupes | action-populaire.
+ * Dépôt d'un fichier interne : `kind` = parrains | groupes | action-populaire | bilan.
+ * Le bilan peut être un classeur Excel : il est converti en CSV compact.
  * Le fichier est vérifié (lecture CSV) avant d'être enregistré dans data/interne/.
  */
 export async function POST(req: Request) {
@@ -23,6 +25,22 @@ export async function POST(req: Request) {
   if (!(file instanceof Blob) || file.size === 0) return NextResponse.json({ error: "Fichier manquant" }, { status: 400 });
   if (file.size > 20 * 1024 * 1024) return NextResponse.json({ error: "Fichier trop volumineux (20 Mo au plus)" }, { status: 400 });
   const buf = Buffer.from(await file.arrayBuffer());
+  if (kind === "bilan") {
+    let rows: Record<string, string>[] = [];
+    if (buf[0] === 0x50 && buf[1] === 0x4b) {
+      try {
+        const sheet = [...readXlsx(new Uint8Array(buf)).values()][0] ?? [];
+        rows = sheetObjects(sheet, /^code_?(insee|commune)$/i);
+      } catch {
+        return NextResponse.json({ error: "Classeur illisible : fichier Excel (.xlsx) ou CSV attendu" }, { status: 400 });
+      }
+    } else rows = parseCsv(buf.toString("utf8"));
+    const { csv, n } = bilanToCsv(rows);
+    if (!n) return NextResponse.json({ error: "Aucune commune lue : colonnes code_insee, nb_actions…, nb_ga…, nb_parrains…, inscrits… attendues" }, { status: 400 });
+    await fs.mkdir(internalDir(), { recursive: true });
+    await fs.writeFile(path.join(internalDir(), name), csv);
+    return NextResponse.json({ ok: true, info: `${n.toLocaleString("fr-FR")} communes`, summary: await internalSummary() });
+  }
   // UTF-8 attendu ; repli ISO-8859-1 (exports de tableurs).
   let text = buf.toString("utf8");
   if (text.includes("�")) text = buf.toString("latin1");

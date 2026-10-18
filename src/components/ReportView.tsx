@@ -10,6 +10,7 @@ import { isSmallSample } from "@/lib/analysis/stats";
 import { fmtDate, fmtValue, scoreColor, territoryName } from "@/lib/format";
 import { cellText, Citations, inlineParts, sourceLabel } from "@/lib/render/cite";
 import ChartView from "./ChartView";
+import PresenceBars from "./PresenceBars";
 import { useRole } from "./useRole";
 
 const ActionMap = dynamic(() => import("./ActionMap"), { ssr: false, loading: () => <div className="h-[520px] animate-pulse rounded-lg bg-[var(--line)]" /> });
@@ -132,6 +133,8 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
             })}
           </div>
         );
+      case "presence":
+        return <PresenceBars key={key} b={b} />;
       case "glance":
         return (
           <div key={key} className="my-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
