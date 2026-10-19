@@ -133,6 +133,10 @@ describe("noms lisibles et horaires du week-end", () => {
     expect(prettyFr("Res.university Berges de Seine")).toBe("Résidence universitaire Berges de Seine");
     expect(prettyFr("Résidence de clichy", "Clichy")).toBe("Résidence de Clichy");
     expect(prettyFr("École Jean Jaures")).toBe("École Jean Jaurès");
+    // « Gén » ne doit pas être trouvé à l'intérieur de « Général » (fiche de Grande-Synthe).
+    expect(prettyFr("Avenue du Général de Gaulle")).toBe("Avenue du Général de Gaulle");
+    expect(prettyFr("Rue d Aquitaine")).toBe("Rue d'Aquitaine");
+    expect(prettyFr("18 Place de Lutece")).toBe("18 Place de Lutèce");
   });
   it("ne garde que les créneaux du samedi et du dimanche", async () => {
     const { weekendHours } = await import("@/lib/report/affiche");
@@ -174,5 +178,17 @@ describe("contours IRIS : réessai quand la Géoplateforme répond 404", () => {
     expect(calls).toHaveLength(2);
     expect(r.features).toHaveLength(1);
     expect(r.url).toMatch(/COUNT=1000/);
+  });
+});
+
+describe("numéros de voie des logements sociaux", () => {
+  it("sans zéros devant ni indice répété", async () => {
+    const { numVoie, fixAdr } = await import("@/lib/collectors/rpls");
+    expect(numVoie("4BIS", "BIS")).toBe("4 bis");
+    expect(numVoie("0004")).toBe("4");
+    expect(numVoie("12", "B")).toBe("12 bis");
+    expect(fixAdr("0004 Rue des Pins")).toBe("4 Rue des Pins");
+    expect(fixAdr("4BIS BIS Rue Lambarene")).toBe("4 bis Rue Lambarene");
+    expect(fixAdr("Bâtiment B Rue")).toBe("Bâtiment B Rue");
   });
 });

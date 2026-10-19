@@ -119,28 +119,33 @@ export function scoreColor(v: number): string {
 /* ------------------------------------------------- noms de lieux lisibles */
 
 // Abréviations des répertoires (logements sociaux, lieux de vote, catalogues).
+// Bornes de mot qui tiennent compte des lettres accentuées (\b s'arrête avant « é » :
+// « Gén » trouvé dans « Général » donnait « Généraléral »).
+const L0 = "(?<![\\p{L}\\d])";
+const L1 = "(?![\\p{L}\\d])";
+const ab = (w: string, after = "", flags = "gu") => new RegExp(`${L0}(?:${w})${L1}\\.?${after}`, flags);
 const ABBR: [RegExp, string][] = [
-  [/\bMal\b\.?/g, "Maréchal"],
-  [/\bMme\b\.?/g, "Madame"],
-  [/\bMlle\b\.?/g, "Mademoiselle"],
-  [/\b(Gal|Gl|Gén)\b\.?/g, "Général"],
-  [/\b(Pdt|Pres|Prés)\b\.?(?= )/g, "Président"],
-  [/\bDr\b\.?(?= )/g, "Docteur"],
-  [/\bCdt\b\.?/g, "Commandant"],
-  [/\bLt\b\.?(?= )/g, "Lieutenant"],
-  [/\bCne\b\.?(?= )/g, "Capitaine"],
-  [/\bSte\b\.?(?=[ -][A-ZÀ-Ý])/g, "Sainte"],
-  [/\bSt\b\.?(?=[ -][A-ZÀ-Ý])/g, "Saint"],
+  [ab("Mal"), "Maréchal"],
+  [ab("Mme"), "Madame"],
+  [ab("Mlle"), "Mademoiselle"],
+  [ab("Gal|Gl|Gén"), "Général"],
+  [ab("Pdt|Pres|Prés", "(?= )"), "Président"],
+  [ab("Dr", "(?= )"), "Docteur"],
+  [ab("Cdt"), "Commandant"],
+  [ab("Lt", "(?= )"), "Lieutenant"],
+  [ab("Cne", "(?= )"), "Capitaine"],
+  [ab("Ste", "(?=[ -][A-ZÀ-Ý])"), "Sainte"],
+  [ab("St", "(?=[ -][A-ZÀ-Ý])"), "Saint"],
   [/\bR[ée]s\b\.?\s*(?=univ)/gi, "Résidence "],
   [/\buniversity\b/gi, "universitaire"],
   [/^R[ée]s\b\.?\s*/i, "Résidence "],
-  [/\bAv\b\.?(?= )/g, "Avenue"],
-  [/\bBd\b\.?(?= )/g, "Boulevard"],
-  [/\bImp\b\.?(?= )/g, "Impasse"],
-  [/\bChem\b\.?(?= )/g, "Chemin"],
-  [/\bRte\b\.?(?= )/g, "Route"],
-  [/\bSq\b\.?(?= )/g, "Square"],
-  [/\bFg\b\.?(?= )/g, "Faubourg"],
+  [ab("Av", "(?= )"), "Avenue"],
+  [ab("Bd", "(?= )"), "Boulevard"],
+  [ab("Imp", "(?= )"), "Impasse"],
+  [ab("Chem", "(?= )"), "Chemin"],
+  [ab("Rte", "(?= )"), "Route"],
+  [ab("Sq", "(?= )"), "Square"],
+  [ab("Fg", "(?= )"), "Faubourg"],
 ];
 // Accents absents des fichiers en capitales (mots et prénoms fréquents dans les noms de rues).
 const ACCENTS: Record<string, string> = {
@@ -152,7 +157,8 @@ const ACCENTS: Record<string, string> = {
   Bibliotheque: "Bibliothèque", Elementaire: "Élémentaire", Chateau: "Château", Foret: "Forêt", Vallee: "Vallée", Prevert: "Prévert",
   Moliere: "Molière", Peguy: "Péguy", Peri: "Péri", Desire: "Désiré", Gymnase: "Gymnase", Salle: "Salle", Clement: "Clément",
   Jerome: "Jérôme", Severine: "Séverine", Aime: "Aimé", Cesaire: "Césaire", Lenine: "Lénine", Defense: "Défense", Resistance: "Résistance",
-  Liberation: "Libération", Federation: "Fédération", Nevers: "Nevers",
+  Liberation: "Libération", Federation: "Fédération", Nevers: "Nevers", Lutece: "Lutèce", Lambarene: "Lambaréné", Helvetie: "Helvétie",
+  Beranger: "Béranger", Ampere: "Ampère", Bizet: "Bizet", Megevand: "Mégevand", Cevennes: "Cévennes", Pyrenees: "Pyrénées",
 };
 
 /**
@@ -165,6 +171,8 @@ export function prettyFr(name: string, communeNom?: string): string {
   let t = name.replace(/\s+/g, " ").trim();
   for (const [re, rep] of ABBR) t = t.replace(re, rep);
   t = t.replace(/\b[A-Z][a-z]+\b/g, (w) => ACCENTS[w] ?? w);
+  // Apostrophe perdue dans les fichiers en capitales : « Rue d Aquitaine » → « Rue d'Aquitaine ».
+  t = t.replace(/(?<![\p{L}\d'])([dDlL]) (?=\p{Lu})/gu, "$1'");
   if (communeNom) {
     const esc = communeNom.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/[-\s]/g, "[-\\s]");
     t = t.replace(new RegExp(`(?<![\\p{L}])${esc}(?![\\p{L}])`, "giu"), communeNom);

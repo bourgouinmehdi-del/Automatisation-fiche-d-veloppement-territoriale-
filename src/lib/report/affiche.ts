@@ -181,10 +181,26 @@ export function communePoster(
     }
   });
   const capsAt = (f: GeoJSON.Feature) => {
-    // Nom placé dans la partie visible de la commune voisine.
+    // Nom placé dans la partie visible de la commune voisine, hors de notre commune (les contours
+    // simplifiés du département peuvent la chevaucher : Dunkerque s'affichait sur Grande-Synthe),
+    // au point le plus éloigné à la fois de la commune et du bord de la carte.
     try {
       const clip = turf.bboxClip(f as GeoJSON.Feature<GeoJSON.Polygon>, bbox);
-      return turf.pointOnFeature(clip).geometry.coordinates;
+      const [x0, y0, x1, y1] = turf.bbox(clip);
+      const N = 14;
+      let best: { at: number[]; score: number } | null = null;
+      for (let i = 0; i <= N; i++)
+        for (let j = 0; j <= N; j++) {
+          const pt = turf.point([x0 + ((x1 - x0) * i) / N, y0 + ((y1 - y0) * j) / N]);
+          if (!turf.booleanPointInPolygon(pt, clip as GeoJSON.Feature<GeoJSON.Polygon>)) continue;
+          if (turf.booleanPointInPolygon(pt, contour as GeoJSON.Feature<GeoJSON.Polygon>)) continue;
+          const dC = turf.pointToPolygonDistance(pt, contour as GeoJSON.Feature<GeoJSON.Polygon>, { units: "kilometers" });
+          const [px, py] = pt.geometry.coordinates;
+          const dB = Math.min(px - bbox[0], bbox[2] - px, (py - bbox[1]) * 1.5, (bbox[3] - py) * 1.5) * 70;
+          const score = Math.min(dC, dB);
+          if (!best || score > best.score) best = { at: pt.geometry.coordinates, score };
+        }
+      return best?.at ?? turf.pointOnFeature(clip).geometry.coordinates;
     } catch {
       return undefined;
     }
@@ -472,7 +488,7 @@ export function communePoster(
       scaleBar: true,
     },
     layers,
-    note: `Porte-à-porte : bureaux de vote prioritaires${ruesNum.length ? ", logements sociaux rue par rue (répertoire RPLS)" : ""}${res.length ? ", résidences du Crous et foyers" : ""} ; tractage : ${[markets.length ? "marchés" : "", gares.length ? "gares" : "", sorties.length ? "sorties de collèges et lycées" : ""].filter(Boolean).join(", ") || "à compléter"}.`,
+    note: `Porte-à-porte : bureaux de vote prioritaires${ruesNum.length ? ", logements sociaux rue par rue (répertoire RPLS)" : ""}${res.length ? ", résidences du Crous et foyers" : ""} ; tractage : ${[markets.length ? "marchés" : "", gares.length ? "gares" : "", (o.supermarches ?? []).length ? "grandes surfaces" : "", sorties.length ? "sorties de collèges et lycées" : ""].filter(Boolean).join(", ") || "à compléter"}.`,
   };
 }
 
