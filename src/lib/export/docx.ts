@@ -1,3 +1,4 @@
+import { splitWarnings } from "../report/warnings";
 import { presenceSvg } from "../render/presence";
 import { posterItems } from "../render/poster";
 import { Resvg } from "@resvg/resvg-js";
@@ -457,7 +458,7 @@ export async function reportToDocx(r: Report, opts: { sectionIds?: string[]; sty
     new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: r.commune.nom, font: FONT, size: 64, bold: true, color: BLUE })] }),
     p(`${r.commune.departement.nom} (${r.commune.departement.code}) · ${r.commune.region.nom}${r.commune.epci ? ` · ${r.commune.epci.nom}` : ""}`, { size: 26, color: "52514E" }),
     p(`Périmètre d'analyse : ${scopeLabel} — ${r.perimeter.label}`, { size: 22 }),
-    ...r.warnings.map((w) => p(w, { italics: true, color: "8A5300", size: 19 })),
+    ...splitWarnings(r).main.map((w) => p(w, { italics: true, color: "8A5300", size: 19 })),
     p("Document produit automatiquement à partir de statistiques publiques agrégées ; ses constats doivent être confrontés à la connaissance de terrain des acteurs locaux.", { italics: true, size: 19 }),
     p(`Code INSEE ${r.commune.code} · Généré le ${fmtDate(r.updatedAt)} (version ${r.version}) · ${freshness(r)}`, { size: 17, color: "52514E" }),
     new Paragraph({ children: [new PageBreak()] }),

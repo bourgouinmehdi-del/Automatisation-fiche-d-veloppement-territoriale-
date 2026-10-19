@@ -1961,7 +1961,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       return h ? `${where} (${h})` : named(m.nom) ? `${where} (jour du week-end à confirmer)` : "";
     }),
     ...gares.slice(0, 1).map((g) => `${gareNom(g.nom)}${/voyageurs/.test(g.infos) ? ` (${g.infos})` : ""}, le samedi matin ou le dimanche soir`),
-    ...sup.slice(0, 1).map((v) => `${v.nom} (${/hyper/.test(v.infos) ? "hypermarché" : "supermarché"}), le samedi`),
+    ...sup.slice(0, 1).map((v) => `${v.nom.replace(/ \((.+)\)$/, ", $1")} (${/hyper/.test(v.infos) ? "hypermarché" : "supermarché"}), le samedi`),
   ].filter(Boolean);
   if (leviers.length) synth.push({ text: `${B("Où croiser les habitants le week-end")} : ${leviers.join(" ; ")}.` });
 

@@ -1,4 +1,5 @@
 import { prettyFr } from "../format";
+import { fixAdr, numVoie } from "../collectors/rpls";
 import * as turf from "@turf/turf";
 import {
   referentiel,
@@ -886,7 +887,13 @@ export async function collect(
         const r = await collectRpls(http, commune.code, { parent: plmR?.parent, contour: commune.contour });
         // Noms lisibles (« Mal » → « Maréchal », « Allee » → « Allée »), y compris pour les extractions en cache.
         const pf = (t: string) => prettyFr(t, commune.nom);
-        const residences = r.residences.map((x) => ({ ...x, nom: pf(x.nom), adresse: pf(x.adresse), ...(x.voie ? { voie: pf(x.voie) } : {}) }));
+        // Nom de programme égal au nom de la commune (« Grande-Synthe ») : n'apprend rien, on garde l'adresse.
+        const bare = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+        const residences = r.residences.map((x) => {
+          const adresse = pf(fixAdr(x.adresse));
+          const nom = bare(x.nom) === bare(commune.nom) ? adresse : pf(x.nom);
+          return { ...x, nom, adresse, ...(x.voie ? { voie: pf(x.voie) } : {}), ...(x.nums ? { nums: x.nums.map((n) => numVoie(n)) } : {}) };
+        });
         const ensembles = r.ensembles.map((x) => ({ ...x, nom: pf(x.nom) }));
         if (r.total) c.rpls = { ...r, residences, ensembles, source: ctx.ref("rpls", r.url, r.retrievedAt, { vintage: r.millesime ?? undefined }) };
         else http.notes.push("Aucun logement social recensé dans la commune");

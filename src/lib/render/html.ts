@@ -1,3 +1,4 @@
+import { splitWarnings } from "../report/warnings";
 import { presenceRef, presenceScale, presenceValue } from "./presence";
 import { posterItems } from "./poster";
 import { SOURCES } from "../collectors/catalog";
@@ -445,7 +446,7 @@ export function renderReportHtml(r: Report, opts: { standalone?: boolean; sectio
 
   const scopeLabel = { commune: "Commune", epci: "Intercommunalité", circonscription: "Circonscription législative", departement: "Département", custom: "Territoire personnalisé" }[r.query.scope];
   const cover = `<section class="cover"><div><div class="kicker">Diagnostic territorial</div><h1>${esc(r.commune.nom)}</h1><div class="sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}) · ${esc(r.commune.region.nom)}${r.commune.epci ? ` · ${esc(r.commune.epci.nom)}` : ""}</div><p class="sub" style="margin-top:4mm">Périmètre d'analyse : ${esc(scopeLabel)} — ${esc(r.perimeter.label)}</p>
-${r.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
+${splitWarnings(r).main.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
 <div class="warn" style="border-color:#2a78d6;background:#eef5fd">Ce document est produit automatiquement à partir de statistiques publiques agrégées. Ses constats doivent être confrontés à la connaissance de terrain des acteurs locaux.</div></div>
 <div class="toc"><h3>Sommaire</h3><ul style="list-style:none;padding-left:0">${r.sections.map((s) => `<li>${s.letter ? `<strong>${s.letter}.</strong> ` : "★ "}${esc(s.title)}</li>`).join("")}</ul><p>Annexe : méthodologie, journal de collecte et bibliographie.</p></div>
 <div class="meta">Code INSEE ${esc(r.commune.code)} · Généré le ${esc(fmtDate(r.updatedAt))} (version ${r.version}) · Identifiant ${esc(r.id)}<br>Fraîcheur des données : ${esc(freshness(r))}</div></section>`;

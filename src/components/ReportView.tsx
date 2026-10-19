@@ -12,6 +12,7 @@ import { cellText, Citations, inlineParts, sourceLabel } from "@/lib/render/cite
 import ChartView from "./ChartView";
 import PresenceBars from "./PresenceBars";
 import { useRole } from "./useRole";
+import { splitWarnings } from "@/lib/report/warnings";
 
 const ActionMap = dynamic(() => import("./ActionMap"), { ssr: false, loading: () => <div className="h-[520px] animate-pulse rounded-lg bg-[var(--line)]" /> });
 const MapView = dynamic(() => import("./MapView"), { ssr: false, loading: () => <div className="h-[420px] animate-pulse rounded-lg bg-[var(--line)]" /> });
@@ -42,7 +43,8 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
   const cit = useMemo(() => new Citations(), []);
   const ev = (e: string) => r.indicators.find((i) => `${i.id}@${i.geo.level}:${i.geo.code}` === e);
   const refs = (evidence: string[] = []) => [...new Set(evidence.map(ev).filter(Boolean).map((i) => cit.cite(i!.source)))];
-  const failed = r.runs.filter((x) => x.status === "failed");
+  // Avertissement visible seulement si des données essentielles manquent ; le reste en bas de page, discrètement.
+  const warn = splitWarnings(r);
   const hasFiche = r.sections.some((s) => s.id === "LFI");
   const hasCiblage = r.sections.some((s) => s.id === "CIBLAGE");
   const terrName = territoryName(r);
@@ -482,19 +484,14 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         </div>
       </div>
 
-      {(r.warnings.length > 0 || failed.length > 0) && (
+      {warn.main.length > 0 && (
         <div className="mb-6 rounded-lg box-warn p-3 text-sm">
-          {r.warnings.map((w, i) => (
+          {warn.main.map((w, i) => (
             <div key={i}>{w}</div>
           ))}
-          {failed.length > 0 && (
-            <div className="mt-1 text-[var(--ink-2)]">
-              Sources en échec : {[...new Set(failed.map((f) => f.name))].join(" ; ")}.{" "}
-              <button className="underline" onClick={() => setShowSources(true)}>
-                Détails
-              </button>
-            </div>
-          )}
+          <button className="mt-1 underline text-[var(--ink-2)]" onClick={() => setShowSources(true)}>
+            Détails
+          </button>
         </div>
       )}
 
@@ -539,6 +536,17 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
           )}
         </div>
       </div>
+
+      {(warn.minor.length > 0 || warn.stale) && (
+        <p className="no-print mt-8 text-xs text-[var(--muted)]">
+          ⓘ{" "}
+          {warn.minor.length > 0 ? `Source${warn.minor.length > 1 ? "s" : ""} indisponible${warn.minor.length > 1 ? "s" : ""} lors de la collecte : ${[...new Set(warn.minor.map((f) => f.name))].join(" ; ")} (la partie concernée est absente de la fiche).` : ""}
+          {warn.stale ? " Certaines données viennent d'une copie en cache plus ancienne." : ""}{" "}
+          <button className="underline" onClick={() => setShowSources(true)}>
+            Détails
+          </button>
+        </p>
+      )}
 
       {showSources && (
         <aside className="fixed inset-y-0 right-0 z-[1000] w-full max-w-xl overflow-y-auto border-l border-[var(--line)] bg-[var(--surface)] p-5 shadow-2xl">

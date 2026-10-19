@@ -124,6 +124,21 @@ export function toLonLat(x: number, y: number, epsg: string): [number, number] |
 const sortNums = (xs: string[]) => [...new Set(xs)].sort((a, b) => parseInt(a) - parseInt(b) || a.localeCompare(b));
 
 /** « n° 2, 4 et 6 », « n° 2 à 18 » (plus de quatre numéros). */
+/** Numéro lisible : « 0004 » → « 4 », « 4BIS » + « BIS » → « 4 bis », « 12 B » → « 12 bis ». */
+export function numVoie(numvoie: string, indrep = ""): string {
+  const IND: Record<string, string> = { B: "bis", BIS: "bis", T: "ter", TER: "ter", Q: "quater", QUATER: "quater", C: "quinquies" };
+  const m = numvoie.trim().match(/^0*(\d+)\s*([A-Za-z]*)(?:\s+([A-Za-z]+))?$/);
+  if (!m) return [numvoie.trim(), indrep.trim().toLowerCase()].filter(Boolean).join(" ");
+  const suf = (m[2] || m[3] || indrep.trim()).toUpperCase();
+  const ind = suf ? (IND[suf] ?? suf.toLowerCase()) : "";
+  return ind ? `${m[1]} ${ind}` : m[1];
+}
+
+/** Adresse dont le numéro est mal formé (« 0004 Rue… », « 4BIS BIS Rue… »). */
+export function fixAdr(adr: string): string {
+  return adr.replace(/^0*(\d+)\s*(bis|ter|quater|[btq])?(?:\s+(bis|ter|quater|[btq]))?(?=\s)/i, (_m, n: string, a?: string, b?: string) => numVoie(n, a || b || ""));
+}
+
 export function numsLabel(nums: string[]): string {
   if (!nums.length) return "";
   if (nums.length === 1) return `n° ${nums[0]}`;
@@ -175,7 +190,7 @@ export function groupRpls(rows: Record<string, unknown>[]): { total: number; res
     total++;
     const ll = toLonLat(Number(String(r.X ?? "").replace(",", ".")), Number(String(r.Y ?? "").replace(",", ".")), clean(r.EPSG));
     if (!ll) continue;
-    const num = `${clean(r.NUMVOIE)}${clean(r.INDREP) ? ` ${clean(r.INDREP)}` : ""}`.trim();
+    const num = numVoie(clean(r.NUMVOIE), clean(r.INDREP));
     let typ = clean(r.TYPVOIE);
     let nomv = clean(r.NOMVOIE);
     // Numéro et type de voie parfois répétés dans le nom de voie (« 192 RUE 192 RUE … »).

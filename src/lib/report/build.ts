@@ -1,3 +1,4 @@
+import { criticalMessage } from "./warnings";
 import crypto from "node:crypto";
 import { computeFindings } from "../analysis/findings";
 import { getProvider, safeRewrite } from "../llm/provider";
@@ -116,15 +117,9 @@ export async function buildReport(
     warnings.push(
       "Mode hors ligne : seules les données en cache et les référentiels embarqués ont été utilisés.",
     );
-  const failed = c.ctx.runs.filter((r) => r.status === "failed");
-  if (failed.length)
-    warnings.push(
-      `${failed.length} étape(s) de collecte en échec : les données concernées sont signalées comme manquantes.`,
-    );
-  if (c.ctx.runs.some((r) => r.status === "stale"))
-    warnings.push(
-      "Certaines données proviennent d'une copie en cache périmée (source indisponible).",
-    );
+  // Seuls les échecs qui privent la fiche de l'essentiel sont mis en avant (voir warnings.ts).
+  const crit = criticalMessage(c.ctx.runs.filter((r) => r.status === "failed"));
+  if (crit) warnings.push(crit);
 
   const now = new Date().toISOString();
   const report: Report = {
