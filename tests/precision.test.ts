@@ -157,3 +157,22 @@ describe("bilan militant LFI", () => {
     expect(bilanToCsv(rows).csv.split("\n")[2]).toBe("92024;159;1;766;33879;0");
   });
 });
+
+describe("contours IRIS : réessai quand la Géoplateforme répond 404", () => {
+  it("passe à la variante suivante de la requête", async () => {
+    process.env.IRIS_RETRY_MS = "1";
+    const { irisContours } = await import("@/lib/collectors/quartiers");
+    const calls: string[] = [];
+    const http = {
+      json: async (url: string) => {
+        calls.push(url);
+        if (calls.length === 1) throw new Error("Échec de la requête (HTTP 404)");
+        return { data: { type: "FeatureCollection", features: [{ type: "Feature", properties: { code_iris: "592710101" }, geometry: null }] }, retrievedAt: "2026-10-19" };
+      },
+    } as unknown as Parameters<typeof irisContours>[0];
+    const r = await irisContours(http, "59271");
+    expect(calls).toHaveLength(2);
+    expect(r.features).toHaveLength(1);
+    expect(r.url).toMatch(/COUNT=1000/);
+  });
+});

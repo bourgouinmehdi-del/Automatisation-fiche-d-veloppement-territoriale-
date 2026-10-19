@@ -249,11 +249,34 @@ async function collectQpvFresh(http: TrackedHttp, codeInsee: string): Promise<Qu
 
 /* ------------------------------------------------------------------- IRIS */
 
+/**
+ * Contours IRIS (WFS de la Géoplateforme). Le service répond parfois « 404 » à tort
+ * (constaté depuis le serveur Oracle, pas depuis d'autres réseaux) : on réessaie
+ * avec des variantes de la même requête avant d'abandonner.
+ */
 export async function irisContours(http: TrackedHttp, codeInsee: string) {
-  const url = `${QUARTIERS_SOURCES.irisWfs}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=${encodeURIComponent(QUARTIERS_SOURCES.irisTypename)}&outputFormat=application/json&CQL_FILTER=${encodeURIComponent(`code_insee='${codeInsee}'`)}`;
-  const r = await http.json<GeoJSON.FeatureCollection>(url);
-  return { features: r.data?.features ?? [], url, retrievedAt: r.retrievedAt };
+  const tn = encodeURIComponent(QUARTIERS_SOURCES.irisTypename);
+  const cql = encodeURIComponent(`code_insee='${codeInsee}'`);
+  const base = QUARTIERS_SOURCES.irisWfs;
+  const urls = [
+    `${base}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=${tn}&outputFormat=application/json&CQL_FILTER=${cql}`,
+    `${base.replace(/\/ows$/, "")}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=${tn}&OUTPUTFORMAT=application%2Fjson&CQL_FILTER=${cql}&COUNT=1000`,
+    `${base}?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature&TYPENAME=${tn}&OUTPUTFORMAT=application%2Fjson&SRSNAME=EPSG%3A4326&CQL_FILTER=${cql}`,
+  ];
+  let lastErr: unknown;
+  for (let i = 0; i < urls.length; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, IRIS_RETRY_MS * i));
+    try {
+      const r = await http.json<GeoJSON.FeatureCollection>(urls[i], { retries: 2 });
+      if (r.data && Array.isArray(r.data.features)) return { features: r.data.features, url: urls[i], retrievedAt: r.retrievedAt };
+      lastErr = new Error("réponse sans contours");
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
+const IRIS_RETRY_MS = Number(process.env.IRIS_RETRY_MS ?? 3000);
 
 /** Indicateurs IRIS d'une commune, lus dans les fichiers nationaux de l'INSEE. */
 export async function irisStats(http: TrackedHttp, codeInsee: string, notes: string[]): Promise<{ stats: Map<string, QuartierStats>; urls: string[] }> {
