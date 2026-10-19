@@ -36,7 +36,15 @@ describe("génération en mode dégradé", () => {
     const failed = new Set(r.runs.filter((x) => x.status === "failed").map((x) => x.sourceId));
     expect(failed).toContain("osm");
     expect(failed).toContain("sncf");
-    expect(r.warnings.join(" ")).toMatch(/échec/);
+    // OpenStreetMap et SNCF ne sont pas essentiels : pas d'avertissement en tête, mention discrète.
+    expect(r.warnings.join(" ")).not.toMatch(/échec|indisponibles/);
+    const { splitWarnings } = await import("@/lib/report/warnings");
+    const w = splitWarnings(r);
+    expect(w.main).toEqual([]);
+    expect(w.minor.map((x) => x.sourceId)).toEqual(expect.arrayContaining(["osm", "sncf"]));
+    // Un échec des résultats électoraux, lui, reste en tête.
+    const crit = splitWarnings({ warnings: ["3 étape(s) de collecte en échec : …"], runs: [{ ...r.runs[0], sourceId: "elections", name: "Résultats électoraux", status: "failed" }] });
+    expect(crit.main).toEqual([expect.stringMatching(/^Données essentielles indisponibles lors de la collecte : Résultats électoraux/)]);
     // Revenu médian non diffusé pour la commune : absent, mais présent pour le département.
     expect(r.indicators.find((i) => i.id === "revenu_median" && i.geo.level === "commune")).toBeUndefined();
     expect(r.indicators.find((i) => i.id === "revenu_median" && i.geo.level === "departement")?.value).toBeTypeOf("number");
