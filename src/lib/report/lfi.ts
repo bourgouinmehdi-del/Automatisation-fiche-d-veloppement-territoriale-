@@ -3,6 +3,7 @@ import { referentiel } from "../collectors/admin";
 import type { BureauResult, ElectionResult } from "../collectors/elections";
 import { abstention, BvRow, FAMILIES, familyPerformance, frenchHours, lfiOverperformance, prettyBvLabel, rankBureaux, score } from "../analysis/political";
 import { gap, haversineKm } from "../analysis/stats";
+import { compass, electoralZones } from "../analysis/zones";
 import { evidenceId } from "../analysis/findings";
 import { aNom, deNom, fmtNumber, fmtSigned, fmtValue, prettyFr } from "../format";
 import type { Block, ChartSpec, DataTable, Finding, GeoRef, Indicator, MapLegend, MapSpec, Section, SourceRef } from "../types";
@@ -293,6 +294,12 @@ const joinFr = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, 
 
 /** Palette divergente (faible → élevé) des cartes par bureau, proche des fiches de référence. */
 export const DIV_COLORS = ["#3f6fb0", "#8eaed6", "#cfc8d8", "#e3a07f", "#c0503a"];
+
+/** Vote de gauche hors LFI aux européennes 2024 (PS – Place publique, Écologistes, PCF), en % des exprimés. */
+function gaucheHorsLfi(a: ElectionResult): number | null {
+  if (!a.exprimes) return null;
+  return ["ps", "eco", "pcf"].reduce((s, f) => s + (score("EU24", a, f)?.pctExprimes ?? 0), 0);
+}
 
 /**
  * Échelles fixes des cartes par bureau (retour militant : avec des quintiles propres à chaque commune,
@@ -706,17 +713,63 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       const vRow = (name: string, a24: V | null | undefined, a22: V | null | undefined, par: number | null, aL?: V | null) => {
         const l24 = a24 ? score("EU24", a24 as ElectionResult, "lfi") : null;
         const l22 = a22 ? score("PR22T1", a22 as ElectionResult, "lfi") : null;
+        const g24 = a24 ? gaucheHorsLfi(a24 as ElectionResult) : null;
         return {
           territoire: name,
           inscrits: a24?.inscrits ?? a22?.inscrits ?? null,
           lfi24: l24 ? pp(l24.pctExprimes) : "",
+          gauche24: g24 != null ? pp(g24) : "",
           mel22: l22 ? pp(l22.pctExprimes) : "",
           abst24: (abstRef && cL ? aL : a24) ? pp(abstention((abstRef && cL ? aL : a24) as ElectionResult).pct) : "",
           parrains: par != null ? fmtNumber(par) : "",
         };
       };
       const vRows = [vRow(commune.nom, c24, c22, parrains, cL)];
-      if (prio.length && bvRef) {
+      // Zones électorales : bureaux voisins qui votent de la même façon (au lieu d'une seule ligne
+      // regroupant les bureaux prioritaires, dispersés dans la commune).
+      const r24 = c.bureaux.find((b) => b.election.id === "EU24")?.results ?? [];
+      const geoBy = new Map((c.bvGeo?.features ?? []).map((f) => [String(f.properties?.bv), f.geometry]));
+      const ptBy = new Map((c.bvGeo?.points ?? []).map((f) => [String(f.properties?.bv), (f.geometry as GeoJSON.Point).coordinates as [number, number]]));
+      const zoneIn = r24
+        .filter((b) => b.inscrits > 0 && b.exprimes > 0 && (geoBy.has(b.bv) || ptBy.has(b.bv)))
+        .map((b) => ({
+          bv: b.bv,
+          inscrits: b.inscrits,
+          x: [score("EU24", b as unknown as ElectionResult, "lfi")?.pctExprimes ?? 0, gaucheHorsLfi(b as unknown as ElectionResult) ?? 0, abstention(b as unknown as ElectionResult).pct],
+          geometry: geoBy.get(b.bv) ?? null,
+          at: geoBy.has(b.bv) ? null : (ptBy.get(b.bv) ?? null),
+        }));
+      // Bureaux sans position : pas de zone (sinon la contiguïté n'a pas de sens).
+      const zones = zoneIn.length >= Math.max(8, r24.length * 0.8) ? electoralZones(zoneIn) : [];
+      if (zones.length >= 2 && commune.contour) {
+        const centre = turf.centroid(turf.feature(commune.contour as GeoJSON.Polygon)).geometry.coordinates as [number, number];
+        const radius = Math.sqrt(turf.area(turf.feature(commune.contour as GeoJSON.Polygon)) / 1e6 / Math.PI);
+        const prioSetZ = new Set(prioBvs);
+        const zr = zones
+          .map((z) => {
+            const a24 = aggOf(r24, z.bvs);
+            return { z, a24, lfi: a24 ? (score("EU24", a24 as unknown as ElectionResult, "lfi")?.pctExprimes ?? 0) : 0 };
+          })
+          .sort((a, b) => b.lfi - a.lfi);
+        const seenDir = new Map<string, number>();
+        for (const { z, a24 } of zr) {
+          const dir = z.at ? compass(z.at, centre, radius) : "zone";
+          const k = (seenDir.get(dir) ?? 0) + 1;
+          seenDir.set(dir, k);
+          const nums = [...z.bvs].sort((a, b) => Number(dv(a)) - Number(dv(b)) || a.localeCompare(b)).map(dv);
+          const list = nums.length > 6 ? `${nums.slice(0, 5).join(", ")} et ${nums.length - 5} autres` : joinFr(nums);
+          const cible = z.bvs.some((b) => prioSetZ.has(b));
+          vRows.push(
+            vRow(
+              `${cap(dir === "centre" ? "centre" : dir)}${k > 1 ? ` (${k})` : ""} : ${nums.length > 1 ? "bureaux" : "bureau"} ${list}${cible ? " (à cibler)" : ""}`,
+              a24,
+              aggOf(c.bureaux.find((b) => b.election.id === "PR22T1")?.results, z.bvs),
+              null,
+              aggOf(bvLg, z.bvs),
+            ),
+          );
+        }
+      } else if (prio.length && bvRef) {
         const a24 = aggOf(c.bureaux.find((b) => b.election.id === "EU24")?.results, prioBvs);
         const a22 = aggOf(c.bureaux.find((b) => b.election.id === "PR22T1")?.results, prioBvs);
         vRows.push(vRow(`${prio.length > 1 ? "Bureaux" : "Bureau"} ${joinFr(prioBvs)} (à cibler)`, a24, a22, null, aggOf(bvLg, prioBvs)));
@@ -731,6 +784,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
           { key: "territoire", label: "", wide: true },
           { key: "inscrits", label: "Électeurs inscrits", align: "right" },
           ...(c24 ? [{ key: "lfi24", label: "Vote LFI européennes 2024", align: "right" as const }] : []),
+          ...(c24 ? [{ key: "gauche24", label: "Gauche hors LFI européennes 2024", align: "right" as const }] : []),
           ...(c22 ? [{ key: "mel22", label: "Vote Mélenchon présidentielle 2022", align: "right" as const }] : []),
           ...(abstRef ? [{ key: "abst24", label: `N'ont pas voté (${abstRef.short})`, align: "right" as const }] : []),
           ...(hasPar ? [{ key: "parrains", label: "Parrains et marraines", align: "right" as const }] : []),
@@ -738,7 +792,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         rows: vRows,
         highlight: [0],
         sources: elecSources,
-        note: `Vote : part des voix (hors blancs et nuls). « N'ont pas voté » : part des électeurs inscrits qui se sont abstenus${cL ? " au 1er tour des législatives 2024, scrutin très suivi (participation nationale de 66,7 %) : ce sont les électeurs les plus éloignés du vote" : ""}. Le détail (nombre de voix, quartiers) figure en annexe.`,
+        note: `Vote : part des voix (hors blancs et nuls) ; gauche hors LFI : PS – Place publique, Écologistes, PCF.${vRows.length > 3 ? " Lignes du milieu : grandes zones de la commune, chacune d'un seul tenant, regroupant des bureaux voisins qui votent de la même façon (vote LFI, autre gauche, abstention)." : ""} « N'ont pas voté » : part des électeurs inscrits qui se sont abstenus${cL ? " au 1er tour des législatives 2024, scrutin très suivi (participation nationale de 66,7 %) : ce sont les électeurs les plus éloignés du vote" : ""}. Le détail (nombre de voix, quartiers) figure en annexe.`,
       });
     }
 

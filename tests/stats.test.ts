@@ -93,3 +93,27 @@ describe("rendu", () => {
     expect(stripMarks("2 809 **(9,8 %)**")).toBe("2 809 (9,8 %)");
   });
 });
+
+describe("zones électorales (bureaux voisins qui votent pareil)", () => {
+  it("regroupe des bureaux contigus au profil proche", async () => {
+    const { electoralZones, compass } = await import("@/lib/analysis/zones");
+    // Grille 5 × 4 de bureaux carrés : ouest très LFI et abstentionniste, est modéré, une bande sud à part.
+    const sq = (i: number, j: number): GeoJSON.Polygon => ({ type: "Polygon", coordinates: [[[i * 0.01, j * 0.01], [(i + 1) * 0.01, j * 0.01], [(i + 1) * 0.01, (j + 1) * 0.01], [i * 0.01, (j + 1) * 0.01], [i * 0.01, j * 0.01]]] });
+    const units = [];
+    for (let i = 0; i < 5; i++)
+      for (let j = 0; j < 4; j++) {
+        const x = j === 0 ? [8, 30, 25] : i < 2 ? [45, 10, 55] : [15, 20, 35];
+        units.push({ bv: `${i}-${j}`, inscrits: 1000, x: x.map((v) => v + ((i + j) % 2)), geometry: sq(i, j) });
+      }
+    const zones = electoralZones(units, 3);
+    expect(zones).toHaveLength(3);
+    const zoneOf = (bv: string) => zones.findIndex((z) => z.bvs.includes(bv));
+    // Ouest (hors bande sud) ensemble, est ensemble, bande sud ensemble.
+    expect(new Set(["0-1", "0-2", "1-3", "1-1"].map(zoneOf)).size).toBe(1);
+    expect(new Set(["3-1", "4-3", "2-2"].map(zoneOf)).size).toBe(1);
+    expect(new Set(["0-0", "2-0", "4-0"].map(zoneOf)).size).toBe(1);
+    expect(zoneOf("0-1")).not.toBe(zoneOf("4-1"));
+    expect(compass([0.0, 0.02], [0.025, 0.02], 3)).toBe("ouest");
+    expect(compass([0.025, 0.0201], [0.025, 0.02], 3)).toBe("centre");
+  });
+});
