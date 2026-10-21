@@ -458,7 +458,9 @@ export interface StationTC {
 /** Stations nommées de métro, RER, tram et gares (OpenStreetMap), pour les points de rendez-vous. */
 export async function collectStationsTC(http: TrackedHttp, bbox: Bbox): Promise<{ list: StationTC[]; url: string; retrievedAt: string }> {
   const key = bbox.map((v) => v.toFixed(3)).join(",");
-  return cachedExtract(`stationstc|${key}`, 24 * 30, async () => {
+  // « stationstc2 » : la version précédente demandait « out tags » (sans coordonnées) et gardait
+  // en cache une liste vide pour 30 jours.
+  return cachedExtract(`stationstc2|${key}`, 24 * 30, async () => {
     const [w, s, e, n] = bbox;
     const b = `(${s},${w},${n},${e})`;
     const q = `[out:json][timeout:60];
@@ -466,7 +468,7 @@ export async function collectStationsTC(http: TrackedHttp, bbox: Bbox): Promise<
   node["railway"~"^(station|halt|tram_stop)$"]["name"]${b};
   node["public_transport"="station"]["name"]${b};
 );
-out tags;`;
+out center tags;`;
     const r = await overpass<{ elements?: El[] }>(http, q);
     const list: StationTC[] = [];
     for (const el of r.data?.elements ?? []) {

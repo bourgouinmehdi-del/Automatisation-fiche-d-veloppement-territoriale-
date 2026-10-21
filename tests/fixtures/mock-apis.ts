@@ -294,7 +294,14 @@ export function mockFetch(): typeof fetch {
       const y = Number(p.match(/\/(\d{4})\//)?.[1]);
       return y >= 2021 && y <= 2024 ? new Response(dvf(y), { status: 200 }) : new Response("", { status: 404 });
     }
-    if (h === "overpass-api.de") return json(overpass(String(init?.body ?? "")));
+    if (h === "overpass-api.de") {
+      const body = String(init?.body ?? "");
+      const r = overpass(body) as { elements?: Record<string, unknown>[] };
+      // Comme le vrai Overpass : « out tags » sans modificateur de géométrie ne donne pas les coordonnées des nœuds.
+      const q = decodeURIComponent(body.replace(/^data=/, "").replace(/\+/g, " "));
+      if (/out\s+tags\s*;/.test(q) && r?.elements) r.elements = r.elements.map(({ lat: _lat, lon: _lon, ...e }) => e);
+      return json(r);
+    }
     if (h === "georisques.gouv.fr") {
       if (p.endsWith("/gaspar/risques")) return json({ data: [{ risques_detail: [{ libelle_risque_long: "Inondation" }, { libelle_risque_long: "Mouvement de terrain" }] }] });
       if (p.endsWith("/gaspar/catnat"))
