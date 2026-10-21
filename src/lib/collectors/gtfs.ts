@@ -308,7 +308,7 @@ export interface TcIndex {
  * (≈ 150 Mo, bus compris) est lu une fois par jour ; seul cet index compact est gardé.
  */
 export function collectIdfmIndex(http: TrackedHttp, now = new Date()): Promise<TcIndex> {
-  return cachedExtract(`idfmtc|${now.toISOString().slice(0, 10)}`, 24, () => heavyLane.run(() => collectIdfmIndexFresh(http)));
+  return cachedExtract(`idfmtc2|${now.toISOString().slice(0, 10)}`, 24, () => heavyLane.run(() => collectIdfmIndexFresh(http)));
 }
 
 async function collectIdfmIndexFresh(http: TrackedHttp): Promise<TcIndex> {
@@ -322,7 +322,7 @@ async function collectIdfmIndexFresh(http: TrackedHttp): Promise<TcIndex> {
     const short = (v[col("route_short_name")] ?? "").trim();
     const long = (v[col("route_long_name")] ?? "").trim();
     const name = short || long;
-    const ligne = type === 1 ? `métro ${name}` : type === 0 ? `tram ${name.replace(/^T?/, "T")}` : /^[A-E]$/.test(name) ? `RER ${name}` : `train ${name}`;
+    const ligne = type === 1 ? `métro ${name}` : type === 0 ? `tram ${name.replace(/^T?/, "T")}` : /^[A-E]$/.test(name) ? `RER ${name}` : /^[HJKLNPRUV]$/.test(name) ? `Transilien ${name}` : `train ${name}`;
     routes.set(v[col("route_id")], ligne);
   });
   // 2. Courses de ces lignes : 40 au plus par ligne et par sens (assez pour voir toutes les branches).
