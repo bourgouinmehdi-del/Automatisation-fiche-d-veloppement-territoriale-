@@ -545,4 +545,21 @@ describe("chaîne de génération (API simulées)", () => {
     expect(txt).not.toMatch(/ni dans son intercommunalité|ni aux alentours/);
     expect(txt).toMatch(/Aucun groupe d'action actif dans la commune\.\*\* Dans l'intercommunalité : Jaux/);
   }, 120000);
+
+  it("mode comparaison : l'essentiel d'une fiche, prêt à aligner", async () => {
+    const { compareCol } = await import("@/lib/report/compare");
+    const col = compareCol(report);
+    expect(col.nom).toBe("Compiègne");
+    expect(Object.keys(col.glance)).toEqual(expect.arrayContaining(["Vote LFI aux européennes 2024"]));
+    expect(col.profil["Sous le seuil de pauvreté"]?.value).toMatch(/%/);
+    expect(col.chart?.id).toBe("lfi_chart_eu24");
+    expect(col.bureaux.length).toBeGreaterThan(0);
+    expect(col.synth.length).toBeGreaterThan(0);
+    const { renderToString } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const Compare = (await import("@/components/Compare")).default;
+    const html = renderToString(createElement(Compare, { cols: [col, { ...col, id: "b", nom: "Autre" }] }));
+    expect(html).toContain("Chiffres clés");
+    expect(html).toContain("Autre");
+  });
 });

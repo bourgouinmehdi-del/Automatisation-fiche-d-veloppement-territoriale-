@@ -51,6 +51,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<Listed[]>([]);
+  const [cmp, setCmp] = useState<string[]>([]);
   const role = useRole();
   const cfg = SCOPES.find((x) => x.id === scope)!;
   const [refus, setRefus] = useState<string | null>(null);
@@ -248,13 +249,38 @@ export default function Home() {
 
       {recent.length > 0 && (
         <section className="mt-10">
-          <h2 className="mb-3 text-lg font-semibold">Fiches déjà générées</h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold">Fiches déjà générées</h2>
+            <span className="flex items-center gap-2 text-sm">
+              <span className="text-[var(--ink-2)]">{cmp.length ? `${cmp.length} sélectionnée${cmp.length > 1 ? "s" : ""}` : "Cocher 2 ou 3 fiches commune pour les comparer"}</span>
+              <a
+                href={cmp.length >= 2 ? `/comparer?ids=${cmp.join(",")}` : undefined}
+                aria-disabled={cmp.length < 2}
+                className={`btn ${cmp.length >= 2 ? "btn-primary" : "pointer-events-none opacity-50"}`}
+              >
+                Comparer
+              </a>
+            </span>
+          </div>
           <ul className="card divide-y divide-[var(--line)]">
             {recent.map((r) => (
               <li key={r.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                <span className="flex items-center gap-3">
+                {r.scope === "commune" ? (
+                  <input
+                    type="checkbox"
+                    aria-label={`Comparer ${r.nom}`}
+                    checked={cmp.includes(r.id)}
+                    disabled={!cmp.includes(r.id) && cmp.length >= 3}
+                    onChange={(e) => setCmp((x) => (e.target.checked ? [...x, r.id].slice(0, 3) : x.filter((k) => k !== r.id)))}
+                  />
+                ) : (
+                  <span className="inline-block w-[13px]" />
+                )}
                 <a href={`/rapport/${r.id}`} className="font-semibold">
                   {r.nom} <span className="font-normal text-[var(--ink-2)]">({r.departement}), {(SCOPES.find((x) => x.id === r.scope)?.label ?? r.scope).toLowerCase()}</span>
                 </a>
+                </span>
                 <span className="flex items-center gap-3 text-[var(--muted)]">
                   <a href={`/api/reports/${r.id}/export/pdf?fiche=1`} className="text-xs font-normal">
                     PDF fiche

@@ -4,12 +4,12 @@ import { useState } from "react";
 import { presenceRef, presenceScale, presenceSub, presenceValue, type PresenceBlock, type PresenceMode } from "@/lib/render/presence";
 
 /** Encart « Présence militante LFI », avec bascule Nombre / Pour 100 inscrits. */
-export default function PresenceBars({ b }: { b: PresenceBlock }) {
+export default function PresenceBars({ b, compact = false }: { b: PresenceBlock; compact?: boolean }) {
   const [mode, setMode] = useState<PresenceMode>("nombre");
   return (
     <figure className="my-5 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <figcaption className="text-sm font-extrabold text-[var(--accent)]">{b.title}</figcaption>
+        <figcaption className="text-sm font-extrabold text-[var(--accent)]">{compact ? "" : b.title}</figcaption>
         <div className="no-print flex gap-1" role="group" aria-label="Unité">
           {(
             [
@@ -33,7 +33,7 @@ export default function PresenceBars({ b }: { b: PresenceBlock }) {
         {b.rows.map((r) => {
           const s = presenceScale(r);
           return (
-            <div key={r.label} className="grid grid-cols-[minmax(0,9.5rem)_1fr_auto] items-center gap-3 sm:grid-cols-[12rem_1fr_7rem]">
+            <div key={r.label} className={`grid items-center gap-3 ${compact ? "grid-cols-[minmax(0,7rem)_1fr_auto]" : "grid-cols-[minmax(0,9.5rem)_1fr_auto] sm:grid-cols-[12rem_1fr_7rem]"}`}>
               <div className="min-w-0">
                 <div className="text-sm font-semibold leading-tight">{r.label}</div>
                 <div className="text-xs text-[var(--ink-2)]">{presenceSub(r, mode)}</div>
