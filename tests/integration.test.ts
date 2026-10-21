@@ -271,6 +271,10 @@ describe("chaîne de génération (API simulées)", () => {
     expect(report.tables.some((t) => t.id === "lfi_sujets")).toBe(false);
     const eff = report.tables.find((t) => t.id === "lfi_effectifs")!;
     expect(String(eff.rows[eff.rows.length - 1].binomes)).toMatch(/militants/);
+    // Stations de métro et de tram : lieux de tractage (sorties de station).
+    const st = actions.groups.find((g) => g.title === "Métro, RER, tram");
+    expect(st?.items.join(" ")).toMatch(/Métro Mairie fictive/);
+    expect(plan.rows.some((r) => r.action === "Tractage en sortie de métro" && r.ou === "Métro Mairie fictive")).toBe(true);
     // Grande surface : desserte nommée.
     expect(gs).toMatch(/du tram Centre commercial/);
     // Sur la carte : la grande surface dans le tractage, le parc en « moment convivial ».

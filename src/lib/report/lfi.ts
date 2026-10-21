@@ -1519,6 +1519,35 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (last && last.voyageurs / 365 < GARE_MIN_JOUR) continue;
     pushLieu("Gare", s.nom, last ? perDay(last.voyageurs) : "fréquentation n.d.", s.lon, s.lat);
   }
+  // Stations de métro, RER et tram de la commune : du passage toute la journée, y compris le week-end.
+  // RER puis métro puis tram ; à rang égal, la plus proche des bureaux prioritaires. Une gare SNCF déjà retenue
+  // au même endroit n'est pas répétée.
+  {
+    const RANK: Record<string, number> = { RER: 3, métro: 2, tram: 1 };
+    const prioPts = prio.map((p) => centroids.get(p.bv)).filter((x): x is [number, number] => !!x);
+    const coeur: [number, number] | null = prioPts.length ? [prioPts.reduce((a, x) => a + x[0], 0) / prioPts.length, prioPts.reduce((a, x) => a + x[1], 0) / prioPts.length] : null;
+    const inCommune = (lon: number, lat: number) => {
+      if (!commune.contour) return true;
+      try {
+        return turf.booleanPointInPolygon([lon, lat], commune.contour as GeoJSON.Polygon) || turf.pointToPolygonDistance([lon, lat], commune.contour as GeoJSON.Polygon, { units: "kilometers" }) <= 0.15;
+      } catch {
+        return true;
+      }
+    };
+    const garesPts = lieux.filter((l) => l.type === "Gare" && l.lon != null).map((l) => [l.lon!, l.lat!] as [number, number]);
+    const seen = new Set<string>();
+    const tc = (c.stationsTC?.list ?? [])
+      .filter((st) => RANK[st.mode] && inCommune(st.lon, st.lat) && !garesPts.some((g) => haversineKm(g, [st.lon, st.lat]) < 0.3))
+      .sort((a, b) => RANK[b.mode] - RANK[a.mode] || (coeur ? haversineKm(coeur, [a.lon, a.lat]) - haversineKm(coeur, [b.lon, b.lat]) : 0))
+      .filter((st) => {
+        const k = `${st.mode}|${st.nom.toLowerCase()}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .slice(0, 3);
+    for (const st of tc) pushLieu("Station", `${st.mode === "métro" ? "Métro" : st.mode === "tram" ? "Tram" : "RER"} ${st.nom}`, `sortie de ${st.mode === "tram" ? "station de tram" : st.mode}, du passage toute la journée`, st.lon, st.lat);
+  }
   // Supermarchés : BPE (INSEE) si disponible, plus complète que OpenStreetMap.
   const singular = (t: string) => (t === "A128" ? "France Services" : BPE_TYPES[t].label.replace(/s$/, "")).replace(/^Bureaux/, "Bureau").replace(/^Agences/, "Agence").replace(/^Hypermarché$/, "Hypermarché").replace(/^Supermarché$/, "Supermarché");
   // Noms de la BPE souvent en capitales ou raisons sociales (« SOC DE COMMERCE LAMENTINOIS ») :
@@ -1579,7 +1608,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // Marchés, gares et grandes surfaces (déjà triées : grands groupes, desservies) attirent toute la commune :
   // gardés même hors des bureaux prioritaires.
   if (lieux.length) {
-    const order = ["Marché", "Gare", "Supermarché", "Service public", "Sortie de collège", "Sortie de collège et lycée", "Sortie de lycée"];
+    const order = ["Marché", "Gare", "Station", "Supermarché", "Service public", "Sortie de collège", "Sortie de collège et lycée", "Sortie de lycée"];
     lieux.sort((a, b) => (b.prioritaire ? 1 : 0) - (a.prioritaire ? 1 : 0) || order.indexOf(a.type) - order.indexOf(b.type) || a.bv.localeCompare(b.bv));
     out.tables.push({
       id: "lfi_lieux",
@@ -1667,6 +1696,13 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         `Le week-end : ${WEEKEND.gare.charAt(0).toLowerCase()}${WEEKEND.gare.slice(1)}.`,
       ],
     });
+  const stationsTc = lieux.filter((l) => l.type === "Station");
+  if (stationsTc.length)
+    actionGroups.push({
+      title: "Métro, RER, tram",
+      hint: "sorties de station",
+      items: [...stationsTc.map((s) => `${B(s.nom)} : ${s.infos}${s.bv ? ` (${s.bv}${s.prioritaire ? ", prioritaire" : ""})` : ""}.`), `Le week-end : ${WEEKEND.station.charAt(0).toLowerCase()}${WEEKEND.station.slice(1)}.`],
+    });
   // Grandes surfaces des grands groupes (hypermarchés d'abord), desservies en transports en commun.
   const sup = lieux.filter((l) => l.type === "Supermarché");
   if (sup.length) actionGroups.push({ title: "Grandes surfaces", hint: "affluence du samedi, accès en transports en commun", items: sup.slice(0, 3).map((s) => `${B(s.nom)} : ${s.infos}${s.bv ? ` (${s.bv})` : ""}.`) });
@@ -1727,6 +1763,14 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       bv: g.bv,
     });
   }
+  for (const st of stationsTc.slice(0, 2))
+    plan.push({
+      action: `Tractage en sortie de ${/^Tram/.test(st.nom) ? "tram" : /^RER/.test(st.nom) ? "RER" : "métro"}`,
+      ou: st.nom,
+      infos: "Passage continu le samedi : courses, sorties, retours à la maison",
+      quand: WEEKEND.station,
+      bv: st.bv,
+    });
   const byPrio = <T extends { prioritaire: string }>(xs: T[]) => [...xs].sort((a, b) => Number(!!b.prioritaire) - Number(!!a.prioritaire));
   // Pas de sorties de collèges ni de lycées : les actions ont lieu le week-end.
   for (const v of sup.slice(0, 1))
@@ -1855,6 +1899,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     supermarches: sup.slice(0, 2).map((v) => ({ ...v, quand: quandPlan(v.nom) })),
     convivial: conv.slice(0, 1).map((x) => ({ nom: x.nom, kind: x.kind, infos: convTxt(x), lon: x.lon, lat: x.lat, quand: quandPlan(x.nom) })),
     gares: (c.stations?.stations ?? []).filter((st) => { const l = st.frequentation[st.frequentation.length - 1]; return !l || l.voyageurs / 365 >= GARE_MIN_JOUR; }).map((st) => ({ nom: st.nom, infos: "", lon: st.lon, lat: st.lat, quand: quandPlan(gareNom(st.nom)), voyageurs: st.frequentation[st.frequentation.length - 1]?.voyageurs ?? null })),
+    stations: stationsTc.slice(0, 2).map((st) => ({ nom: st.nom, infos: st.infos, lon: st.lon, lat: st.lat, quand: quandPlan(st.nom) })),
   });
   if (affiche) out.maps.push(affiche);
 
@@ -1961,6 +2006,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       return h ? `${where} (${h})` : named(m.nom) ? `${where} (jour du week-end à confirmer)` : "";
     }),
     ...gares.slice(0, 1).map((g) => `${gareNom(g.nom)}${/voyageurs/.test(g.infos) ? ` (${g.infos})` : ""}, le samedi matin ou le dimanche soir`),
+    ...stationsTc.slice(0, 1).map((st) => `la sortie du ${st.nom.replace(/^Métro/, "métro").replace(/^Tram/, "tram")}, le samedi`),
     ...sup.slice(0, 1).map((v) => `${v.nom.replace(/ \((.+)\)$/, ", $1")} (${/hyper/.test(v.infos) ? "hypermarché" : "supermarché"}), le samedi`),
   ].filter(Boolean);
   if (leviers.length) synth.push({ text: `${B("Où croiser les habitants le week-end")} : ${leviers.join(" ; ")}.` });

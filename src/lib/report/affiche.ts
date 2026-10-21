@@ -49,6 +49,7 @@ export const WEEKEND = {
   foyer: "Samedi ou dimanche, 17 h – 19 h",
   crous: "Dimanche 18 h – 20 h (retour des étudiants) ou samedi 11 h – 13 h, hors vacances universitaires",
   gare: "Samedi 9 h – 12 h ; dimanche 17 h – 20 h (retours de week-end)",
+  station: "Samedi 10 h – 13 h ou 16 h – 19 h ; dimanche 10 h – 12 h",
   marche: "Matinée du marché, samedi ou dimanche (jour à confirmer en mairie)",
   poste: "Samedi 9 h – 12 h, si le bureau est ouvert",
   supermarche: "Samedi 10 h – 12 h ou dimanche matin, avec l'accord du magasin",
@@ -126,6 +127,8 @@ export function communePoster(
     labels: Map<string, string>;
     markets: PosterLieu[];
     gares: (PosterLieu & { voyageurs?: number | null })[];
+    /** Stations de métro, RER, tram. */
+    stations?: PosterLieu[];
     /** Grandes surfaces retenues (grands groupes, desservies). */
     supermarches?: PosterLieu[];
     /** Lieu du moment convivial (parc, bar). */
@@ -403,6 +406,7 @@ export function communePoster(
       return { nom, sub: h ? `Marché · ${h}` : "Marché · jour du week-end à confirmer en mairie", det: ["Lieu de passage régulier des habitants", h ? `Horaires (OpenStreetMap, à confirmer) : ${h}` : "Jours et horaires à confirmer en mairie"], quand: m.quand ?? (h ? cap(h) : WEEKEND.marche), lon: m.lon!, lat: m.lat! };
     }),
     ...gares.map((g) => ({ nom: gareNom(g.nom), sub: g.voyageurs ? `${perDay(g.voyageurs)} · départs et retours de week-end` : "Départs et retours de week-end", det: [g.voyageurs ? `${perDay(g.voyageurs)} (moyenne de la semaine)` : "", "Départs et retours de week-end, étudiants"].filter(Boolean), quand: g.quand ?? WEEKEND.gare, lon: g.lon!, lat: g.lat! })),
+    ...pts(o.stations ?? []).slice(0, 2).map((st) => ({ nom: st.nom, sub: `${/^Tram/.test(st.nom) ? "Tram" : /^RER/.test(st.nom) ? "RER" : "Métro"} · passage toute la journée`, det: [cap(st.infos), "Sortie de station : habitants qui font leurs courses, sortent ou rentrent"], quand: st.quand ?? WEEKEND.station, lon: st.lon!, lat: st.lat! })),
     ...pts(o.supermarches ?? []).slice(0, 2).map((v) => {
       const hyper = /hyper/.test(v.infos);
       return { nom: v.nom, sub: `${hyper ? "Hypermarché" : "Supermarché"} · affluence du samedi`, det: [v.infos ? cap(v.infos) : "", "Forte affluence le samedi, tous publics"].filter(Boolean), quand: v.quand ?? WEEKEND.supermarche, lon: v.lon!, lat: v.lat! };
@@ -419,7 +423,7 @@ export function communePoster(
       labelProperty: "nom",
       sublabelProperty: "sub",
       labelColor: POSTER.violet,
-      legendItem: { label: `Tractage : ${["marché", "gare", ...(o.supermarches?.length ? ["grande surface"] : [])].join(", ")} (week-end)`, swatch: "diamond" },
+      legendItem: { label: `Tractage : ${["marché", "gare", ...(o.stations?.length ? ["métro"] : []), ...(o.supermarches?.length ? ["grande surface"] : [])].join(", ")} (week-end)`, swatch: "diamond" },
       visible: true,
       source: c.equipments?.source ?? c.stations?.source ?? geoSrc,
     });
@@ -488,7 +492,7 @@ export function communePoster(
       scaleBar: true,
     },
     layers,
-    note: `Porte-à-porte : bureaux de vote prioritaires${ruesNum.length ? ", logements sociaux rue par rue (répertoire RPLS)" : ""}${res.length ? ", résidences du Crous et foyers" : ""} ; tractage : ${[markets.length ? "marchés" : "", gares.length ? "gares" : "", (o.supermarches ?? []).length ? "grandes surfaces" : "", sorties.length ? "sorties de collèges et lycées" : ""].filter(Boolean).join(", ") || "à compléter"}.`,
+    note: `Porte-à-porte : bureaux de vote prioritaires${ruesNum.length ? ", logements sociaux rue par rue (répertoire RPLS)" : ""}${res.length ? ", résidences du Crous et foyers" : ""} ; tractage : ${[markets.length ? "marchés" : "", gares.length ? "gares" : "", (o.stations ?? []).length ? "stations de métro, RER, tram" : "", (o.supermarches ?? []).length ? "grandes surfaces" : "", sorties.length ? "sorties de collèges et lycées" : ""].filter(Boolean).join(", ") || "à compléter"}.`,
   };
 }
 
