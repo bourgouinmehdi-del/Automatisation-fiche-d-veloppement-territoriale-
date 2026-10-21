@@ -41,7 +41,7 @@ describe("métro, RER, tram (horaires IDFM)", () => {
     });
     const file = path.join(dir, "idfm.zip");
     await fs.writeFile(file, z);
-    const { collectIdfmIndex, directTc } = await import("@/lib/collectors/gtfs");
+    const { collectIdfmIndex, directTc, routeTc } = await import("@/lib/collectors/gtfs");
     const http = { file: async () => ({ data: file, retrievedAt: "2026-10-21T00:00:00Z" }), notes: [] } as unknown as Parameters<typeof collectIdfmIndex>[0];
     const idx = await collectIdfmIndex(http);
     expect(idx.patterns.map((p) => p.ligne).sort()).toEqual(["RER B", "métro 9"]);
@@ -50,6 +50,32 @@ describe("métro, RER, tram (horaires IDFM)", () => {
     expect(directTc(idx, new Set([i("Châtelet")]), new Set([i("Mairie de Montreuil")]))).toEqual({ minutes: 9, ligne: "RER B" });
     // Sens inverse.
     expect(directTc(idx, new Set([i("Mairie de Montreuil")]), new Set([i("République")]))).toEqual({ minutes: 8, ligne: "métro 9" });
+    // Trajet calculé par routeTc : 12 min de métro + 5 min à la montée.
+    expect(routeTc(idx, new Set([i("République")]), new Set([i("Châtelet")]))).toEqual({ minutes: 17, lignes: ["métro 9"] });
     await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it("trouve les trajets avec correspondance, y compris à pied entre gares proches", async () => {
+    const { routeTc } = await import("@/lib/collectors/gtfs");
+    const st = (nom: string, lon: number, lat: number) => ({ nom, lon, lat });
+    const idx = {
+      stations: [st("X", 2.3, 48.8), st("Y", 2.33, 48.82), st("Z", 2.36, 48.84), st("Y bis", 2.3315, 48.8205), st("W", 2.4, 48.83)],
+      patterns: [
+        { ligne: "métro 1", stops: [0, 1], t: [0, 10] },
+        { ligne: "RER A", stops: [1, 2], t: [0, 6] },
+        { ligne: "tram T3", stops: [3, 4], t: [0, 4] },
+      ],
+      url: "",
+      retrievedAt: "",
+    };
+    // X → Z : métro 1 (5 + 10) puis RER A (5 + 6).
+    expect(routeTc(idx, new Set([0]), new Set([2]))).toEqual({ minutes: 26, lignes: ["métro 1", "RER A"] });
+    // X → W : métro 1, marche vers « Y bis » (~150 m : 3 min), tram T3 (5 + 4).
+    const r = routeTc(idx, new Set([0]), new Set([4]))!;
+    expect(r.lignes).toEqual(["métro 1", "tram T3"]);
+    expect(r.minutes).toBeGreaterThanOrEqual(25);
+    expect(r.minutes).toBeLessThanOrEqual(28);
+    // Sens inverse (lignes décrites dans un seul sens).
+    expect(routeTc(idx, new Set([2]), new Set([0]))?.lignes).toEqual(["RER A", "métro 1"]);
   });
 });

@@ -413,3 +413,160 @@ export function directTc(index: TcIndex, from: Set<number>, to: Set<number>): { 
   }
   return best;
 }
+
+/* Itinéraire avec correspondances (métro, RER, train, tram). */
+
+/** Minutes ajoutées à chaque montée dans une rame (attente moyenne, correspondance). */
+export const TC_BOARD_MIN = 5;
+/** Correspondance à pied entre deux gares proches (≤ 300 m) : 80 m par minute. */
+const WALK_MAX_M = 300;
+
+interface TcGraph {
+  lignes: string[];
+  /** Arcs en rame : état (gare, ligne) → état suivant, durée minimale observée. */
+  ride: Map<number, { to: number; m: number }[]>;
+  /** Lignes desservant chaque gare. */
+  linesAt: number[][];
+  /** Correspondances à pied entre gares proches. */
+  walk: { to: number; m: number }[][];
+}
+
+const graphs = new WeakMap<TcIndex, TcGraph>();
+
+function tcGraph(index: TcIndex): TcGraph {
+  const cached = graphs.get(index);
+  if (cached) return cached;
+  const lignes: string[] = [];
+  const lid = new Map<string, number>();
+  const L = (l: string) => {
+    if (!lid.has(l)) lid.set(l, lignes.push(l) - 1);
+    return lid.get(l)!;
+  };
+  for (const p of index.patterns) L(p.ligne);
+  const NL = lignes.length;
+  const key = (s: number, l: number) => s * NL + l;
+  const best = new Map<string, number>();
+  const linesAt: Set<number>[] = index.stations.map(() => new Set());
+  for (const p of index.patterns) {
+    const l = L(p.ligne);
+    for (let i = 0; i + 1 < p.stops.length; i++) {
+      const a = p.stops[i];
+      const b = p.stops[i + 1];
+      if (a === b) continue;
+      const m = Math.max(1, p.t[i + 1] - p.t[i]);
+      linesAt[a].add(l);
+      linesAt[b].add(l);
+      // Les deux sens (certaines lignes ne sont décrites que dans un sens dans l'échantillon).
+      for (const [x, y] of [
+        [a, b],
+        [b, a],
+      ]) {
+        const k = `${key(x, l)}>${key(y, l)}`;
+        if (!best.has(k) || m < best.get(k)!) best.set(k, m);
+      }
+    }
+  }
+  const ride = new Map<number, { to: number; m: number }[]>();
+  for (const [k, m] of best) {
+    const [a, b] = k.split(">").map(Number);
+    if (!ride.has(a)) ride.set(a, []);
+    ride.get(a)!.push({ to: b, m });
+  }
+  // Gares proches (grille de ~300 m).
+  const walk: { to: number; m: number }[][] = index.stations.map(() => []);
+  const cell = 0.004;
+  const grid = new Map<string, number[]>();
+  index.stations.forEach((s, i) => {
+    const g = `${Math.floor(s.lon / cell)}|${Math.floor(s.lat / cell)}`;
+    if (!grid.has(g)) grid.set(g, []);
+    grid.get(g)!.push(i);
+  });
+  index.stations.forEach((s, i) => {
+    const gx = Math.floor(s.lon / cell);
+    const gy = Math.floor(s.lat / cell);
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        for (const j of grid.get(`${gx + dx}|${gy + dy}`) ?? []) {
+          if (j === i) continue;
+          const t = index.stations[j];
+          const d = Math.hypot((t.lon - s.lon) * Math.cos((s.lat * Math.PI) / 180), t.lat - s.lat) * 111000;
+          if (d <= WALK_MAX_M) walk[i].push({ to: j, m: Math.round(d / 80) + 1 });
+        }
+  });
+  const g = { lignes, ride, linesAt: linesAt.map((x) => [...x]), walk };
+  graphs.set(index, g);
+  return g;
+}
+
+/**
+ * Trajet le plus rapide entre deux ensembles de gares, correspondances comprises (Dijkstra) :
+ * temps en rame, + 5 min à chaque montée (attente, correspondance), marche entre gares proches.
+ */
+export function routeTc(index: TcIndex, from: Set<number>, to: Set<number>): { minutes: number; lignes: string[] } | null {
+  const g = tcGraph(index);
+  const NL = g.lignes.length;
+  const NS = index.stations.length;
+  // États : gare à quai (sans ligne) = s ; dans une rame de la ligne l = NS + s * NL + l.
+  const dist = new Map<number, number>();
+  const prev = new Map<number, number>();
+  const heap: [number, number][] = [];
+  const push = (st: number, d: number, p: number | null) => {
+    if (dist.has(st) && dist.get(st)! <= d) return;
+    dist.set(st, d);
+    if (p != null) prev.set(st, p);
+    heap.push([d, st]);
+    let i = heap.length - 1;
+    while (i > 0) {
+      const q = (i - 1) >> 1;
+      if (heap[q][0] <= heap[i][0]) break;
+      [heap[q], heap[i]] = [heap[i], heap[q]];
+      i = q;
+    }
+  };
+  const pop = () => {
+    const top = heap[0];
+    const last = heap.pop()!;
+    if (heap.length) {
+      heap[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]];
+        i = m;
+      }
+    }
+    return top;
+  };
+  for (const s of from) push(s, 0, null);
+  let end: number | null = null;
+  while (heap.length) {
+    const [d, st] = pop();
+    if (d > (dist.get(st) ?? Infinity)) continue;
+    if (st < NS) {
+      if (to.has(st)) {
+        end = st;
+        break;
+      }
+      for (const l of g.linesAt[st]) push(NS + st * NL + l, d + TC_BOARD_MIN, st);
+      for (const w of g.walk[st]) push(w.to, d + w.m, st);
+    } else {
+      const s = Math.floor((st - NS) / NL);
+      push(s, d, st); // descendre
+      for (const e of g.ride.get(st - NS) ?? []) push(NS + e.to, d + e.m, st);
+    }
+  }
+  if (end == null) return null;
+  const lignes: string[] = [];
+  for (let st: number | undefined = end; st != null; st = prev.get(st)) {
+    if (st >= NS) {
+      const l = g.lignes[(st - NS) % NL];
+      if (lignes[0] !== l) lignes.unshift(l);
+    }
+  }
+  return { minutes: dist.get(end)!, lignes };
+}

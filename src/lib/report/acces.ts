@@ -1,7 +1,7 @@
 import * as turf from "@turf/turf";
 import { GEO_API } from "../collectors/admin";
 import { fitAspect, type Bbox } from "../collectors/carto";
-import { collectDirectTrains, collectIdfmIndex, directTc, type TrainGroup } from "../collectors/gtfs";
+import { collectDirectTrains, collectIdfmIndex, routeTc, TC_BOARD_MIN, type TrainGroup } from "../collectors/gtfs";
 import { SNCF } from "../collectors/public-apis";
 import { fmtDuration, OSRM_URL } from "../collectors/routes";
 import { fmtNumber } from "../format";
@@ -151,8 +151,9 @@ export async function ciblageAcces(
         if (!inside.size) continue;
         for (const h of hubs.filter((x) => idf(x.l.code))) {
           const from = near(h.l.lon, h.l.lat, 1.2);
-          const r = from.size ? directTc(index, from, inside) : null;
-          if (r) tc.set(`${h.l.code}|${t.at.code}`, r);
+          const r = from.size ? routeTc(index, from, inside) : null;
+          // Lignes : « métro 7 », « métro 9, puis RER C », « métro 9, RER A, puis tram T3 ».
+          if (r) tc.set(`${h.l.code}|${t.at.code}`, { minutes: r.minutes, ligne: r.lignes.length > 1 ? `${r.lignes.slice(0, -1).join(", ")}, puis ${r.lignes[r.lignes.length - 1]}` : (r.lignes[0] ?? "à pied") });
         }
       }
       tcSrc = ctx.ref("idfm_gtfs", index.url, index.retrievedAt);
@@ -176,7 +177,7 @@ export async function ciblageAcces(
         { key: "militants", label: "Militants (bilan LFI)" },
         { key: "voiture", label: "Voiture", align: "right" as const },
         { key: "train", label: "Train direct (samedi)", align: "right" as const },
-        ...(tc.size ? [{ key: "tc", label: "Métro, RER, tram (direct)", align: "right" as const }] : []),
+        ...(tc.size ? [{ key: "tc", label: "Métro, RER, tram", align: "right" as const }] : []),
       ],
       rows: rowsF.map(({ h, car: v, tr: r }) => ({
         ville: h.l.nom,
@@ -186,7 +187,7 @@ export async function ciblageAcces(
         tc: tc.get(`${h.l.code}|${t.at.code}`) ? `${fmtDuration(tc.get(`${h.l.code}|${t.at.code}`)!.minutes)} (${tc.get(`${h.l.code}|${t.at.code}`)!.ligne})` : "—",
       })),
       sources: sourcesF,
-      note: `Villes militantes : au moins ${HUB_MIN_GA} groupes d'action actifs ou ${HUB_MIN_PARRAINS} parrains (bilan LFI), à moins de ${HUB_MAX_KM} km. Voiture : temps sans trafic (OSRM). Train : trajet direct le plus court un samedi et nombre de trains directs dans la journée, aller et retour (horaires SNCF).${tc.size ? " Métro, RER, tram : trajet sans correspondance depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités)." : ""} « — » : pas de trajet direct.`,
+      note: `Villes militantes : au moins ${HUB_MIN_GA} groupes d'action actifs ou ${HUB_MIN_PARRAINS} parrains (bilan LFI), à moins de ${HUB_MAX_KM} km. Voiture : temps sans trafic (OSRM). Train : trajet direct le plus court un samedi et nombre de trains directs dans la journée, aller et retour (horaires SNCF).${tc.size ? ` Métro, RER, tram : trajet le plus rapide, correspondances comprises, depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités) ; ${TC_BOARD_MIN} min comptées à chaque montée (attente, correspondance).` : ""} « — » : pas de trajet trouvé.`,
     };
     const first = rowsF.find((x) => x.car != null);
     const blocksF: Block[] = [
