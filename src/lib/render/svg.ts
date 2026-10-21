@@ -221,6 +221,8 @@ function refbarSvg(c: ChartSpec, width: number): string {
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${esc(c.title)}"><rect width="100%" height="100%" fill="${PALETTE.surface}"/>`;
   rows.forEach((r, i) => {
     const cy = m.t + i * rowH + rowH / 2;
+    // Trait de séparation en tirets (avant l'abstention).
+    if (c.sepKey && r[c.xKey] === c.sepKey) s += `<line x1="0" x2="${width}" y1="${cy - rowH / 2}" y2="${cy - rowH / 2}" stroke="${PALETTE.text2}" stroke-width="1" stroke-dasharray="4 3"/>`;
     const v = r[val.key] as number;
     const color = (c.colorKey && (r[c.colorKey] as string)) || PALETTE.series[0];
     const label = String(r[c.xKey]);
@@ -401,7 +403,7 @@ function legendSvg(map: MapSpec, x: number, y: number, width: number) {
     const lab = (v: number) => (fine ? fmtNumber(v, 1) : shortNum(v));
     lg.classes.forEach((c, i) => {
       s += `<rect x="${x + i * w}" y="${y + 18}" width="${w - 2}" height="12" fill="${c.color}"/>`;
-      s += `<text x="${x + i * w}" y="${y + 44}" font-size="${w < 70 ? 8.5 : 9.5}" fill="${PALETTE.text2}" ${FONT}>${esc(lab(c.min))}–${esc(lab(c.max))}</text>`;
+      s += `<text x="${x + i * w}" y="${y + 44}" font-size="${w < 70 ? 8.5 : 9.5}" fill="${PALETTE.text2}" ${FONT}>${esc(c.label ?? `${lab(c.min)}–${lab(c.max)}`)}</text>`;
     });
     s += `<rect x="${x + lg.classes.length * w + 10}" y="${y + 18}" width="14" height="12" fill="${MISSING_COLOR}"/><text x="${x + lg.classes.length * w + 28}" y="${y + 28}" font-size="9.5" fill="${PALETTE.text2}" ${FONT}>${esc(lg.missingLabel ?? "n.d.")}</text>`;
   } else if (lg.categories?.length) {

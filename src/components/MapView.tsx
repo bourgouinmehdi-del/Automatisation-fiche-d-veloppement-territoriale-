@@ -87,7 +87,7 @@ export default function MapView({ map, height = 460 }: { map: MapSpec; height?: 
           {map.legend.classes?.map((c, i) => (
             <span key={i} className="flex items-center gap-1">
               <span className="inline-block h-3 w-5 rounded-sm" style={{ background: c.color }} />
-              {fmtValue(c.min, map.legend!.unit ?? "nombre")} – {fmtValue(c.max, map.legend!.unit ?? "nombre")}
+              {c.label ?? `${fmtValue(c.min, map.legend!.unit ?? "nombre")} – ${fmtValue(c.max, map.legend!.unit ?? "nombre")}`}
             </span>
           ))}
           {map.legend.classes && (

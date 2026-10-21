@@ -668,7 +668,21 @@ function MapBlock({ maps, cite, exp }: { maps: Report["maps"]; cite: (s: Report[
       <figcaption className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm font-semibold">
         <span>{m.title}</span>
         <span className="no-print flex items-center gap-2 text-xs font-normal">
-          {maps.length > 1 && (
+          {maps.length > 1 && maps.length <= 3 ? (
+            <span className="flex gap-1" role="group" aria-label="Carte affichée">
+              {maps.map((x, i) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  aria-pressed={i === idx}
+                  onClick={() => setIdx(i)}
+                  className={`rounded-full border px-2.5 py-0.5 ${i === idx ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] text-[var(--ink-2)]"}`}
+                >
+                  {x.period ?? x.title}
+                </button>
+              ))}
+            </span>
+          ) : maps.length > 1 ? (
             <select value={idx} onChange={(e) => setIdx(Number(e.target.value))} className="rounded border border-[var(--line)] px-1 py-0.5" aria-label="Période">
               {maps.map((x, i) => (
                 <option key={x.id} value={i}>
@@ -676,7 +690,7 @@ function MapBlock({ maps, cite, exp }: { maps: Report["maps"]; cite: (s: Report[
                 </option>
               ))}
             </select>
-          )}
+          ) : null}
           <a href={exp("map-png", `?id=${m.id}`)}>PNG</a>
           <a href={exp("map-svg", `?id=${m.id}`)}>SVG</a>
           <a href={exp("geojson", `?id=${m.id}`)}>GeoJSON</a>
