@@ -437,6 +437,7 @@ describe("chaîne de génération (API simulées)", () => {
     for (const jargon of [/\bE24\b/, /\bP22\b/, /\bpts?\b/, /surperform/i, /exprimés/, /\bQPV\b/, /scores? z/i]) expect(text).not.toMatch(jargon);
     const vote = report.tables.find((t) => t.id === "lfi_vote")!;
     expect(vote.columns.length).toBeLessThanOrEqual(7);
+    expect(vote.columns.map((c) => c.label)).toContain("Gauche hors LFI européennes 2024");
     for (const r of vote.rows) for (const [k, v] of Object.entries(r)) if (k !== "territoire" && k !== "inscrits" && v) expect(String(v)).toMatch(/^[\d\s\u00a0]+(%)?$/);
     const fiche = report.sections[0];
     expect(fiche.blocks.some((b) => b.type === "table" && b.tableId === "lfi_vote")).toBe(true);
