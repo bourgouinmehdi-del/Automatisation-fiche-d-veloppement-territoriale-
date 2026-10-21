@@ -9,6 +9,7 @@ import { collect, PROGRESS_TOTAL, territorial } from "./collect";
 import { buildSections } from "./sections";
 import { buildLfi } from "./lfi";
 import { buildCiblage } from "./ciblage";
+import { ciblageAcces, type AccesTarget } from "./acces";
 import { buildEmploi } from "./emploi";
 
 /**
@@ -77,6 +78,18 @@ export async function buildReport(
     territorial(query.scope)
       ? { ...buildCiblage(c), charts: [] }
       : buildLfi(c, a.indicators, { emploiText: emp.ficheText });
+  // Ciblage : temps de trajet depuis les villes militantes proches (calculé une fois les territoires choisis).
+  const chosen = (lfi as { chosen?: AccesTarget[] }).chosen;
+  if (territorial(query.scope) && chosen?.length && lfi.section) {
+    emit({ step: "acces", label: "Temps de trajet depuis les villes militantes", done: total - 2, total, status: "running" });
+    const acc = await ciblageAcces(c, chosen).catch(() => null);
+    if (acc) {
+      lfi.tables.push(...acc.tables);
+      lfi.maps.push(...acc.maps);
+      const i = lfi.section.blocks.findIndex((b) => b.type === "heading" && /^Classement/.test(b.text));
+      lfi.section.blocks.splice(i < 0 ? lfi.section.blocks.length : i, 0, ...acc.blocks);
+    }
+  }
   a.indicators.push(...lfi.indicators);
   a.tables.push(...lfi.tables);
   a.charts.push(...lfi.charts);

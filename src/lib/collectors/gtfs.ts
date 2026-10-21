@@ -180,3 +180,101 @@ async function collectTimetablesFresh(http: TrackedHttp, stations: StationInput[
   });
   return { stations: out, url: GTFS_URL, retrievedAt: f.retrievedAt };
 }
+
+/* --------------------------------------------- trajets directs entre villes */
+
+export interface TrainGroup {
+  /** Identifiant du lieu (code INSEE). */
+  key: string;
+  stations: StationInput[];
+}
+
+export interface DirectTrains {
+  /** Trajet direct le plus court (minutes) et nombre de trains directs, par paire « a|b » (a < b). */
+  pairs: Record<string, { minutes: number; trains: number }>;
+  date: string;
+  url: string;
+  retrievedAt: string;
+}
+
+/**
+ * Trains directs (sans correspondance) entre des villes, un samedi de référence :
+ * pour chaque paire, la durée la plus courte et le nombre de trains. 24 h sur disque.
+ */
+export function collectDirectTrains(http: TrackedHttp, groups: TrainGroup[], now = new Date()): Promise<DirectTrains> {
+  const key = `gtfsdirect|${now.toISOString().slice(0, 10)}|${hash(JSON.stringify(groups))}`;
+  return cachedExtract(key, 24, () => heavyLane.run(() => collectDirectTrainsFresh(http, groups, now)));
+}
+
+async function collectDirectTrainsFresh(http: TrackedHttp, groups: TrainGroup[], now: Date): Promise<DirectTrains> {
+  const f = await http.file(GTFS_URL, { timeoutMs: 1800000, retries: 1 });
+  const file = f.data;
+  const groupOf = new Map<string, number>();
+  const areas: { id: string; lon: number; lat: number }[] = [];
+  const points: { id: string; parent: string }[] = [];
+  await eachRow(file, "stops.txt", (v, col) => {
+    const lt = Number(v[col("location_type")] ?? "0");
+    if (lt === 1) areas.push({ id: v[col("stop_id")], lon: Number(v[col("stop_lon")]), lat: Number(v[col("stop_lat")]) });
+    else points.push({ id: v[col("stop_id")], parent: v[col("parent_station")] ?? "" });
+  });
+  const near = (a: { lon: number; lat: number }, s: StationInput) => s.lon != null && s.lat != null && Math.hypot((a.lon - s.lon) * Math.cos((s.lat * Math.PI) / 180), a.lat - s.lat) * 111 < 0.4;
+  groups.forEach((g, gi) => {
+    for (const s of g.stations) {
+      const uic = s.uic.replace(/\D/g, "").slice(0, 8);
+      for (const a of areas) if ((uic.length >= 7 && a.id.includes(uic)) || near(a, s)) for (const p of points) if (p.parent === a.id) groupOf.set(p.id, gi);
+    }
+  });
+  if (!groupOf.size) throw new Error("Gares absentes des horaires SNCF (GTFS)");
+  // Samedi de référence : le plus desservi des huit prochaines semaines (les convois ont lieu le week-end).
+  const saturdays = new Set<string>();
+  for (let k = 0; k < 60; k++) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + k));
+    if (d.getUTCDay() === 6) saturdays.add(ymd(d));
+  }
+  const perDate = new Map<string, number>();
+  await eachRow(file, "calendar_dates.txt", (v, col) => {
+    const d = v[col("date")];
+    if (saturdays.has(d) && v[col("exception_type")] === "1") perDate.set(d, (perDate.get(d) ?? 0) + 1);
+  });
+  const date = [...perDate].sort((a, b) => b[1] - a[1])[0]?.[0] ?? [...saturdays][0];
+  const services = new Set<string>();
+  await eachRow(file, "calendar_dates.txt", (v, col) => {
+    if (v[col("date")] === date && v[col("exception_type")] === "1") services.add(v[col("service_id")]);
+  });
+  try {
+    await eachRow(file, "calendar.txt", (v, col) => {
+      if (v[col("saturday")] === "1" && v[col("start_date")] <= date && v[col("end_date")] >= date) services.add(v[col("service_id")]);
+    });
+  } catch {
+    /* fichier absent */
+  }
+  const trips = new Set<string>();
+  await eachRow(file, "trips.txt", (v, col) => {
+    if (services.has(v[col("service_id")])) trips.add(v[col("trip_id")]);
+  });
+  const byTrip = new Map<string, Map<number, number>>();
+  await eachRow(file, "stop_times.txt", (v, col) => {
+    const gi = groupOf.get(v[col("stop_id")]);
+    if (gi == null) return;
+    const trip = v[col("trip_id")];
+    if (!trips.has(trip)) return;
+    const t = toMin(v[col("departure_time")] || v[col("arrival_time")]);
+    if (!byTrip.has(trip)) byTrip.set(trip, new Map());
+    const m = byTrip.get(trip)!;
+    if (!m.has(gi)) m.set(gi, t);
+  });
+  const pairs: DirectTrains["pairs"] = {};
+  for (const m of byTrip.values()) {
+    const gs = [...m.keys()];
+    for (let i = 0; i < gs.length; i++)
+      for (let j = i + 1; j < gs.length; j++) {
+        const [a, b] = [groups[gs[i]].key, groups[gs[j]].key].sort();
+        const d = Math.abs(m.get(gs[i])! - m.get(gs[j])!);
+        if (d <= 0) continue;
+        const p = (pairs[`${a}|${b}`] ??= { minutes: d, trains: 0 });
+        p.minutes = Math.min(p.minutes, d);
+        p.trains++;
+      }
+  }
+  return { pairs, date, url: GTFS_URL, retrievedAt: f.retrievedAt };
+}

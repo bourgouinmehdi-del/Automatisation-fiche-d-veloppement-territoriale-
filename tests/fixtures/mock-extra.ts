@@ -233,6 +233,13 @@ export function mockExtra(url: URL): Response | null {
     });
   if (h === "eu.ftp.opendatasoft.com") return bin(gtfsZip());
   if (h === "adresse.data.gouv.fr" && p.includes("adresses-60")) return bin(banGz());
+  if (h === "router.project-osrm.org" && url.pathname.startsWith("/table/")) {
+    // Matrice : 20 min par tranche de 0,1° d'écart (fictif).
+    const pts = url.pathname.replace(/^\/table\/v1\/driving\//, "").split(";").map((x) => x.split(",").map(Number));
+    const src = (url.searchParams.get("sources") ?? "").split(";").map(Number);
+    const dst = (url.searchParams.get("destinations") ?? "").split(";").map(Number);
+    return json({ code: "Ok", durations: src.map((i) => dst.map((j) => 600 + Math.round(Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) * 12000))) });
+  }
   if (h === "router.project-osrm.org") return json({ code: "Ok", routes: [{ duration: url.pathname.includes("2.35") ? 5400 : 1500, distance: 60000 }] });
   return null;
 }

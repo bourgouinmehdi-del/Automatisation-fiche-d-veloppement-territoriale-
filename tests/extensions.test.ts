@@ -136,6 +136,29 @@ describe("ciblage départemental", () => {
     }
   }, 120000);
 
+  it("ciblage : temps de trajet depuis les villes militantes (bilan LFI)", async () => {
+    const { buildReport } = await import("@/lib/report/build");
+    const d = path.join(dir, "interne");
+    // Beauvais et Compiègne : villes militantes (groupes actifs, parrains) ; le reste sans.
+    await fs.writeFile(path.join(d, "bilan.csv"), "code_insee;nb_actions;nb_ga_actifs;nb_parrains;inscrits;estime\n60057;50;3;400;30000;0\n60159;60;2;300;25000;0\n60382;1;0;20;6000;0\n");
+    try {
+      const r = await buildReport({ codeInsee: "60159", scope: "departement" });
+      const t = r.tables.find((x) => x.id === "ciblage_acces");
+      expect(t).toBeDefined();
+      expect(t!.columns.some((c) => /^Depuis /.test(c.label))).toBe(true);
+      expect(t!.rows.length).toBeGreaterThan(0);
+      expect(String(t!.rows[0].moyenne)).toMatch(/min|h/);
+      const sec = r.sections.find((s) => s.id === "CIBLAGE")!;
+      const iA = sec.blocks.findIndex((b) => b.type === "heading" && b.text === "Rejoindre les territoires proposés");
+      const iC = sec.blocks.findIndex((b) => b.type === "heading" && /^Classement/.test(b.text));
+      expect(iA).toBeGreaterThan(0);
+      expect(iA).toBeLessThan(iC);
+      expect(r.maps.some((m) => m.id === "ciblage_acces_carte")).toBe(true);
+    } finally {
+      await fs.rm(path.join(d, "bilan.csv"), { force: true });
+    }
+  }, 120000);
+
   it("export PDF du ciblage (si Chromium est disponible)", async () => {
     const { findChromium, reportToPdf } = await import("@/lib/export/pdf");
     const { renderReportHtml } = await import("@/lib/render/html");

@@ -273,6 +273,8 @@ export function mockFetch(): typeof fetch {
     if (h === "geo.api.gouv.fr") {
       if (p === "/communes/60159")
         return json({ code: "60159", nom: "Compiègne", population: 40761, surface: 5300, centre: { type: "Point", coordinates: [LON0 + 0.02, LAT0 + 0.02] }, contour: square(LON0, LAT0) });
+      if (p === "/departements/60/communes" && url.searchParams.get("format") === "json")
+        return json(GRID.map(([code, nom, pop, dx, dy]) => ({ code, nom, population: pop, centre: { type: "Point", coordinates: [LON0 + dx * 0.04 + 0.02, LAT0 + dy * 0.04 + 0.02] } })));
       if (p === "/departements/60/communes") return json(depFeatures());
       if (p === "/departements/60") return json({ type: "Feature", geometry: square(LON0 - 0.1, LAT0 - 0.1, 0.3), properties: { nom: "Oise" } });
       if (p === "/communes")
