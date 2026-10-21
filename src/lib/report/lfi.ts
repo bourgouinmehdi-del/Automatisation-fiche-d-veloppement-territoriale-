@@ -178,6 +178,18 @@ export function voteChart(eid: string, a: VoteAgg, source: SourceRef, note?: str
 }
 const VOTE_CHARTS_DATE = "2024-06-10";
 
+/** Part des voix (hors blancs et nuls) de chaque force du graphique d'un scrutin. */
+export function forceShares(eid: string, a: VoteAgg): Record<string, number> | null {
+  const cfg = VOTE_CHARTS.find((x) => x.eid === eid);
+  if (!cfg || !a.exprimes) return null;
+  const voix = new Map<string, number>();
+  for (const cand of a.candidates) {
+    const f = cfg.forces.find((x) => FAMILIES.find((y) => y.id === x.id)?.match[eid]?.test(cand.label));
+    if (f) voix.set(f.id, (voix.get(f.id) ?? 0) + cand.voix);
+  }
+  return Object.fromEntries(cfg.forces.map((f) => [f.id, (100 * (voix.get(f.id) ?? 0)) / a.exprimes]));
+}
+
 export function europeennesChart(a: VoteAgg, source: SourceRef): ChartSpec {
   return voteChart("EU24", a, source)!;
 }
@@ -294,6 +306,79 @@ const joinFr = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, 
 
 /** Palette divergente (faible → élevé) des cartes par bureau, proche des fiches de référence. */
 export const DIV_COLORS = ["#3f6fb0", "#8eaed6", "#cfc8d8", "#e3a07f", "#c0503a"];
+
+const NOM_FORCE: Record<string, string> = { pcf: "le PCF", lfi: "LFI", eco: "les écologistes", ps: "le PS", ens: "le camp présidentiel", lr: "LR", rn: "le RN", rec: "Reconquête" };
+const QUAND: Record<string, string> = { PR17T1: "à la présidentielle 2017", EU19: "aux européennes 2019", PR22T1: "à la présidentielle 2022", EU24: "aux européennes 2024" };
+const ANNEE: Record<string, string> = { PR17T1: "2017", EU19: "2019", PR22T1: "2022", EU24: "2024" };
+const GAUCHE = ["pcf", "lfi", "eco", "ps"];
+const pts = (d: number) => `${fmtNumber(Math.abs(Math.round(d)))} point${Math.abs(Math.round(d)) > 1 ? "s" : ""}`;
+
+/**
+ * Introduction du profil politique (quelques phrases, seulement ce qui ressort) : force dominante ou en
+ * forte progression, état de la gauche, trajectoire de LFI par rapport à la France, participation,
+ * écarts entre les zones de la commune.
+ */
+export function politiqueIntro(parcours: { eid: string; sh: Record<string, number>; nat: Record<string, number>; abst: number | null }[], zones: { nom: string; lfi: number; lfi19: number | null }[]): string {
+  const by = new Map(parcours.map((p) => [p.eid, p]));
+  const last = by.get("EU24") ?? by.get("PR22T1");
+  const out: string[] = [];
+  const Cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+  // 1. Force en tête ; forte progression entre scrutins comparables (2019 → 2024, 2017 → 2022).
+  if (last) {
+    const top = Object.entries(last.sh).sort((a, b) => b[1] - a[1])[0];
+    const prog = [["EU19", "EU24"], ["PR17T1", "PR22T1"]]
+      .map(([a, b]) => ({ a: by.get(a), b: by.get(b) }))
+      .filter((x) => x.a && x.b)
+      .flatMap(({ a, b }) => Object.keys(b!.sh).filter((f) => f in a!.sh).map((f) => ({ f, a: a!, b: b!, d: b!.sh[f] - a!.sh[f], dn: (b!.nat[f] ?? 0) - (a!.nat[f] ?? 0) })))
+      .filter((x) => x.d >= 6 && x.d - x.dn >= 3 && x.a.sh[x.f] >= 1)
+      .sort((x, y) => y.d - x.d)[0];
+    const topTxt = `${Cap(NOM_FORCE[top[0]])} arrive en tête ${QUAND[last.eid]} (${pct(top[1], 0)})`;
+    if (prog && prog.f === top[0]) out.push(`${topTxt}, en forte progression : ${pct(prog.a.sh[prog.f], 0)} ${QUAND[prog.a.eid]}.`);
+    else {
+      out.push(`${topTxt}.`);
+      if (prog) out.push(`${Cap(NOM_FORCE[prog.f])} progresse fortement : de ${pct(prog.a.sh[prog.f], 0)} ${QUAND[prog.a.eid]} à ${pct(prog.b.sh[prog.f], 0)} ${QUAND[prog.b.eid]}.`);
+    }
+  }
+  // 2. La gauche (PCF, LFI, écologistes, PS) par rapport à la France, scrutin par scrutin.
+  const gaps = parcours.map((p) => ({ eid: p.eid, c: GAUCHE.reduce((s, f) => s + (p.sh[f] ?? 0), 0), n: GAUCHE.reduce((s, f) => s + (p.nat[f] ?? 0), 0) })).map((g) => ({ ...g, d: g.c - g.n }));
+  if (gaps.length >= 2) {
+    const g = gaps[gaps.length - 1];
+    const trend = g.d - gaps[0].d;
+    const evo = trend <= -6 ? `, mais cette avance s'est réduite (${pts(gaps[0].d)} d'écart ${QUAND[gaps[0].eid]})` : trend >= 6 ? `, et l'écart se creuse (${pts(gaps[0].d)} ${QUAND[gaps[0].eid]})` : "";
+    if (gaps.every((x) => x.d >= 3)) out.push(`La gauche y fait mieux qu'en France à chaque élection : ${pct(g.c, 0)} ${QUAND[g.eid]}, contre ${pct(g.n, 0)}${evo}.`);
+    else if (gaps.every((x) => x.d <= -3)) out.push(`La gauche y fait moins bien qu'en France à chaque élection : ${pct(g.c, 0)} ${QUAND[g.eid]}, contre ${pct(g.n, 0)}.`);
+    else if (Math.abs(trend) >= 6) out.push(`La gauche ${trend > 0 ? "progresse" : "recule"} par rapport à la France : ${pts(gaps[0].d)} ${gaps[0].d >= 0 ? "au-dessus" : "en dessous"} de la moyenne nationale ${QUAND[gaps[0].eid]}, ${pts(g.d)} ${g.d >= 0 ? "au-dessus" : "en dessous"} ${QUAND[g.eid]}.`);
+  }
+  // 3. LFI (ou J.-L. Mélenchon) par rapport à la France : trajectoire.
+  const lfi = parcours.filter((p) => p.sh.lfi != null && p.nat.lfi != null).map((p) => ({ eid: p.eid, d: p.sh.lfi - p.nat.lfi, c: p.sh.lfi }));
+  if (lfi.length >= 2) {
+    const a = lfi[0];
+    const b = lfi[lfi.length - 1];
+    const sens = (d: number) => (Math.abs(d) < 1.5 ? "au niveau de la moyenne nationale" : `${pts(d)} ${d > 0 ? "au-dessus" : "en dessous"} de la moyenne nationale`);
+    if ((Math.sign(a.d) !== Math.sign(b.d) && Math.max(Math.abs(a.d), Math.abs(b.d)) >= 3) || Math.abs(b.d - a.d) >= 5)
+      out.push(`LFI était ${sens(a.d)} en ${ANNEE[a.eid]}, ${sens(b.d)} en ${ANNEE[b.eid]}.`);
+    else if (lfi.every((x) => x.d >= 3)) out.push(`LFI y fait mieux qu'en France à chaque élection depuis ${ANNEE[a.eid]} (${pts(b.d)} de plus en ${ANNEE[b.eid]}).`);
+    else if (lfi.every((x) => x.d <= -3)) out.push(`LFI y fait moins bien qu'en France à chaque élection depuis ${ANNEE[a.eid]}.`);
+  }
+  // 4. Participation (européennes 2024, sinon présidentielle 2022).
+  const pa = by.get("EU24")?.abst != null ? { eid: "EU24", c: by.get("EU24")!.abst!, n: 48.51 } : by.get("PR22T1")?.abst != null ? { eid: "PR22T1", c: by.get("PR22T1")!.abst!, n: 26.31 } : null;
+  if (pa) {
+    const d = pa.c - pa.n;
+    out.push(d >= 3 ? `On y vote moins qu'en France : ${pct(pa.c, 0)} d'abstention ${QUAND[pa.eid]} (${pct(pa.n, 0)} en France).` : d <= -3 ? `On y vote plus qu'en France : ${pct(pa.c, 0)} d'abstention ${QUAND[pa.eid]} (${pct(pa.n, 0)} en France).` : `La participation est proche de la moyenne nationale.`);
+  }
+  // 5. Écarts entre les zones de la commune, et où LFI a progressé.
+  if (zones.length >= 2) {
+    const zs = [...zones].sort((a, b) => b.lfi - a.lfi);
+    const hi = zs[0];
+    const lo = zs[zs.length - 1];
+    const grow = zones.filter((z) => z.lfi19 != null).map((z) => ({ ...z, d: z.lfi - z.lfi19! })).sort((a, b) => b.d - a.d);
+    const avg = grow.length ? grow.reduce((s, z) => s + z.d, 0) / grow.length : 0;
+    if (grow.length >= 2 && grow[0].d >= 8 && grow[0].d >= 1.5 * Math.max(avg, 1))
+      out.push(`Le vote LFI a surtout progressé ${grow[0].nom} de la commune : de ${pct(grow[0].lfi19!, 0)} aux européennes 2019 à ${pct(grow[0].lfi, 0)} en 2024.`);
+    if (hi.lfi - lo.lfi >= 12) out.push(`Le vote LFI est très inégal d'une partie de la commune à l'autre : ${pct(hi.lfi, 0)} ${hi.nom}, ${pct(lo.lfi, 0)} ${lo.nom} (européennes 2024).`);
+  }
+  return out.join(" ");
+}
 
 /** Vote de gauche hors LFI aux européennes 2024 (PS – Place publique, Écologistes, PCF), en % des exprimés. */
 function gaucheHorsLfi(a: ElectionResult): number | null {
@@ -619,6 +704,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const bvLg = c.bureaux.find((b) => b.election.id === "LG24T1")?.results;
   const abstRef = cL && dL ? { c: cL, d: dL, label: "aux législatives 2024", short: "législatives 2024" } : c24 && d24 ? { c: c24, d: d24, label: "aux européennes 2024", short: "européennes 2024" } : null;
   // Graphique systématique « Européennes 2024 » : % des exprimés par force politique, repère national.
+  // Scrutin par scrutin : part des voix de chaque force (commune et France), abstention (texte d'introduction).
+  const parcours: { eid: string; sh: Record<string, number>; nat: Record<string, number>; abst: number | null }[] = [];
+  // Zones électorales (tableau « Le vote en chiffres ») : vote LFI en 2024 et, si possible, en 2019.
+  let zonesInfo: { nom: string; lfi: number; lfi19: number | null }[] = [];
   // Graphiques par scrutin (onglets) : 2022 et 2024 au niveau communal, 2017 et 2019 reconstitués
   // à partir des bureaux de vote de la commune.
   for (const cfg of VOTE_CHARTS) {
@@ -629,6 +718,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (!agg || !src) continue;
     const ch = voteChart(cfg.eid, agg, src, comm ? undefined : "Total des bureaux de vote de la commune.");
     if (ch) out.charts.push(ch);
+    const sh = forceShares(cfg.eid, agg);
+    const ins = agg.inscrits;
+    const nAbst = agg.abstentions ?? (ins && agg.votants != null ? ins - agg.votants : null);
+    if (sh) parcours.push({ eid: cfg.eid, sh, nat: Object.fromEntries(cfg.forces.map((f) => [f.id, f.national])), abst: ins && nAbst != null ? (100 * nAbst) / ins : null });
   }
   if (c24 || c22) {
     type Row = Record<string, string | number | null>;
@@ -752,6 +845,15 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
           })
           .sort((a, b) => b.lfi - a.lfi);
         const seenDir = new Map<string, number>();
+        // Européennes 2019 par zone : bureaux de même numéro et de taille comparable (±25 % d'inscrits).
+        const r19 = new Map((c.bureaux.find((b) => b.election.id === "EU19")?.results ?? []).map((b) => [b.bv, b]));
+        const lfi19Of = (bvs: string[]) => {
+          const ok = bvs.map((bv) => ({ b19: r19.get(bv), b24: r24.find((x) => x.bv === bv) })).filter((x) => x.b19 && x.b24 && Math.abs(x.b19.inscrits - x.b24.inscrits) <= 0.25 * x.b24.inscrits);
+          const ins24 = bvs.reduce((s2, bv) => s2 + (r24.find((x) => x.bv === bv)?.inscrits ?? 0), 0);
+          if (!ok.length || ok.reduce((s2, x) => s2 + x.b24!.inscrits, 0) < 0.7 * ins24) return null;
+          const a19 = aggOf([...r19.values()], ok.map((x) => x.b19!.bv));
+          return a19 ? (score("EU19", a19 as unknown as ElectionResult, "lfi")?.pctExprimes ?? null) : null;
+        };
         for (const { z, a24 } of zr) {
           const dir = z.at ? compass(z.at, centre, radius) : "zone";
           const k = (seenDir.get(dir) ?? 0) + 1;
@@ -759,6 +861,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
           const nums = [...z.bvs].sort((a, b) => Number(dv(a)) - Number(dv(b)) || a.localeCompare(b)).map(dv);
           const list = nums.length > 6 ? `${nums.slice(0, 5).join(", ")} et ${nums.length - 5} autres` : joinFr(nums);
           const cible = z.bvs.some((b) => prioSetZ.has(b));
+          zonesInfo.push({ nom: `${dir === "centre" ? "au centre" : dir === "zone" ? "dans une partie de la commune" : `dans le ${dir}`}${k > 1 ? ` (${k})` : ""}`, lfi: score("EU24", a24 as unknown as ElectionResult, "lfi")?.pctExprimes ?? 0, lfi19: lfi19Of(z.bvs) });
           vRows.push(
             vRow(
               `${cap(dir === "centre" ? "centre" : dir)}${k > 1 ? ` (${k})` : ""} : ${nums.length > 1 ? "bureaux" : "bureau"} ${list}${cible ? " (à cibler)" : ""}`,
@@ -2201,6 +2304,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // Profil politique : chiffres et graphiques seulement ; le texte (mairie, quartiers, parrainages) passe en annexe,
   // la lecture qualitative revient aux retours du terrain.
   blocks.push({ type: "heading", text: "Profil politique du territoire" });
+  {
+    const intro = politiqueIntro(parcours, zonesInfo);
+    if (intro) blocks.push({ type: "paragraph", text: intro });
+  }
   if (groupes.length)
     blocks.push({
       type: "callout",

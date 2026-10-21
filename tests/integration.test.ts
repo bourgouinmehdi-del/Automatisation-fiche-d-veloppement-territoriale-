@@ -204,7 +204,10 @@ describe("chaîne de génération (API simulées)", () => {
     // Profil politique : graphiques et chiffres, pas de texte rédigé.
     const iP = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil politique du territoire");
     const iO = fiche.blocks.findIndex((b) => b.type === "heading" && /Où agir/.test(b.text));
-    expect(fiche.blocks.slice(iP + 1, iO).filter((b) => b.type === "paragraph" || b.type === "findings")).toEqual([]);
+    // Seul texte : l'introduction (quelques phrases tirées des tableaux).
+    const txt = fiche.blocks.slice(iP + 1, iO).filter((b) => b.type === "paragraph" || b.type === "findings");
+    expect(txt.length).toBeLessThanOrEqual(1);
+    expect(fiche.blocks[iP + 1].type).toBe("paragraph");
     // Gras rendu en HTML, retiré du CSV.
     const { renderReportHtml } = await import("@/lib/render/html");
     const { tableCsv } = await import("@/lib/export/csv");

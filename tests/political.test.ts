@@ -98,3 +98,32 @@ describe("utilitaires", () => {
     expect(frenchHours("Mo-Fr 08:00-12:00,14:00-18:30; PH off")).toBe("du lundi au vendredi, 8 h – 12 h et 14 h – 18 h 30");
   });
 });
+
+describe("introduction du profil politique", () => {
+  it("ne dit que ce qui ressort, dans l'ordre demandé", async () => {
+    const { politiqueIntro } = await import("@/lib/report/lfi");
+    const nat19 = { pcf: 2.49, lfi: 6.31, eco: 13.48, ps: 6.19, ens: 22.42, lr: 8.48, rn: 23.34 };
+    const nat24 = { pcf: 2.36, lfi: 9.89, eco: 5.5, ps: 13.83, ens: 14.6, lr: 7.25, rn: 31.37, rec: 5.47 };
+    const t0 = politiqueIntro(
+      [
+        { eid: "PR17T1", sh: { lfi: 25, ps: 5, ens: 20, lr: 15, rn: 25 }, nat: { lfi: 19.58, ps: 6.36, ens: 24.01, lr: 20.01, rn: 21.3 }, abst: 25 },
+        { eid: "EU19", sh: { pcf: 2, lfi: 7, eco: 10, ps: 5, ens: 18, lr: 6, rn: 27 }, nat: nat19, abst: 55 },
+        { eid: "PR22T1", sh: { pcf: 2, lfi: 18, eco: 4, ps: 1, ens: 25, lr: 4, rn: 30, rec: 6 }, nat: { pcf: 2.28, lfi: 21.95, eco: 4.63, ps: 1.75, ens: 27.85, lr: 4.78, rn: 23.15, rec: 7.07 }, abst: 30 },
+        { eid: "EU24", sh: { pcf: 2, lfi: 8, eco: 4, ps: 11, ens: 12, lr: 6, rn: 42, rec: 5 }, nat: nat24, abst: 56 },
+      ],
+      [
+        { nom: "dans le nord-est", lfi: 30, lfi19: 12 },
+        { nom: "dans le sud", lfi: 6, lfi19: 5 },
+        { nom: "au centre", lfi: 10, lfi19: 7 },
+      ],
+    );
+    const t = t0.replace(/[\u00a0\u202f]/g, " ");
+    expect(t).toMatch(/La gauche recule par rapport à la France : 4 points au-dessus de la moyenne nationale à la présidentielle 2017, 7 points en dessous aux européennes 2024\./);
+    expect(t).toMatch(/^Le RN arrive en tête aux européennes 2024 \(42 %\), en forte progression : 27 % aux européennes 2019\./);
+    expect(t).toMatch(/LFI était 5 points au-dessus de la moyenne nationale en 2017, 2 points en dessous de la moyenne nationale en 2024\./);
+    expect(t).toMatch(/On y vote moins qu'en France : 56 % d'abstention aux européennes 2024 \(49 % en France\)\./);
+    expect(t).toMatch(/Le vote LFI a surtout progressé dans le nord-est de la commune : de 12 % aux européennes 2019 à 30 % en 2024\./);
+    expect(t).toMatch(/très inégal .* 30 % dans le nord-est, 6 % dans le sud/);
+    expect(t).not.toMatch(/exprimés|\bpts\b/);
+  });
+});
