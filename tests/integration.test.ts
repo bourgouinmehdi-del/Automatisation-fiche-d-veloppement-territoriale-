@@ -21,7 +21,7 @@ beforeAll(async () => {
   // Données internes facultatives (fictives).
   await fs.mkdir(path.join(dir, "interne"), { recursive: true });
   await fs.writeFile(path.join(dir, "interne", "parrains.csv"), "code_commune;parrains\n60159;40\n60382;5\n60057;20\n");
-  await fs.writeFile(path.join(dir, "interne", "bilan.csv"), "code_insee;nb_actions;nb_ga_actifs;nb_parrains;inscrits;estime\n60159;60;2;300;25000;0\n60057;20;1;100;20000;0\n60382;1.5;0;6.6;900;1\n01001;9000;1000;80000;9074100;0\n");
+  await fs.writeFile(path.join(dir, "interne", "bilan.csv"), "code_insee;nb_actions;nb_ga_actifs;nb_parrains;inscrits;estime\n60159;60;2;300;25000;0\n60057;20;1;100;20000;0\n60151;5;2;250;3000;0\n60382;1.5;0;6.6;900;1\n01001;9000;1000;80000;9074100;0\n");
   await fs.writeFile(path.join(dir, "interne", "groupes.csv"), "code_commune;nom;membres;statut\n60159;Groupe d'action fictif;9;actif\n");
   // Export Action Populaire : commune retrouvée par code postal et ville.
   await fs.writeFile(path.join(dir, "interne", "action-populaire.csv"), "Nom;Code postal;Ville;Nombre de membres;Certifié\nGroupe des étudiants;60200;Compiègne;4;Oui\n");
@@ -265,6 +265,12 @@ describe("chaîne de génération (API simulées)", () => {
       expect(pres.rows[1].rUnit).toBe("pour 10 000 inscrits");
       expect(Math.round(pres.rows[2].nRef)).toBe(44);
     }
+    // Temps de trajet depuis les villes militantes proches (Choisy-au-Bac : 2 groupes actifs).
+    const accT = report.tables.find((t) => t.id === "commune_acces");
+    expect(accT?.rows[0]).toMatchObject({ ville: "Choisy-au-Bac" });
+    expect(String(accT?.rows[0].voiture)).toMatch(/min|h/);
+    const lfiB = report.sections.find((x) => x.id === "LFI")!.blocks;
+    expect(lfiB.some((b) => b.type === "heading" && b.text === "Venir depuis les villes militantes proches")).toBe(true);
     // Effectifs estimés pour les bureaux prioritaires.
     const tete = report.sections.find((x) => x.id === "LFI")!.blocks.find((b) => b.type === "paragraph" && /À avoir en tête/.test(b.text));
     expect(tete && "text" in tete ? tete.text : "").toMatch(/médecins généralistes .*\(6,3 dans le département\) ; .* de chômage/);

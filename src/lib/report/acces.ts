@@ -34,23 +34,24 @@ export interface AccesTarget {
 
 type GeoCommune = { code: string; nom: string; centre?: { coordinates: [number, number] }; population?: number };
 
-export async function ciblageAcces(c: Collected, targets: AccesTarget[]): Promise<{ tables: DataTable[]; maps: MapSpec[]; blocks: Block[] } | null> {
+export async function ciblageAcces(
+  c: Collected,
+  targets: AccesTarget[],
+  opts: { fiche?: boolean } = {},
+): Promise<{ tables: DataTable[]; maps: MapSpec[]; blocks: Block[]; detail?: Block[] } | null> {
   const bilan = c.interne.bilan;
   if (!bilan || !targets.length) return null;
   const ctx = c.ctx;
-  const dep = c.commune.departement.code;
-  const deps = [dep, ...(c.depVoisins?.features ?? []).map((f) => String((f.properties as { code?: string }).code ?? "")).filter(Boolean)];
 
-  // 1. Communes du département et des départements voisins (centre, nom).
+  // 1. Centre de toutes les communes (une requête nationale, gardée 30 jours) : villes militantes
+  // de n'importe quel département voisin (Toulouse pour l'Ariège).
   const communes = new Map<string, GeoCommune>();
   let geoSrc = null as SourceRef | null;
-  await ctx.step("geoapi", "ciblage:acces:communes", async (http) => {
-    for (const d of deps) {
-      const url = `${GEO_API}/departements/${d}/communes?fields=nom,code,centre,population&format=json`;
-      const r = await http.json<GeoCommune[]>(url, { ttlHours: 24 * 30 });
-      for (const x of r.data ?? []) communes.set(x.code, x);
-      geoSrc ??= ctx.ref("geoapi", url, r.retrievedAt);
-    }
+  await ctx.step("geoapi", "acces:communes", async (http) => {
+    const url = `${GEO_API}/communes?fields=nom,code,centre,population&format=json`;
+    const r = await http.json<GeoCommune[]>(url, { ttlHours: 24 * 30, timeoutMs: 120000 });
+    for (const x of r.data ?? []) communes.set(x.code, x);
+    geoSrc = ctx.ref("geoapi", url, r.retrievedAt);
   });
   const at = (code: string): Lieu | null => {
     const x = communes.get(code);
@@ -115,6 +116,44 @@ export async function ciblageAcces(c: Collected, targets: AccesTarget[]): Promis
     gtfsSrc = ctx.ref("gtfs", r.url, r.retrievedAt, { vintage: `samedi ${r.date.slice(6, 8)}/${r.date.slice(4, 6)}/${r.date.slice(0, 4)}` });
   });
   if (!car.size && !train.size) return null;
+
+  // Fiche commune : une ligne par ville militante (voiture, train direct).
+  if (opts.fiche) {
+    const t = tgt[0];
+    const trOf = (h: string) => train.get([h, t.at.code].sort().join("|"));
+    const rowsF = hubs
+      .map((h) => ({ h, car: car.get(`${h.l.code}|${t.at.code}`) ?? null, tr: trOf(h.l.code) }))
+      .sort((a, b) => (a.car ?? 999) - (b.car ?? 999));
+    const sourcesF = [geoSrc, osrmSrc, gtfsSrc].filter((x): x is SourceRef => !!x);
+    const tableF: DataTable = {
+      id: "commune_acces",
+      title: `Venir à ${t.nom} depuis les villes militantes proches`,
+      theme: "strategie",
+      columns: [
+        { key: "ville", label: "Depuis", wide: true },
+        { key: "militants", label: "Militants (bilan LFI)" },
+        { key: "voiture", label: "Voiture", align: "right" as const },
+        { key: "train", label: "Train direct (samedi)", align: "right" as const },
+      ],
+      rows: rowsF.map(({ h, car: v, tr: r }) => ({
+        ville: h.l.nom,
+        militants: [h.b.ga ? `${fmtNumber(h.b.ga)} groupe${h.b.ga > 1 ? "s" : ""} actif${h.b.ga > 1 ? "s" : ""}` : "", `${fmtNumber(Math.round(h.b.parrains))} parrains`].filter(Boolean).join(", "),
+        voiture: v != null ? fmtDuration(v) : "—",
+        train: r ? `${fmtDuration(r.minutes)} (${r.trains} train${r.trains > 1 ? "s" : ""})` : "—",
+      })),
+      sources: sourcesF,
+      note: `Villes militantes : au moins ${HUB_MIN_GA} groupes d'action actifs ou ${HUB_MIN_PARRAINS} parrains (bilan LFI), à moins de ${HUB_MAX_KM} km. Voiture : temps sans trafic (OSRM). Train : trajet direct le plus court un samedi et nombre de trains directs dans la journée, aller et retour (horaires SNCF) ; « — » : pas de train direct.`,
+    };
+    const first = rowsF.find((x) => x.car != null);
+    const blocksF: Block[] = [
+      { type: "heading", text: "Venir depuis les villes militantes proches" },
+      ...(first
+        ? [{ type: "paragraph" as const, text: `**La plus proche : ${first.h.l.nom}**, à ${fmtDuration(first.car!)} en voiture${first.tr ? ` (${fmtDuration(first.tr.minutes)} en train direct)` : ""}.` }]
+        : []),
+      { type: "table", tableId: tableF.id },
+    ];
+    return { tables: [tableF], maps: [], blocks: blocksF };
+  }
 
   // 5. Tableau : une ligne par territoire, une colonne par ville militante.
   const tr = (a: string, b: string) => train.get([a, b].sort().join("|"));
