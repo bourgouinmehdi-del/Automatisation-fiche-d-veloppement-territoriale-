@@ -278,3 +278,138 @@ async function collectDirectTrainsFresh(http: TrackedHttp, groups: TrainGroup[],
   }
   return { pairs, date, url: GTFS_URL, retrievedAt: f.retrievedAt };
 }
+
+/* ------------------------------------------- métro, RER, tram (Île-de-France) */
+
+export const IDFM_GTFS_URL = process.env.IDFM_GTFS_URL ?? "https://eu.ftp.opendatasoft.com/stif/GTFS/IDFM-gtfs.zip";
+
+export interface TcStation {
+  nom: string;
+  lon: number;
+  lat: number;
+}
+export interface TcPattern {
+  /** « RER B », « métro 9 », « tram T3 », « Transilien P ». */
+  ligne: string;
+  /** Index des gares (dans `stations`) dans l'ordre de passage, avec l'heure (minutes depuis minuit). */
+  stops: number[];
+  t: number[];
+}
+export interface TcIndex {
+  stations: TcStation[];
+  patterns: TcPattern[];
+  url: string;
+  retrievedAt: string;
+}
+
+/**
+ * Lignes de métro, de RER, de train et de tram d'Île-de-France (horaires IDFM) : pour chaque ligne et
+ * chaque sens, les différentes dessertes (branches) avec les temps de parcours entre gares. Le fichier
+ * (≈ 150 Mo, bus compris) est lu une fois par jour ; seul cet index compact est gardé.
+ */
+export function collectIdfmIndex(http: TrackedHttp, now = new Date()): Promise<TcIndex> {
+  return cachedExtract(`idfmtc|${now.toISOString().slice(0, 10)}`, 24, () => heavyLane.run(() => collectIdfmIndexFresh(http)));
+}
+
+async function collectIdfmIndexFresh(http: TrackedHttp): Promise<TcIndex> {
+  const f = await http.file(IDFM_GTFS_URL, { timeoutMs: 1800000, retries: 1 });
+  const file = f.data;
+  // 1. Lignes ferrées, de métro et de tram (types GTFS 0, 1, 2).
+  const routes = new Map<string, string>();
+  await eachRow(file, "routes.txt", (v, col) => {
+    const type = Number(v[col("route_type")]);
+    if (![0, 1, 2].includes(type)) return;
+    const short = (v[col("route_short_name")] ?? "").trim();
+    const long = (v[col("route_long_name")] ?? "").trim();
+    const name = short || long;
+    const ligne = type === 1 ? `métro ${name}` : type === 0 ? `tram ${name.replace(/^T?/, "T")}` : /^[A-E]$/.test(name) ? `RER ${name}` : `train ${name}`;
+    routes.set(v[col("route_id")], ligne);
+  });
+  // 2. Courses de ces lignes : 40 au plus par ligne et par sens (assez pour voir toutes les branches).
+  const perKey = new Map<string, number>();
+  const tripRoute = new Map<string, string>();
+  await eachRow(file, "trips.txt", (v, col) => {
+    const r = v[col("route_id")];
+    if (!routes.has(r)) return;
+    const k = `${r}|${v[col("direction_id")] ?? ""}`;
+    const n = perKey.get(k) ?? 0;
+    if (n >= 40) return;
+    perKey.set(k, n + 1);
+    tripRoute.set(v[col("trip_id")], r);
+  });
+  // 3. Passages de ces courses.
+  const seq = new Map<string, { s: number; stop: string; t: number }[]>();
+  await eachRow(file, "stop_times.txt", (v, col) => {
+    const trip = v[col("trip_id")];
+    if (!tripRoute.has(trip)) return;
+    const t = toMin(v[col("departure_time")] || v[col("arrival_time")]);
+    if (!seq.has(trip)) seq.set(trip, []);
+    seq.get(trip)!.push({ s: Number(v[col("stop_sequence")]), stop: v[col("stop_id")], t });
+  });
+  // 4. Gares : quais regroupés sous leur gare (parent_station).
+  const used = new Set<string>();
+  for (const xs of seq.values()) for (const x of xs) used.add(x.stop);
+  const parentOf = new Map<string, string>();
+  const info = new Map<string, TcStation>();
+  await eachRow(file, "stops.txt", (v, col) => {
+    const id = v[col("stop_id")];
+    const parent = v[col("parent_station")] ?? "";
+    const st = { nom: v[col("stop_name")] ?? "", lon: Number(v[col("stop_lon")]), lat: Number(v[col("stop_lat")]) };
+    info.set(id, st);
+    if (used.has(id)) parentOf.set(id, parent || id);
+  });
+  const stations: TcStation[] = [];
+  const idx = new Map<string, number>();
+  const stationIdx = (stop: string) => {
+    const p = parentOf.get(stop) ?? stop;
+    if (!idx.has(p)) {
+      const st = info.get(p) ?? info.get(stop);
+      if (!st || !Number.isFinite(st.lon)) return -1;
+      idx.set(p, stations.length);
+      stations.push({ nom: st.nom, lon: Math.round(st.lon * 1e5) / 1e5, lat: Math.round(st.lat * 1e5) / 1e5 });
+    }
+    return idx.get(p)!;
+  };
+  // 5. Dessertes distinctes (même ligne, même suite de gares) : une seule gardée.
+  const seen = new Set<string>();
+  const patterns: TcPattern[] = [];
+  for (const [trip, xs] of seq) {
+    xs.sort((a, b) => a.s - b.s);
+    const stops = xs.map((x) => stationIdx(x.stop));
+    if (stops.some((s) => s < 0) || stops.length < 2) continue;
+    const ligne = routes.get(tripRoute.get(trip)!)!;
+    const sig = `${ligne}|${stops.join(",")}`;
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    patterns.push({ ligne, stops, t: xs.map((x) => x.t) });
+  }
+  if (!patterns.length) throw new Error("Aucune ligne de métro, RER ou tram dans les horaires IDFM");
+  return { stations, patterns, url: IDFM_GTFS_URL, retrievedAt: f.retrievedAt };
+}
+
+/**
+ * Trajet direct le plus court (sans correspondance) entre deux ensembles de gares, et la ligne.
+ */
+export function directTc(index: TcIndex, from: Set<number>, to: Set<number>): { minutes: number; ligne: string } | null {
+  let best: { minutes: number; ligne: string } | null = null;
+  for (const p of index.patterns) {
+    let ia = -1;
+    for (let i = 0; i < p.stops.length; i++) {
+      if (from.has(p.stops[i])) ia = i;
+      else if (ia >= 0 && to.has(p.stops[i])) {
+        const m = p.t[i] - p.t[ia];
+        if (m > 0 && (!best || m < best.minutes)) best = { minutes: m, ligne: p.ligne };
+      }
+    }
+    // Sens inverse dans la même desserte (lignes décrites dans un seul sens).
+    ia = -1;
+    for (let i = 0; i < p.stops.length; i++) {
+      if (to.has(p.stops[i])) ia = i;
+      else if (ia >= 0 && from.has(p.stops[i])) {
+        const m = p.t[i] - p.t[ia];
+        if (m > 0 && (!best || m < best.minutes)) best = { minutes: m, ligne: p.ligne };
+      }
+    }
+  }
+  return best;
+}

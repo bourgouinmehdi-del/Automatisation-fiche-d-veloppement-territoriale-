@@ -236,6 +236,15 @@ export const SOURCES: Record<string, SourceInfo> = {
     access: "Archive GTFS nationale lue en flux.",
     limits: "Horaires théoriques d'un mardi de référence ; travaux et perturbations non pris en compte ; cars TER inclus s'ils figurent dans le GTFS.",
   },
+  idfm_gtfs: {
+    id: "idfm_gtfs",
+    name: "Horaires des transports d'Île-de-France (GTFS IDFM)",
+    producer: "Île-de-France Mobilités (transport.data.gouv.fr)",
+    homepage: "https://transport.data.gouv.fr/resources/80921",
+    license: "Licence ODbL",
+    access: "Archive GTFS lue en flux une fois par jour ; seules les lignes de métro, RER, train et tram sont gardées.",
+    limits: "Trajets directs seulement (sans correspondance) ; horaires théoriques.",
+  },
   osrm: {
     id: "osrm",
     name: "Temps de trajet routiers (OSRM)",

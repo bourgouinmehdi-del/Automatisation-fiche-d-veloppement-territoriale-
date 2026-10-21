@@ -1,7 +1,7 @@
 import * as turf from "@turf/turf";
 import { GEO_API } from "../collectors/admin";
 import { fitAspect, type Bbox } from "../collectors/carto";
-import { collectDirectTrains, type TrainGroup } from "../collectors/gtfs";
+import { collectDirectTrains, collectIdfmIndex, directTc, type TrainGroup } from "../collectors/gtfs";
 import { SNCF } from "../collectors/public-apis";
 import { fmtDuration, OSRM_URL } from "../collectors/routes";
 import { fmtNumber } from "../format";
@@ -18,6 +18,16 @@ import type { Collected } from "./collect";
 export const HUB_MIN_GA = 2;
 export const HUB_MIN_PARRAINS = 200;
 const HUB_MAX = 6;
+/** Fiche commune : une ligne par ville, on peut en montrer davantage. */
+const HUB_MAX_FICHE = 10;
+const IDF = new Set(["75", "77", "78", "91", "92", "93", "94", "95"]);
+const range = (a: number, b: number, f: (i: number) => string) => Array.from({ length: b - a + 1 }, (_, i) => f(a + i));
+/** Arrondissements de Paris, Marseille et Lyon (codes des gares SNCF). */
+const ARRONDISSEMENTS: Record<string, string[]> = {
+  "75056": range(1, 20, (i) => `751${String(i).padStart(2, "0")}`),
+  "13055": range(1, 16, (i) => `132${String(i).padStart(2, "0")}`),
+  "69123": range(1, 9, (i) => `6938${i}`),
+};
 const HUB_MAX_KM = 90;
 
 interface Lieu {
@@ -76,7 +86,7 @@ export async function ciblageAcces(
     .map((x) => ({ ...x, km: Math.min(...tgt.map((t) => turf.distance([x.l.lon, x.l.lat], [t.at.lon, t.at.lat]))) }))
     .filter((x) => x.km <= HUB_MAX_KM)
     .sort((a, b) => b.b.parrains - a.b.parrains)
-    .slice(0, HUB_MAX);
+    .slice(0, opts.fiche ? HUB_MAX_FICHE : HUB_MAX);
   if (!hubs.length) return null;
 
   // 3. Voiture : une matrice OSRM (villes militantes → territoires).
@@ -96,12 +106,21 @@ export async function ciblageAcces(
   let gtfsSrc = null as SourceRef | null;
   await ctx.step("gtfs", "ciblage:acces:train", async (http) => {
     const codes = [...new Set([...hubs.map((h) => h.l.code), ...tgt.flatMap((t) => t.codes)])];
-    const where = `codeinsee in (${codes.map((k) => `"${k}"`).join(",")})`;
+    // Paris, Lyon, Marseille : les gares sont rattachées aux arrondissements (Marseille Saint-Charles : 13201).
+    const arrOf = new Map<string, string>();
+    for (const k of codes) for (const a of ARRONDISSEMENTS[k] ?? []) arrOf.set(a, k);
+    const where = `codeinsee in (${[...codes, ...arrOf.keys()].map((k) => `"${k}"`).join(",")})`;
     const gUrl = `${SNCF}/gares-de-voyageurs/records?where=${encodeURIComponent(where)}&limit=100`;
-    const g = await http.json<{ results?: Record<string, unknown>[] }>(gUrl, { ttlHours: 24 * 30 });
+    const results: Record<string, unknown>[] = [];
+    for (let off = 0; off < 1000; off += 100) {
+      const g = await http.json<{ results?: Record<string, unknown>[] }>(`${gUrl}&offset=${off}`, { ttlHours: 24 * 30 });
+      results.push(...(g.data?.results ?? []));
+      if ((g.data?.results ?? []).length < 100) break;
+    }
     const byCode = new Map<string, TrainGroup["stations"]>();
-    for (const s of g.data?.results ?? []) {
-      const code = String(s.codeinsee ?? "");
+    for (const s of results) {
+      const raw = String(s.codeinsee ?? "");
+      const code = arrOf.get(raw) ?? raw;
       const pos = s.position_geographique as { lon?: number; lat?: number } | undefined;
       if (!byCode.has(code)) byCode.set(code, []);
       byCode.get(code)!.push({ nom: String(s.nom ?? ""), uic: String(s.codes_uic ?? s.code_uic ?? ""), lon: pos?.lon ?? null, lat: pos?.lat ?? null });
@@ -115,7 +134,30 @@ export async function ciblageAcces(
     for (const [k, v] of Object.entries(r.pairs)) train.set(k, v);
     gtfsSrc = ctx.ref("gtfs", r.url, r.retrievedAt, { vintage: `samedi ${r.date.slice(6, 8)}/${r.date.slice(4, 6)}/${r.date.slice(0, 4)}` });
   });
-  if (!car.size && !train.size) return null;
+  // 5. Île-de-France : métro, RER, tram en trajet direct (horaires IDFM), depuis le centre de la ville militante.
+  const tc = new Map<string, { minutes: number; ligne: string }>();
+  let tcSrc = null as SourceRef | null;
+  const idf = (code: string) => IDF.has(code.slice(0, 2));
+  if (tgt.some((t) => idf(t.at.code)) && hubs.some((h) => idf(h.l.code)))
+    await ctx.step("gtfs", "acces:metro-rer", async (http) => {
+      const index = await collectIdfmIndex(http);
+      const near = (lon: number, lat: number, km: number) => new Set(index.stations.flatMap((st, i) => (turf.distance([lon, lat], [st.lon, st.lat]) <= km ? [i] : [])));
+      const contourOf = (codes: string[]) => (c.depFeatures?.features ?? []).filter((f) => codes.includes(String((f.properties as { code?: string }).code))).concat(codes.includes(c.commune.code) && c.commune.contour ? [turf.feature(c.commune.contour as GeoJSON.Polygon)] : []);
+      for (const t of tgt.filter((x) => idf(x.at.code))) {
+        const polys = contourOf(t.codes);
+        const inside = polys.length
+          ? new Set(index.stations.flatMap((st, i) => (polys.some((p) => turf.booleanPointInPolygon([st.lon, st.lat], p as GeoJSON.Feature<GeoJSON.Polygon>)) ? [i] : [])))
+          : near(t.at.lon, t.at.lat, 1.5);
+        if (!inside.size) continue;
+        for (const h of hubs.filter((x) => idf(x.l.code))) {
+          const from = near(h.l.lon, h.l.lat, 1.2);
+          const r = from.size ? directTc(index, from, inside) : null;
+          if (r) tc.set(`${h.l.code}|${t.at.code}`, r);
+        }
+      }
+      tcSrc = ctx.ref("idfm_gtfs", index.url, index.retrievedAt);
+    });
+  if (!car.size && !train.size && !tc.size) return null;
 
   // Fiche commune : une ligne par ville militante (voiture, train direct).
   if (opts.fiche) {
@@ -124,7 +166,7 @@ export async function ciblageAcces(
     const rowsF = hubs
       .map((h) => ({ h, car: car.get(`${h.l.code}|${t.at.code}`) ?? null, tr: trOf(h.l.code) }))
       .sort((a, b) => (a.car ?? 999) - (b.car ?? 999));
-    const sourcesF = [geoSrc, osrmSrc, gtfsSrc].filter((x): x is SourceRef => !!x);
+    const sourcesF = [geoSrc, osrmSrc, gtfsSrc, tcSrc].filter((x): x is SourceRef => !!x);
     const tableF: DataTable = {
       id: "commune_acces",
       title: `Venir à ${t.nom} depuis les villes militantes proches`,
@@ -134,21 +176,23 @@ export async function ciblageAcces(
         { key: "militants", label: "Militants (bilan LFI)" },
         { key: "voiture", label: "Voiture", align: "right" as const },
         { key: "train", label: "Train direct (samedi)", align: "right" as const },
+        ...(tc.size ? [{ key: "tc", label: "Métro, RER, tram (direct)", align: "right" as const }] : []),
       ],
       rows: rowsF.map(({ h, car: v, tr: r }) => ({
         ville: h.l.nom,
         militants: [h.b.ga ? `${fmtNumber(h.b.ga)} groupe${h.b.ga > 1 ? "s" : ""} actif${h.b.ga > 1 ? "s" : ""}` : "", `${fmtNumber(Math.round(h.b.parrains))} parrains`].filter(Boolean).join(", "),
         voiture: v != null ? fmtDuration(v) : "—",
         train: r ? `${fmtDuration(r.minutes)} (${r.trains} train${r.trains > 1 ? "s" : ""})` : "—",
+        tc: tc.get(`${h.l.code}|${t.at.code}`) ? `${fmtDuration(tc.get(`${h.l.code}|${t.at.code}`)!.minutes)} (${tc.get(`${h.l.code}|${t.at.code}`)!.ligne})` : "—",
       })),
       sources: sourcesF,
-      note: `Villes militantes : au moins ${HUB_MIN_GA} groupes d'action actifs ou ${HUB_MIN_PARRAINS} parrains (bilan LFI), à moins de ${HUB_MAX_KM} km. Voiture : temps sans trafic (OSRM). Train : trajet direct le plus court un samedi et nombre de trains directs dans la journée, aller et retour (horaires SNCF) ; « — » : pas de train direct.`,
+      note: `Villes militantes : au moins ${HUB_MIN_GA} groupes d'action actifs ou ${HUB_MIN_PARRAINS} parrains (bilan LFI), à moins de ${HUB_MAX_KM} km. Voiture : temps sans trafic (OSRM). Train : trajet direct le plus court un samedi et nombre de trains directs dans la journée, aller et retour (horaires SNCF).${tc.size ? " Métro, RER, tram : trajet sans correspondance depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités)." : ""} « — » : pas de trajet direct.`,
     };
     const first = rowsF.find((x) => x.car != null);
     const blocksF: Block[] = [
       { type: "heading", text: "Venir depuis les villes militantes proches" },
       ...(first
-        ? [{ type: "paragraph" as const, text: `**La plus proche : ${first.h.l.nom}**, à ${fmtDuration(first.car!)} en voiture${first.tr ? ` (${fmtDuration(first.tr.minutes)} en train direct)` : ""}.` }]
+        ? [{ type: "paragraph" as const, text: `**La plus proche : ${first.h.l.nom}**, à ${fmtDuration(first.car!)} en voiture${first.tr ? ` (${fmtDuration(first.tr.minutes)} en train direct)` : tc.get(`${first.h.l.code}|${t.at.code}`) ? ` (${fmtDuration(tc.get(`${first.h.l.code}|${t.at.code}`)!.minutes)} en ${tc.get(`${first.h.l.code}|${t.at.code}`)!.ligne})` : ""}.` }]
         : []),
       { type: "table", tableId: tableF.id },
     ];
@@ -160,7 +204,8 @@ export async function ciblageAcces(
   const cell = (h: string, t: string) => {
     const v = car.get(`${h}|${t}`);
     const r = tr(h, t);
-    return [v != null ? fmtDuration(v) : "", r ? `train ${fmtDuration(r.minutes)}` : ""].filter(Boolean).join(" ; ") || "—";
+    const m = tc.get(`${h}|${t}`);
+    return [v != null ? fmtDuration(v) : "", r ? `train ${fmtDuration(r.minutes)}` : "", m ? `${m.ligne} ${fmtDuration(m.minutes)}` : ""].filter(Boolean).join(" ; ") || "—";
   };
   const moy = (t: string) => {
     const xs = hubs.map((h) => car.get(`${h.l.code}|${t}`)).filter((x): x is number => x != null);
@@ -172,7 +217,7 @@ export async function ciblageAcces(
     moyenne: moy(t.at.code) != null ? fmtDuration(moy(t.at.code)!) : "",
   }));
   const ranked = tgt.map((t, i) => ({ i, m: moy(t.at.code) })).filter((x) => x.m != null).sort((a, b) => a.m! - b.m!);
-  const sources = [geoSrc, osrmSrc, gtfsSrc].filter((s): s is SourceRef => !!s);
+  const sources = [geoSrc, osrmSrc, gtfsSrc, tcSrc].filter((s): s is SourceRef => !!s);
   const table: DataTable = {
     id: "ciblage_acces",
     title: "Temps de trajet depuis les villes militantes proches",
