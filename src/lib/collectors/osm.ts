@@ -153,7 +153,10 @@ export function toFeatures(elements: OverpassElement[]): GeoJSON.Feature<GeoJSON
  * Instances Overpass essayées dans l'ordre : l'instance principale répond
  * souvent 504 (surcharge) ; on bascule alors sur des instances miroirs.
  */
-export const OVERPASS_MIRRORS = [config.overpassUrl, ...(process.env.OVERPASS_MIRRORS ?? "https://overpass.kumi.systems/api/interpreter,https://overpass.private.coffee/api/interpreter").split(",")]
+export const OVERPASS_MIRRORS = [
+  config.overpassUrl,
+  ...(process.env.OVERPASS_MIRRORS ?? "https://overpass.openstreetmap.fr/api/interpreter,https://overpass.kumi.systems/api/interpreter,https://overpass.private.coffee/api/interpreter,https://maps.mail.ru/osm/tools/overpass/api/interpreter").split(","),
+]
   .map((u) => u.trim())
   .filter((u, i, a) => u && a.indexOf(u) === i);
 
@@ -162,6 +165,8 @@ export const OVERPASS_MIRRORS = [config.overpassUrl, ...(process.env.OVERPASS_MI
  * vide (« runtime error: Query timed out », « out of memory », quota) : ces
  * réponses ne doivent ni être mises en cache ni être prises pour un résultat.
  */
+const OVERPASS_PAUSE_MS = Number(process.env.OVERPASS_PAUSE_MS ?? 20000);
+
 export function overpassError(body: string): string | null {
   if (!body) return "Overpass : réponse vide";
   if (/^\s*</.test(body)) return "Overpass : réponse HTML (serveur surchargé ou requête refusée)";
@@ -191,7 +196,11 @@ async function slot<T>(fn: () => Promise<T>): Promise<T> {
 export async function overpass<T>(http: TrackedHttp, query: string): Promise<{ data: T | null; retrievedAt: string; url: string }> {
   let last: unknown = null;
   const errors: string[] = [];
-  for (const url of OVERPASS_MIRRORS) {
+  // Deux tours : les instances publiques saturent souvent ensemble pendant quelques dizaines de secondes.
+  const tours = [...OVERPASS_MIRRORS, ...OVERPASS_MIRRORS.slice(0, 2)];
+  for (let i = 0; i < tours.length; i++) {
+    const url = tours[i];
+    if (i === OVERPASS_MIRRORS.length) await new Promise((r) => setTimeout(r, OVERPASS_PAUSE_MS));
     try {
       const r = await slot(() =>
         http.json<T>(url, {
