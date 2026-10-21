@@ -154,6 +154,13 @@ export interface ChartSpec {
   /** Graphiques alternatifs présentés en onglets (même groupe) ; `tab` : libellé de l'onglet. */
   group?: string;
   tab?: string;
+  /**
+   * Lectures alternatives du même graphique (boutons) : la première est celle par défaut et celle
+   * des exports. Chaque lecture remplace `series` (et la note).
+   */
+  modes?: { id: string; label: string; series: { key: string; label: string }[]; note?: string }[];
+  /** Ligne précédée d'un trait de séparation en tirets (graphique « refbar »). */
+  sepKey?: string;
 }
 
 /* ------------------------------------------------------------------ cartes */
@@ -195,7 +202,7 @@ export interface MapLegend {
   title: string;
   unit?: Unit;
   /** Classes de la choroplèthe : bornes et couleurs. */
-  classes?: { min: number; max: number; color: string }[];
+  classes?: { min: number; max: number; color: string; /** Libellé imposé (« moins de 10 % »). */ label?: string }[];
   categories?: { label: string; color: string }[];
   missingLabel?: string;
 }

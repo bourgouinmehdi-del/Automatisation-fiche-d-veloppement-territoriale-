@@ -1,6 +1,7 @@
 "use client";
 
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useState } from "react";
 import type { ChartSpec } from "@/lib/types";
 import { fmtNumber, fmtValue } from "@/lib/format";
 
@@ -13,31 +14,7 @@ export default function ChartView({ chart: c }: { chart: ChartSpec }) {
   const tip = (v: unknown) => (typeof v === "number" ? fmtValue(v, c.unit) : "n.d.");
   const legend = c.series.length > 1 ? <Legend wrapperStyle={{ fontSize: 12 }} /> : null;
 
-  if (c.type === "refbar") {
-    const [val, ref] = c.series;
-    const nums = c.data.flatMap((r) => [r[val.key], ref ? r[ref.key] : null]).filter((v): v is number => typeof v === "number");
-    const max = Math.max(...nums, 1) * 1.04;
-    return (
-      <div className="refbar">
-        {c.data
-          .filter((r) => typeof r[val.key] === "number")
-          .map((r) => {
-            const v = r[val.key] as number;
-            const rv = ref ? r[ref.key] : null;
-            return (
-              <div key={String(r[c.xKey])} className="refbar-row" title={`${r[c.xKey]} : ${fmtValue(v, c.unit)}${typeof rv === "number" ? ` (${ref.label.toLowerCase()} : ${fmtValue(rv, c.unit)})` : ""}`}>
-                <span className="refbar-label">{String(r[c.xKey])}</span>
-                <span className="refbar-track">
-                  <span className="refbar-fill" style={{ width: `${(v / max) * 100}%`, background: (c.colorKey && (r[c.colorKey] as string)) || SERIES[0] }} />
-                  {typeof rv === "number" && <span className="refbar-ref" style={{ left: `${(rv / max) * 100}%` }} />}
-                </span>
-                <span className="refbar-value">{fmtNumber(v, 1)}</span>
-              </div>
-            );
-          })}
-      </div>
-    );
-  }
+  if (c.type === "refbar") return <RefBar c={c} />;
 
   if (c.type === "line")
     return (
@@ -56,7 +33,10 @@ export default function ChartView({ chart: c }: { chart: ChartSpec }) {
     );
 
   if (c.type === "pyramid") {
-    const data = [...c.data].reverse().map((r) => ({ ...r, [c.series[0].key]: -(r[c.series[0].key] as number) }));
+    const data = [...c.data].reverse().map((r) => ({
+      ...r,
+      [c.series[0].key]: -(r[c.series[0].key] as number),
+    }));
     return (
       <ResponsiveContainer width="100%" height={Math.max(220, data.length * 30 + 60)}>
         <BarChart data={data} layout="vertical" stackOffset="sign" margin={{ left: 10, right: 20 }}>
@@ -97,5 +77,60 @@ export default function ChartView({ chart: c }: { chart: ChartSpec }) {
         ))}
       </BarChart>
     </ResponsiveContainer>
+  );
+}
+
+/** Barres horizontales avec trait de référence ; boutons pour les lectures alternatives (« % inscrits », « % exprimés »). */
+function RefBar({ c }: { c: ChartSpec }) {
+  const [mode, setMode] = useState(0);
+  const series = c.modes?.[mode]?.series ?? c.series;
+  const [val, ref] = series;
+
+  const nums = c.data.flatMap((r) => [r[val.key], ref ? r[ref.key] : null]).filter((v): v is number => typeof v === "number");
+  const max = Math.max(...nums, 1) * 1.04;
+  return (
+    <div className="refbar">
+      {c.modes && c.modes.length > 1 && (
+        <div className="no-print mb-1 flex gap-1" role="group" aria-label="Lecture">
+          {c.modes.map((m, i) => (
+            <button
+              key={m.id}
+              type="button"
+              aria-pressed={i === mode}
+              onClick={() => setMode(i)}
+              className={`rounded-full border px-2.5 py-0.5 text-xs ${i === mode ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] text-[var(--ink-2)]"}`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {c.data
+        .filter((r) => typeof r[val.key] === "number")
+        .map((r) => {
+          const v = r[val.key] as number;
+          const rv = ref ? r[ref.key] : null;
+          return (
+            <div
+              key={String(r[c.xKey])}
+              className={`refbar-row${c.sepKey && r[c.xKey] === c.sepKey ? " refbar-sep" : ""}`}
+              title={`${r[c.xKey]} : ${fmtValue(v, c.unit)}${typeof rv === "number" ? ` (${ref.label.toLowerCase()} : ${fmtValue(rv, c.unit)})` : ""}`}
+            >
+              <span className="refbar-label">{String(r[c.xKey])}</span>
+              <span className="refbar-track">
+                <span
+                  className="refbar-fill"
+                  style={{
+                    width: `${(v / max) * 100}%`,
+                    background: (c.colorKey && (r[c.colorKey] as string)) || SERIES[0],
+                  }}
+                />
+                {typeof rv === "number" && <span className="refbar-ref" style={{ left: `${(rv / max) * 100}%` }} />}
+              </span>
+              <span className="refbar-value">{fmtNumber(v, 1)}</span>
+            </div>
+          );
+        })}
+    </div>
   );
 }

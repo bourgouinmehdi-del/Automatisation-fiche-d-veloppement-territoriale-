@@ -21,7 +21,7 @@ beforeAll(async () => {
   // Données internes facultatives (fictives).
   await fs.mkdir(path.join(dir, "interne"), { recursive: true });
   await fs.writeFile(path.join(dir, "interne", "parrains.csv"), "code_commune;parrains\n60159;40\n60382;5\n60057;20\n");
-  await fs.writeFile(path.join(dir, "interne", "bilan.csv"), "code_insee;nb_actions;nb_ga_actifs;nb_parrains;inscrits;estime\n60159;60;2;300;25000;0\n60057;20;1;100;20000;0\n60382;1.5;0;6.6;900;1\n01001;9000;1000;80000;9074100;0\n");
+  await fs.writeFile(path.join(dir, "interne", "bilan.csv"), "code_insee;nb_actions;nb_ga_actifs;nb_parrains;inscrits;estime\n60159;60;2;300;25000;0\n60057;20;1;100;20000;0\n60151;5;2;250;3000;0\n60382;1.5;0;6.6;900;1\n01001;9000;1000;80000;9074100;0\n");
   await fs.writeFile(path.join(dir, "interne", "groupes.csv"), "code_commune;nom;membres;statut\n60159;Groupe d'action fictif;9;actif\n");
   // Export Action Populaire : commune retrouvée par code postal et ville.
   await fs.writeFile(path.join(dir, "interne", "action-populaire.csv"), "Nom;Code postal;Ville;Nombre de membres;Certifié\nGroupe des étudiants;60200;Compiègne;4;Oui\n");
@@ -172,7 +172,7 @@ describe("chaîne de génération (API simulées)", () => {
     const types = fiche.blocks.map((b) => b.type);
     // Avertissement, chiffres clés, intertitres, cartes jumelles, actions groupées.
     expect(fiche.blocks[0]).toMatchObject({ type: "callout", tone: "warning" });
-    for (const t of ["glance", "heading", "mapPair", "table"]) expect(types).toContain(t);
+    for (const t of ["glance", "heading", "map", "table"]) expect(types).toContain(t);
     const headings = fiche.blocks.filter((b) => b.type === "heading").map((b) => (b as { text: string }).text);
     expect(headings).toEqual(expect.arrayContaining(["Profil sociodémographique du territoire", "Profil politique du territoire", "Actions recommandées"]));
     // Fiche : plan d'action en tableau ; toutes les pistes détaillées en annexe.
@@ -265,6 +265,12 @@ describe("chaîne de génération (API simulées)", () => {
       expect(pres.rows[1].rUnit).toBe("pour 10 000 inscrits");
       expect(Math.round(pres.rows[2].nRef)).toBe(44);
     }
+    // Temps de trajet depuis les villes militantes proches (Choisy-au-Bac : 2 groupes actifs).
+    const accT = report.tables.find((t) => t.id === "commune_acces");
+    expect(accT?.rows[0]).toMatchObject({ ville: "Choisy-au-Bac" });
+    expect(String(accT?.rows[0].voiture)).toMatch(/min|h/);
+    const lfiB = report.sections.find((x) => x.id === "LFI")!.blocks;
+    expect(lfiB.some((b) => b.type === "heading" && b.text === "Venir depuis les villes militantes proches")).toBe(true);
     // Effectifs estimés pour les bureaux prioritaires.
     const tete = report.sections.find((x) => x.id === "LFI")!.blocks.find((b) => b.type === "paragraph" && /À avoir en tête/.test(b.text));
     expect(tete && "text" in tete ? tete.text : "").toMatch(/médecins généralistes .*\(6,3 dans le département\) ; .* de chômage/);
@@ -370,7 +376,11 @@ describe("chaîne de génération (API simulées)", () => {
     expect(ch.type).toBe("refbar");
     expect(ch.data.map((d) => d.label)).toEqual(["PCF", "LFI", "LÉ", "PS / PP", "Ensemble", "LR", "RN", "Reconquête", "Autres", "Abstention"]);
     expect(ch.data.find((d) => d.label === "LFI")).toMatchObject({ color: "#E8434B", ref: 9.89 });
-    expect(ch.data.find((d) => d.label === "Abstention")).toMatchObject({ ref: 48.51 });
+    expect(ch.data.find((d) => d.label === "Abstention")).toMatchObject({ refIns: 48.51, value: null });
+    // Deux lectures : « % inscrits » (par défaut, exports) et « % exprimés » ; trait en tirets avant l'abstention.
+    expect(ch.modes?.map((m) => m.label)).toEqual(["% inscrits", "% exprimés"]);
+    expect(ch.series[0].key).toBe("ins");
+    expect(ch.sepKey).toBe("Abstention");
     const fiche = report.sections[0];
     const iPol = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil politique du territoire");
     const iOu = fiche.blocks.findIndex((b) => b.type === "heading" && /Où agir/.test(b.text));
@@ -440,8 +450,13 @@ describe("chaîne de génération (API simulées)", () => {
     const bv = report.tables.find((t) => t.id === "lfi_bureaux")!;
     expect(bv.columns.map((c) => c.key)).toEqual(expect.arrayContaining(["lfi2", "lfi2exp"]));
     expect(report.maps.some((m) => m.id === "lfi_map_bv_p22")).toBe(true);
-    expect(fiche.blocks.filter((b) => b.type === "mapPair")).toHaveLength(1);
-    expect(report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.filter((b) => b.type === "mapPair")).toHaveLength(1);
+    // Une seule carte par scrutin (vote) ; la participation est l'autre carte du même groupe (bouton sur le site).
+    expect(fiche.blocks.some((b) => b.type === "map" && b.mapId === "lfi_map_bv")).toBe(true);
+    expect(fiche.blocks.filter((b) => b.type === "mapPair")).toHaveLength(0);
+    expect(report.maps.find((m) => m.id === "lfi_map_bv_participation")?.group).toBe("lfi_bv");
+    expect(report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.some((b) => b.type === "map" && b.mapId === "lfi_map_bv_p22")).toBe(true);
+    // Échelle fixe : mêmes bornes dans toutes les communes.
+    expect(report.maps.find((m) => m.id === "lfi_map_bv")!.legend!.classes!.map((c) => c.label)).toEqual(["moins de 10 %", "10 à 15 %", "15 à 20 %", "20 à 30 %", "30 % et plus"]);
     expect(report.charts.find((c) => c.id === "lfi_chart_bureaux")!.series.map((x) => x.key)).toContain("mel");
     const actions = report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
     expect(actions.groups[0].items[0]).toMatch(/Mélenchon/);
@@ -536,4 +551,21 @@ describe("chaîne de génération (API simulées)", () => {
     expect(txt).not.toMatch(/ni dans son intercommunalité|ni aux alentours/);
     expect(txt).toMatch(/Aucun groupe d'action actif dans la commune\.\*\* Dans l'intercommunalité : Jaux/);
   }, 120000);
+
+  it("mode comparaison : l'essentiel d'une fiche, prêt à aligner", async () => {
+    const { compareCol } = await import("@/lib/report/compare");
+    const col = compareCol(report);
+    expect(col.nom).toBe("Compiègne");
+    expect(Object.keys(col.glance)).toEqual(expect.arrayContaining(["Vote LFI aux européennes 2024"]));
+    expect(col.profil["Sous le seuil de pauvreté"]?.value).toMatch(/%/);
+    expect(col.chart?.id).toBe("lfi_chart_eu24");
+    expect(col.bureaux.length).toBeGreaterThan(0);
+    expect(col.synth.length).toBeGreaterThan(0);
+    const { renderToString } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const Compare = (await import("@/components/Compare")).default;
+    const html = renderToString(createElement(Compare, { cols: [col, { ...col, id: "b", nom: "Autre" }] }));
+    expect(html).toContain("Chiffres clés");
+    expect(html).toContain("Autre");
+  });
 });

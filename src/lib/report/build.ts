@@ -10,6 +10,7 @@ import { buildSections } from "./sections";
 import { buildLfi } from "./lfi";
 import { buildCiblage } from "./ciblage";
 import { ciblageAcces, type AccesTarget } from "./acces";
+import { plmInfo } from "../collectors/plm";
 import { buildEmploi } from "./emploi";
 
 /**
@@ -88,6 +89,18 @@ export async function buildReport(
       lfi.maps.push(...acc.maps);
       const i = lfi.section.blocks.findIndex((b) => b.type === "heading" && /^Classement/.test(b.text));
       lfi.section.blocks.splice(i < 0 ? lfi.section.blocks.length : i, 0, ...acc.blocks);
+    }
+  }
+  // Fiche commune : temps de trajet depuis les villes militantes proches (après « Accès »).
+  if (!territorial(query.scope) && lfi.section) {
+    const plm = plmInfo(c.commune.code);
+    const acc = await ciblageAcces(c, [{ nom: c.commune.nom, codes: [plm?.parent ?? c.commune.code], color: "#f3b51b" }], { fiche: true }).catch(() => null);
+    if (acc) {
+      lfi.tables.push(...acc.tables);
+      const bl = lfi.section.blocks;
+      const iAcc = bl.findIndex((b) => b.type === "paragraph" && /^\*\*Accès\*\*/.test(b.text));
+      const iField = bl.findIndex((b) => b.type === "fieldPlaces");
+      bl.splice(iAcc >= 0 ? iAcc + 1 : iField >= 0 ? iField : bl.length, 0, ...acc.blocks);
     }
   }
   a.indicators.push(...lfi.indicators);
