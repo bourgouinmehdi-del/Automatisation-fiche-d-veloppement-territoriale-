@@ -33,6 +33,8 @@ import type { Collected } from "./collect";
  */
 
 export interface CiblageOutput {
+  /** Territoires retenus (pour le calcul des temps de trajet, fait après coup). */
+  chosen?: { nom: string; codes: string[]; color: string }[];
   section: Section | null;
   tables: DataTable[];
   maps: MapSpec[];
@@ -523,5 +525,6 @@ export function buildCiblage(c: Collected): CiblageOutput {
     { type: "note", text: "Pour chaque territoire, la fiche détaillée (profil sociodémographique, quartiers, bureaux de vote, lieux d'action) se génère depuis l'application : bouton « Générer la fiche » de chaque proposition, ou recherche de la commune." },
   ];
   out.section = { id: "CIBLAGE", letter: "", title: `Développement territorial — ${zoom ? Terr : dep.nom}`, blocks };
+  out.chosen = targets.map((t) => ({ nom: t.nom, codes: t.codes, color: t.color }));
   return out;
 }
