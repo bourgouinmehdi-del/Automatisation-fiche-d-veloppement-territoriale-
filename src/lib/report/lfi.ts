@@ -392,10 +392,10 @@ function gaucheHorsLfi(a: ElectionResult): number | null {
  * moyenne paraissait excellent). Mêmes bornes partout, autour du niveau national.
  */
 export const BV_SCALES: Record<string, number[]> = {
-  /** Vote LFI aux européennes 2024 (national : 9,9 %). */
-  lfi: [10, 15, 20, 30],
-  /** Vote Mélenchon, présidentielle 2022 (national : 22 %). */
-  mel: [15, 22, 30, 40],
+  /** Vote LFI aux européennes 2024, en part des inscrits (national : environ 5 %). */
+  lfi: [4, 6, 9, 14],
+  /** Vote Mélenchon, présidentielle 2022, en part des inscrits (national : environ 16 %). */
+  mel: [10, 14, 18, 24],
   /** Participation aux européennes 2024 (nationale : 51,5 %). */
   partEu: [40, 47, 54, 60],
   /** Participation aux législatives 2024, 1er tour (nationale : 66,7 %). */
@@ -1348,17 +1348,17 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const pts = c.bvGeo?.points ?? [];
     if (!geo.length && pts.length) {
       const byBv = new Map(ranked.map((b) => [b.bv, b]));
-      const lg = fixedLegend("Vote LFI (part des voix)", BV_SCALES.lfi);
+      const lg = fixedLegend("Vote LFI (part des inscrits)", BV_SCALES.lfi);
       const colorOf = (v: number | null) => (v == null ? MISSING_COLOR : (lg.classes!.find((k) => v <= k.max) ?? lg.classes![lg.classes!.length - 1])?.color ?? MISSING_COLOR);
       const features = pts.map((f) => {
         const b = byBv.get(String(f.properties?.bv));
-        return { ...f, properties: { ...f.properties, name: `Bureau ${dv(String(f.properties?.bv))} — ${f.properties?.label} : LFI ${b ? pp(b.lfiPctExp) : "n.d."} des voix, ${b ? pp(b.abstPct) : "n.d."} n'ont pas voté`, color: colorOf(b ? b.lfiPctExp : null) } };
+        return { ...f, properties: { ...f.properties, name: `Bureau ${dv(String(f.properties?.bv))} — ${f.properties?.label} : LFI ${b ? pp(b.lfiPctIns) : "n.d."} des inscrits (${b ? pp(b.lfiPctExp) : "n.d."} des voix), ${b ? pp(b.abstPct) : "n.d."} n'ont pas voté`, color: colorOf(b ? b.lfiPctIns : null) } };
       });
       const contour = commune.contour ? [{ type: "Feature" as const, geometry: commune.contour, properties: { nom: commune.nom } }] : [];
       const all = turf.featureCollection([...features, ...contour] as GeoJSON.Feature[]);
       out.maps.push({
         id: "lfi_map_bv",
-        title: `Lieux de vote selon le vote LFI (${bvRef.election.label}, part des voix)`,
+        title: `Lieux de vote selon le vote LFI (${bvRef.election.label}, part des inscrits)`,
         theme: "strategie",
         bbox: turf.bbox(turf.buffer(all, 0.3, { units: "kilometers" })!) as [number, number, number, number],
         layers: [
@@ -1392,11 +1392,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         id: "lfi_map_bv",
         group: "lfi_bv",
         period: "Vote LFI",
-        title: `Vote LFI par bureau de vote (${bvRef.election.label}, part des voix)`,
+        title: `Vote LFI par bureau de vote (${bvRef.election.label}, part des inscrits)`,
         theme: "strategie",
         bbox,
-        layers: [{ id: "bv", label: "Vote LFI (part des voix)", kind: "polygons", data: fc((b) => b.lfiPctExp), valueProperty: "valeur", visible: true, source: src }, ...qpvLayers],
-        legend: fixedLegend("Vote LFI (part des voix)", BV_SCALES.lfi),
+        layers: [{ id: "bv", label: "Vote LFI (part des inscrits)", kind: "polygons", data: fc((b) => b.lfiPctIns), valueProperty: "valeur", visible: true, source: src }, ...qpvLayers],
+        legend: fixedLegend("Vote LFI (part des inscrits)", BV_SCALES.lfi),
         note: [approx, qpvLayers.length ? "Trait noir : quartiers prioritaires de la politique de la ville." : ""].filter(Boolean).join(" "),
       });
       out.maps.push({
@@ -1418,11 +1418,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
           id: "lfi_map_bv_p22",
           group: "lfi_bv_p22",
           period: "Vote Mélenchon",
-          title: "Vote Mélenchon par bureau de vote (présidentielle 2022, 1er tour, part des voix)",
+          title: "Vote Mélenchon par bureau de vote (présidentielle 2022, 1er tour, part des inscrits)",
           theme: "strategie",
           bbox,
-          layers: [{ id: "bv", label: "Vote Mélenchon (part des voix)", kind: "polygons", data: fc((b) => b.lfi2PctExp ?? null), valueProperty: "valeur", visible: true, source: bvSecond.source }, ...qpvLayers],
-          legend: fixedLegend("Vote Mélenchon (part des voix)", BV_SCALES.mel),
+          layers: [{ id: "bv", label: "Vote Mélenchon (part des inscrits)", kind: "polygons", data: fc((b) => b.lfi2PctIns ?? null), valueProperty: "valeur", visible: true, source: bvSecond.source }, ...qpvLayers],
+          legend: fixedLegend("Vote Mélenchon (part des inscrits)", BV_SCALES.mel),
           note: note22,
         });
         out.maps.push({
