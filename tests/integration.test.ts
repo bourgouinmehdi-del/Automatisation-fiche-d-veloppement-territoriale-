@@ -460,7 +460,7 @@ describe("chaîne de génération (API simulées)", () => {
     expect(report.maps.find((m) => m.id === "lfi_map_bv_participation")?.group).toBe("lfi_bv");
     expect(report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.some((b) => b.type === "map" && b.mapId === "lfi_map_bv_p22")).toBe(true);
     // Échelle fixe : mêmes bornes dans toutes les communes.
-    expect(report.maps.find((m) => m.id === "lfi_map_bv")!.legend!.classes!.map((c) => c.label)).toEqual(["moins de 10 %", "10 à 15 %", "15 à 20 %", "20 à 30 %", "30 % et plus"]);
+    expect(report.maps.find((m) => m.id === "lfi_map_bv")!.legend!.classes!.map((c) => c.label)).toEqual(["moins de 4 %", "4 à 6 %", "6 à 9 %", "9 à 14 %", "14 % et plus"]);
     expect(report.charts.find((c) => c.id === "lfi_chart_bureaux")!.series.map((x) => x.key)).toContain("mel");
     const actions = report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
     expect(actions.groups[0].items[0]).toMatch(/Mélenchon/);
