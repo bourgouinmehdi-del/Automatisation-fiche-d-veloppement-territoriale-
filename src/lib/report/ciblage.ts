@@ -274,14 +274,15 @@ export function buildCiblage(c: Collected): CiblageOutput {
   // mais seulement si ce sont de vraies villes (20 000 habitants et plus) : dans un département rural
   // (Creuse : Guéret 13 000 habitants), le chef-lieu est souvent le meilleur point d'appui.
   // (En circonscription, aucune ville n'est écartée : le territoire est déjà restreint.)
-  const epciSize = new Map(referentiel().epcis.map((e) => [e.code, e.membres.length]));
+  const groupeOf = (u: Unit) => referentiel().eptByCommune.get(u.codes[0])?.code ?? u.epci;
   const chosen: Unit[] = [];
   for (const u of ranked) {
     if (u.kind === "commune" && bigCities.includes(u.codes[0])) continue;
     if (chosen.length >= 5) break;
     if (u.score <= 0 && chosen.length >= 3) break;
-    // Deux au plus par intercommunalité, sauf les très grandes (Métropole du Grand Paris : 130 communes).
-    if (!interco && u.epci && (epciSize.get(u.epci) ?? 0) <= 40 && chosen.filter((x) => x.epci === u.epci).length >= 2) continue;
+    // Deux au plus par intercommunalité ; dans la Métropole du Grand Paris (130 communes), deux au plus par
+    // établissement public territorial (Grand-Orly Seine Bièvre, Paris Est Marne et Bois…).
+    if (!interco && groupeOf(u) && chosen.filter((x) => groupeOf(x) === groupeOf(u)).length >= 2) continue;
     chosen.push(u);
   }
 
