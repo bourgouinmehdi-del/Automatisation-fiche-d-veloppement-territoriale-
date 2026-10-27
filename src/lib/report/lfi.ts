@@ -4,6 +4,7 @@ import type { BureauResult, ElectionResult } from "../collectors/elections";
 import { abstention, BvRow, FAMILIES, familyPerformance, frenchHours, lfiOverperformance, prettyBvLabel, rankBureaux, score } from "../analysis/political";
 import { gap, haversineKm } from "../analysis/stats";
 import { compass, electoralZones } from "../analysis/zones";
+import { servicesAccess } from "../analysis/services";
 import { evidenceId } from "../analysis/findings";
 import { aNom, deNom, fmtNumber, fmtSigned, fmtValue, prettyFr } from "../format";
 import type { Block, ChartSpec, DataTable, Finding, GeoRef, Indicator, MapLegend, MapSpec, Section, SourceRef } from "../types";
@@ -15,7 +16,7 @@ import { buildInscription } from "./inscription";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
 import { NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
-import { BPE_TYPES } from "../collectors/bpe";
+import { BPE_VINTAGE, BPE_TYPES } from "../collectors/bpe";
 import { fmtDuration } from "../collectors/routes";
 import { hlmByStreet, numsLabel } from "../collectors/rpls";
 import { nearestStation } from "../collectors/carto";
@@ -2313,6 +2314,30 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const poorQ = ids2.quartiers.map((id) => out.findings.find((f) => f.id === id)).find((f) => f?.kind === "constat" && /concentre la pauvreté/.test(f.text));
   const socioItems = [...(poorQ ? [{ text: poorQ.text, evidence: poorQ.evidence }] : []), ...socio].slice(0, 3);
   if (socioItems.length) blocks.push({ type: "list", items: socioItems });
+  // Accès aux services : distance au plus proche, comparée aux communes de taille semblable du département.
+  {
+    const ref = referentiel();
+    const popOf = new Map(ref.communes.map((x) => [x.code, x.population ?? 0]));
+    const centres = (c.depFeatures?.features ?? []).flatMap((f) => {
+      const code = String((f.properties as { code?: string }).code ?? "");
+      try {
+        return [{ code, at: turf.pointOnFeature(f as GeoJSON.Feature<GeoJSON.Polygon>).geometry.coordinates as [number, number], pop: popOf.get(code) || Number((f.properties as { population?: number }).population ?? 0) }];
+      } catch {
+        return [];
+      }
+    });
+    const sv = c.bpe?.departement?.length && centres.length >= 8 ? servicesAccess(commune.code, centres, c.bpe.departement) : null;
+    if (sv && sv.rows.length) {
+      const r1 = (v: number) => Math.round(v * 10) / 10;
+      blocks.push({
+        type: "services",
+        title: "Accès aux services",
+        faibles: sv.faibles.slice(0, 6).map((x) => ({ cat: x.cat, label: x.label, km: r1(x.km), medKm: r1(x.medKm) })),
+        cats: sv.cats.map((k) => ({ cat: k.cat, label: k.label, niveau: k.niveau, details: sv.rows.filter((x) => x.cat === k.cat).map((x) => ({ label: x.label, km: r1(x.km), medKm: r1(x.medKm), surPlace: x.surPlace })) })),
+        note: `Distance à vol d'oiseau entre le centre de la commune et le service le plus proche, où qu'il soit dans le département, comparée à la médiane des ${sv.pairs} communes de taille comparable du département. Base permanente des équipements (INSEE, ${BPE_VINTAGE}). Première version, à l'échelle de la commune.`,
+      });
+    }
+  }
   blocks.push({ type: "fieldNotes", part: "socio" });
 
   // Profil politique : chiffres et graphiques seulement ; le texte (mairie, quartiers, parrainages) passe en annexe,

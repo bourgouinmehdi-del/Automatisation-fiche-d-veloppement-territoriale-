@@ -1,10 +1,11 @@
+import { ICONS } from "./icons";
 import { splitWarnings } from "../report/warnings";
 import { presenceRef, presenceScale, presenceValue } from "./presence";
 import { posterItems } from "./poster";
 import { SOURCES } from "../collectors/catalog";
 import { KIND_LABELS, THEME_LABELS } from "../analysis/findings";
 import { isSmallSample } from "../analysis/stats";
-import { fmtDate, fmtValue, scoreColor, territoryName } from "../format";
+import { fmtDate, fmtNumber, fmtValue, scoreColor, territoryName } from "../format";
 import { FIELD_NOTE_LABELS } from "../types";
 import type { Block, DataTable, Finding, Indicator, MapSpec, Report, SourceRef } from "../types";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "./svg";
@@ -221,6 +222,15 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       return `<div class="glance">${b.items
         .map((i) => `<div class="gl ${i.tone ?? "neutral"}"><div class="gl-v">${esc(i.value)}</div><div class="gl-l">${esc(i.label)}</div>${i.detail ? `<div class="gl-d">${esc(i.detail)}</div>` : ""}</div>`)
         .join("")}</div>`;
+    case "services": {
+      const km = (v: number) => (v < 0.1 ? "sur place" : `${fmtNumber(v, v < 10 ? 1 : 0)} km`);
+      const niv: Record<string, string> = { mieux: "Mieux desservie", comme: "Comme les communes semblables", moins: "Moins bien desservie" };
+      const faibles = b.faibles.length
+        ? `<div class="sv-sub">Points faibles</div><ul class="sv-l">${b.faibles.map((f) => `<li><span class="sv-i">${ICONS[f.cat] ?? ""}</span><b>${esc(f.label)}</b> : le plus proche à ${km(f.km)}, contre ${km(f.medKm)} en général pour une commune de cette taille</li>`).join("")}</ul>`
+        : "";
+      const cats = `<div class="sv-sub">Par catégorie</div><table class="sv-t"><tbody>${b.cats.map((c) => `<tr><td><span class="sv-i">${ICONS[c.cat] ?? ""}</span><b>${esc(c.label)}</b></td><td class="sv-${c.niveau}">${niv[c.niveau]}</td><td class="sv-d">${c.details.map((d) => `${esc(d.label)} : ${d.surPlace ? "dans la commune" : km(d.km)}`).join(" ; ")}</td></tr>`).join("")}</tbody></table>`;
+      return `<figure class="services"><figcaption>${esc(b.title)}</figcaption>${faibles}${cats}<div class="pr-n">${esc(b.note)}</div></figure>`;
+    }
     case "plan":
       return `<div class="plan">${b.items
         .map((it) => `<div class="pl-i"><div class="pl-h"><b>${esc(it.label)}</b><span>${esc(it.count)}</span></div>${it.quand ? `<div class="pl-q">${esc(it.quand)}</div>` : ""}<ul>${it.details.slice(0, 8).map((d) => `<li>${esc(d)}</li>`).join("")}${it.details.length > 8 ? `<li>… et ${it.details.length - 8} autres</li>` : ""}</ul></div>`)
@@ -323,6 +333,12 @@ h3.fh { font-size: 15pt; font-weight: 800; color: #4c0297; margin: 7mm 0 3mm; pa
 .glance { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin: 4mm 0 3mm; break-inside: avoid; }
 .gl { border: 0; border-left: 1mm solid #e9e3d3; padding: .5mm 0 .5mm 3mm; }
 .gl.up { border-left-color: #d1271c; } .gl.up .gl-v { color: #d1271c; } .gl.down { border-left-color: #85877f; }
+.services { border: 1px solid #e7e6e2; border-radius: 2mm; padding: 3mm 4mm; }
+.sv-sub { font-weight: 700; font-size: 9pt; margin: 1.5mm 0 1mm; color: #4c0297; }
+.sv-l { margin: 0 0 2mm; padding: 0; list-style: none; font-size: 9pt; } .sv-l li { margin: .8mm 0; }
+.sv-i { display: inline-block; vertical-align: -3px; margin-right: 1.5mm; color: #4c0297; } .sv-i svg { width: 13px; height: 13px; }
+.sv-t { font-size: 8.6pt; } .sv-t td { padding: 1mm 1.5mm; border-bottom: 1px solid #eeeeec; vertical-align: top; }
+.sv-moins { color: #d1271c; font-weight: 700; white-space: nowrap; } .sv-mieux { color: #1b7f55; white-space: nowrap; } .sv-comme { color: #52514e; white-space: nowrap; } .sv-d { color: #52514e; }
 .plan { margin: 3mm 0; break-inside: auto; }
 .pl-i { border-top: 1px solid #e7e6e2; padding: 1.5mm 0; break-inside: avoid; }
 .pl-h { display: flex; justify-content: space-between; gap: 4mm; } .pl-h span { color: #4c0297; font-weight: 700; font-size: 9.5pt; white-space: nowrap; }

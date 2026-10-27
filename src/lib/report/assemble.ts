@@ -306,7 +306,7 @@ export function assemble(c: Collected): Assembled {
     const comCounts: Record<string, number> = {};
     for (const e of c.bpe.commune) comCounts[e.type] = (comCounts[e.type] ?? 0) + 1;
     const per10k = (n: number, pop: number | null) => (pop ? Math.round((n / pop) * 100000) / 10 : null);
-    const GROUPS: Record<string, string> = { sante: "Santé", public: "Services publics", commerce: "Commerces", education: "Enseignement" };
+    const GROUPS: Record<string, string> = { sante: "Santé", public: "Services publics", commerce: "Commerces", education: "Enseignement", securite: "Sécurité", transport: "Transports", culture: "Sports et culture" };
     const rows: Record<string, string | number | null>[] = [];
     for (const [code, t] of Object.entries(BPE_TYPES)) {
       const n = comCounts[code] ?? 0;

@@ -273,6 +273,14 @@ export type Block =
       note?: string;
       rows: { label: string; sub?: string; n: number; nRef: number; r: number; rRef: number; rUnit: string }[];
     }
+  /** Accessibilité aux services : points faibles et vue par catégorie (deux lectures). */
+  | {
+      type: "services";
+      title: string;
+      faibles: { cat: string; label: string; km: number; medKm: number }[];
+      cats: { cat: string; label: string; niveau: "mieux" | "comme" | "moins"; details: { label: string; km: number; medKm: number; surPlace: boolean }[] }[];
+      note: string;
+    }
   /** Plan d'action : une ligne par type d'action, le nombre de lieux et la liste dépliable. */
   | { type: "plan"; items: { label: string; count: string; quand?: string; details: string[] }[] }
   /** Actions regroupées par type de lieu (porte-à-porte, marchés, gares…). */

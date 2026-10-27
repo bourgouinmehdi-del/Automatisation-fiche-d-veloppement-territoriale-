@@ -179,6 +179,12 @@ describe("chaîne de génération (API simulées)", () => {
     const planB = fiche.blocks.find((b) => b.type === "plan") as Extract<(typeof fiche.blocks)[number], { type: "plan" }>;
     expect(planB.items[0]).toMatchObject({ label: "Porte-à-porte (bureaux prioritaires)", count: "2 bureaux" });
     expect(planB.items.some((i) => i.label === "Porte-à-porte (logements sociaux)" && i.details.length > 0)).toBe(true);
+    // Accès aux services : pas de pharmacie dans la commune, commissariat loin, mais comme les communes semblables.
+    const sv = fiche.blocks.find((b) => b.type === "services") as Extract<(typeof fiche.blocks)[number], { type: "services" }>;
+    expect(sv.cats.map((k) => k.cat)).toEqual(expect.arrayContaining(["sante", "securite"]));
+    const ph = sv.cats.find((k) => k.cat === "sante")!.details.find((d) => d.label === "Pharmacie")!;
+    expect(ph.surPlace).toBe(false);
+    expect(ph.km).toBeGreaterThan(2);
     // À quoi s'attendre à la porte, sur 100 adultes.
     const prof = report.tables.find((x) => x.id === "lfi_profils");
     expect(prof?.rows.map((r) => r.profil)).toEqual(expect.arrayContaining(["A voté LFI aux européennes 2024", "Inscrit, mais n'a pas voté en 2024"]));
