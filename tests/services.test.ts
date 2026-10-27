@@ -46,3 +46,24 @@ describe("niveau par catégorie", () => {
     expect(r.cats.find((x) => x.cat === "sante")!.niveau).toBe("moins");
   });
 });
+
+describe("services en ville (mesure mixte)", () => {
+  it("repère une ville qui a tout sur place mais trop peu pour sa population", () => {
+    const communes = Array.from({ length: 12 }, (_, i) => ({ code: `93${String(i).padStart(3, "0")}`, at: [2 + i * 0.1, 48.9] as [number, number], pop: 60000 }));
+    const eq = (type: string, commune: string, lon: number, lat: number) => ({ type, nom: "", commune, lon, lat, qp: null, adresse: "" });
+    // Toutes ont écoles, poste et piscine ; la première : 8 écoles et 1 piscine, les autres : 20 écoles et 2 piscines.
+    const equip = communes.flatMap((c, i) => [
+      ...Array.from({ length: i === 0 ? 8 : 20 }, () => eq("C108", c.code, c.at[0], c.at[1])),
+      ...Array.from({ length: i === 0 ? 1 : 2 }, () => eq("F101", c.code, c.at[0], c.at[1])),
+      eq("A206", c.code, c.at[0], c.at[1]),
+    ]);
+    const r = servicesAccess("93000", communes, equip)!;
+    const ecole = r.rows.find((x) => x.label === "École")!;
+    expect(ecole.mode).toBe("offre");
+    expect(ecole.faible).toBe(true);
+    expect(r.cats.find((x) => x.cat === "education")!.niveau).toBe("moins");
+    expect(r.cats.find((x) => x.cat === "culture")!.niveau).toBe("moins");
+    // La poste : pareil partout, « comme ».
+    expect(r.cats.find((x) => x.cat === "public")!.niveau).toBe("comme");
+  });
+});
