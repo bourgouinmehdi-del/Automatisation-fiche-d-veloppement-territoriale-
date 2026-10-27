@@ -281,7 +281,7 @@ export type Block =
       /** Services un peu en dessous des communes semblables, sans être des points faibles. */
       enDessous?: { cat: string; label: string; txt: string }[];
       /** Indice d'accès (référence = 100) : global et par gamme (proximité, intermédiaire, supérieure). */
-      indice?: { global: number; ref: string; gammes: { label: string; value: number }[] };
+      indice?: { global: number; ref: string; gammes: { label: string; exemples?: string; value: number }[] };
       cats: { cat: string; label: string; niveau: "mieux" | "comme" | "moins"; details: { label: string; txt: string }[] }[];
       note: string;
     }
