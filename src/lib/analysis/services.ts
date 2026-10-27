@@ -99,12 +99,19 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
   // Communes comparables : population de la moitié au double (au moins 10, sinon les 15 plus proches en taille).
   let pairs = communes.filter((x) => x.code !== code && x.pop >= me.pop / 2 && x.pop <= me.pop * 2);
   if (pairs.length < 10) pairs = communes.filter((x) => x.code !== code).sort((a, b) => Math.abs(a.pop - me.pop) - Math.abs(b.pop - me.pop)).slice(0, 15);
-  const byCode = new Map<string, BpeEquipement[]>();
-  for (const e of equip) if (e.lon != null && e.lat != null) (byCode.get(e.type) ?? byCode.set(e.type, []).get(e.type)!).push(e);
-  const nearest = (at: Pt, pts: BpeEquipement[]) => {
+  // Équipement sans coordonnées (fréquent pour certaines piscines, gares, bibliothèques) : placé au
+  // centre de sa commune plutôt qu'ignoré.
+  const centreOf = new Map(communes.map((x) => [x.code, x.at]));
+  const byCode = new Map<string, { lon: number; lat: number; commune: string }[]>();
+  for (const e of equip) {
+    const at: Pt | undefined = e.lon != null && e.lat != null ? [e.lon, e.lat] : centreOf.get(e.commune);
+    if (!at) continue;
+    (byCode.get(e.type) ?? byCode.set(e.type, []).get(e.type)!).push({ lon: at[0], lat: at[1], commune: e.commune });
+  }
+  const nearest = (at: Pt, pts: { lon: number; lat: number }[]) => {
     let best = Infinity;
     for (const e of pts) {
-      const d = turf.distance(at, [e.lon!, e.lat!]);
+      const d = turf.distance(at, [e.lon, e.lat]);
       if (d < best) best = d;
     }
     return best;
@@ -119,10 +126,13 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
       const pts = it.codes.flatMap((k) => byCode.get(k) ?? []);
       // Service trop rare dans le département pour une comparaison parlante.
       if (pts.length < 2) continue;
-      const km = nearest(me.at, pts);
-      const medKm = median(pairs.map((p) => nearest(p.at, pts)));
+      // Dans la commune même : distance comptée nulle (le centre géométrique peut être loin du bourg).
+      const here = (c: string) => pts.some((e) => e.commune === c);
+      const dist = (x: { code: string; at: Pt }) => (here(x.code) ? 0 : nearest(x.at, pts));
+      const km = dist(me);
+      const medKm = median(pairs.map(dist));
       if (!Number.isFinite(km) || !Number.isFinite(medKm)) continue;
-      rows.push({ cat: cat.id, label: it.label, km, medKm, surPlace: pts.some((e) => e.commune === code) });
+      rows.push({ cat: cat.id, label: it.label, km, medKm, surPlace: here(code) });
     }
   // Écart : en minutes de trajet, 1 km de plus pèse davantage près de chez soi (échelle logarithmique).
   const gap = (r: ServiceRow) => Math.log2((r.km + 0.5) / (r.medKm + 0.5));

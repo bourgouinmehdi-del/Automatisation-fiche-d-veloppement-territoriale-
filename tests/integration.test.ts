@@ -187,7 +187,7 @@ describe("chaîne de génération (API simulées)", () => {
     expect(ph.km).toBeGreaterThan(2);
     // À quoi s'attendre à la porte, sur 100 adultes.
     const prof = report.tables.find((x) => x.id === "lfi_profils");
-    expect(prof?.rows.map((r) => r.profil)).toEqual(expect.arrayContaining(["A voté LFI aux européennes 2024", "Inscrit, mais n'a pas voté en 2024"]));
+    expect(prof?.rows.map((r) => r.profil)).toEqual(expect.arrayContaining(["A voté Mélenchon à la présidentielle 2022", "A voté LFI aux européennes 2024", "Inscrit, mais n'a pas voté en 2024"]));
     // Fiche : plan d'action en tableau ; toutes les pistes détaillées en annexe.
     const plan = report.tables.find((t) => t.id === "lfi_plan")!;
     expect(plan.rows[0]).toMatchObject({ action: "Porte-à-porte", bv: "2" });
