@@ -28,3 +28,21 @@ describe("accès aux services", () => {
     expect(r.cats.find((x) => x.cat === "sante")!.niveau).toBe("moins");
   });
 });
+
+describe("niveau par catégorie", () => {
+  it("dit « moins bien desservie » quand la plupart des services sont un peu en dessous (cas d'Ivry)", () => {
+    const communes = Array.from({ length: 12 }, (_, i) => ({ code: `94${String(i).padStart(3, "0")}`, at: [2 + i * 0.1, 48.8] as [number, number], pop: 60000 }));
+    const eq = (type: string, commune: string, lon: number, lat: number) => ({ type, nom: "", commune, lon, lat, qp: null, adresse: "" });
+    // Commune étudiée : 37 médecins, 31 dentistes, 40 infirmiers pour 60 000 habitants ; les autres : 49, 38, 49.
+    const n = (i: number, a: number, b: number) => (i === 0 ? a : b);
+    const equip = communes.flatMap((c, i) => [
+      ...Array.from({ length: n(i, 37, 49) }, () => eq("D265", c.code, c.at[0], c.at[1])),
+      ...Array.from({ length: n(i, 31, 38) }, () => eq("D277", c.code, c.at[0], c.at[1])),
+      ...Array.from({ length: n(i, 40, 49) }, () => eq("D281", c.code, c.at[0], c.at[1])),
+      ...Array.from({ length: 18 }, () => eq("D307", c.code, c.at[0], c.at[1])),
+    ]);
+    const r = servicesAccess("94000", communes, equip)!;
+    expect(r.faibles).toEqual([]);
+    expect(r.cats.find((x) => x.cat === "sante")!.niveau).toBe("moins");
+  });
+});
