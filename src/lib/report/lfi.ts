@@ -306,7 +306,9 @@ const cap = (s: string) => s.replace(/^(\**)(.)/, (_m, a: string, c: string) => 
 const joinFr = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} et ${xs[xs.length - 1]}`);
 
 /** Palette divergente (faible → élevé) des cartes par bureau, proche des fiches de référence. */
-export const DIV_COLORS = ["#3f6fb0", "#8eaed6", "#cfc8d8", "#e3a07f", "#c0503a"];
+export const DIV_COLORS_BASE = ["#3f6fb0", "#8eaed6", "#cfc8d8", "#e3a07f", "#c0503a"];
+/** Classes supplémentaires des villes où le vote est très fort (Ivry, Saint-Denis) : rouges plus sombres. */
+const STRONG_COLORS = ["#8f2a1d", "#5c140c"];
 
 const NOM_FORCE: Record<string, string> = { pcf: "le PCF", lfi: "LFI", eco: "les écologistes", ps: "le PS", ens: "le camp présidentiel", lr: "LR", rn: "le RN", rec: "Reconquête" };
 const QUAND: Record<string, string> = { PR17T1: "à la présidentielle 2017", EU19: "aux européennes 2019", PR22T1: "à la présidentielle 2022", EU24: "aux européennes 2024" };
@@ -405,10 +407,10 @@ function gaucheHorsLfi(a: ElectionResult): number | null {
  * moyenne paraissait excellent). Mêmes bornes partout, autour du niveau national.
  */
 export const BV_SCALES: Record<string, number[]> = {
-  /** Vote LFI aux européennes 2024, en part des inscrits (national : environ 5 %). */
-  lfi: [4, 6, 9, 14],
+  /** Vote LFI aux européennes 2024, en part des inscrits (national : environ 5 %) ; 20 et 26 % pour distinguer les bureaux des villes fortes. */
+  lfi: [4, 6, 9, 14, 20, 26],
   /** Vote Mélenchon, présidentielle 2022, en part des inscrits (national : environ 16 %). */
-  mel: [10, 14, 18, 24],
+  mel: [10, 14, 18, 24, 30, 36],
   /** Participation aux européennes 2024 (nationale : 51,5 %). */
   partEu: [40, 47, 54, 60],
   /** Participation aux législatives 2024, 1er tour (nationale : 66,7 %). */
@@ -419,6 +421,7 @@ export const BV_SCALES: Record<string, number[]> = {
 
 export function fixedLegend(title: string, b: number[]): MapLegend {
   const f = (v: number) => fmtNumber(v);
+  const DIV_COLORS = [...DIV_COLORS_BASE, ...STRONG_COLORS];
   const classes = [
     { min: 0, max: b[0], color: DIV_COLORS[0], label: `moins de ${f(b[0])} %` },
     ...b.slice(0, -1).map((x, i) => ({ min: x, max: b[i + 1], color: DIV_COLORS[i + 1], label: `${f(x)} à ${f(b[i + 1])} %` })),
@@ -588,9 +591,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         ? `${B("Aucun médecin généraliste")} dans la commune`
         : md && mc < md * 0.6
           ? `${B("Désert médical")} : ${docs}, ${compareWords(mc, md)} que dans le reste du département pour le même nombre d'habitants`
-          : md && mc > md * 1.25
-            ? `${docs}, ${compareWords(mc, md)} que dans le reste du département pour le même nombre d'habitants`
-            : `${docs}, autant que dans le reste du département pour le même nombre d'habitants`;
+          : `${docs}, ${md ? compareWords(mc, md) : "autant"} que dans le reste du département pour le même nombre d'habitants`;
     const urg = bpeCount("D106") > 0;
     const pub = [
       bpeCount("A128") ? "une antenne France Services" : "aucune antenne France Services",
@@ -642,7 +643,13 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // Libellés des lieux de vote ; les libellés génériques (« Bureau 5 ») n'apportent rien.
   const labels = new Map(
     [...(c.bvGeo?.labels ?? new Map<string, string>())]
-      .map(([k, v]) => [k, prettyBvLabel(v)] as [string, string])
+      // « Salle Jacques Brel 4 », « Salle du Laminoir Bureau 1 » : le numéro du bureau est déjà affiché.
+      .map(([k, v]) => {
+        const num = k.replace(/^.*?(\d+)$/, "$1").replace(/^0+(?=\d)/, "");
+        const lab = prettyBvLabel(v);
+        const sans = /^\d+$/.test(num) ? lab.replace(new RegExp(`(\\s+|\\s*[-–,]\\s*)(bureau\\s*(de vote\\s*)?(n°|no)?\\s*)?0*${num}$`, "i"), "").trim() : lab;
+        return [k, sans.length >= 4 ? sans : lab] as [string, string];
+      })
       // « Bureau 5 », « Premier bureau de vote », « Deuxieme Bureau », « Bureau centralisateur » : génériques.
       .filter(([, v]) => !/^(bureau( de vote)?\s*(n°|no|num[ée]ro)?\s*\d+|(premier|deuxi[eè]me|troisi[eè]me|quatri[eè]me|cinqui[eè]me|sixi[eè]me|septi[eè]me|huiti[eè]me|neuvi[eè]me|dixi[eè]me|\d+(er|e|[eè]me))\s+bureau(\s+de\s+vote)?|bureau( de vote)?( centralisateur| unique| principal)?)$/i.test(v.trim())),
   );
@@ -664,12 +671,15 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     return null;
   };
   // Logements sociaux (RPLS) par résidence et par bureau de vote.
-  const hlm = (c.rpls?.residences ?? []).map((r) => ({ ...r, bv: bvPolys.length ? bvAt(r.lon, r.lat) : null }));
   // Résidences étudiantes et foyers de jeunes travailleurs : les plus grandes d'abord (logements inconnus en dernier).
   const residences = (c.residences?.list ?? [])
     .map((r) => ({ ...r, bv: bvPolys.length ? bvAt(r.lon, r.lat) : null }))
     .sort((x, y) => (y.logements ?? -1) - (x.logements ?? -1) || x.nom.localeCompare(y.nom, "fr"));
   const resPorte = residences.filter((r) => r.porte);
+  // Logements sociaux : sans les résidences étudiantes ou foyers déjà proposés à part (même bâtiment, à moins de 60 m).
+  const dejaRes = (r: { lon: number; lat: number; nom: string }) =>
+    /[ée]tud|crous|universitaire/i.test(r.nom) || resPorte.some((x) => x.lon != null && x.lat != null && turf.distance([x.lon, x.lat], [r.lon, r.lat]) <= 0.06);
+  const hlm = (c.rpls?.residences ?? []).filter((r) => !dejaRes(r)).map((r) => ({ ...r, bv: bvPolys.length ? bvAt(r.lon, r.lat) : null }));
   const resType = (r: { categorie: string }) => (/foyer de jeunes/i.test(r.categorie) ? "foyer de jeunes travailleurs" : "résidence du Crous");
   const hlmByBv = new Map<string, number>();
   for (const r of hlm) if (r.bv) hlmByBv.set(r.bv, (hlmByBv.get(r.bv) ?? 0) + r.logements);
@@ -1061,6 +1071,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (ranked.length && bvRef) {
     const second = bvSecond?.election.id === "PR22T1" && ranked.some((b) => b.lfi2PctIns != null) ? "P22" : "";
     const hasLabels = ranked.some((b) => labels.has(b.bv));
+    const abstLg = ranked.some((b) => b.abstSrc === "LG24T1");
     out.tables.push({
       id: "lfi_bureaux",
       title: `Classement des bureaux de vote (${bvRef.election.label}${second ? " et présidentielle 2022" : ""})`,
@@ -1078,7 +1089,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
               { key: "lfi2exp", label: "Mélenchon P22 (% exprimés)", align: "right" as const, unit: "%" as const },
             ]
           : []),
-        { key: "abst", label: "Abstention E24 (%)", align: "right", unit: "%" },
+        { key: "abst", label: abstLg ? "Abstention L24 (%)" : "Abstention E24 (%)", align: "right", unit: "%" },
         { key: "abstn", label: "Abstentionnistes", align: "right" },
         ...(qMatch.length ? [{ key: "quartier", label: "Quartier" }] : []),
         { key: "type", label: "Profil" },
@@ -1102,7 +1113,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       })),
       highlight: ranked.map((b, i) => (b.priorite === 1 ? i : -1)).filter((i) => i >= 0),
       sources: [bvRef.source, ...(c.bvGeo ? [c.bvGeo.source] : [])],
-      note: `Priorité 1 : un quart des bureaux (quatre au plus), classés par potentiel = moyenne de deux scores z calculés entre les bureaux de la commune : réservoir (part LFI des exprimés aux européennes${second ? ", moyennée avec la part de J.-L. Mélenchon au 1er tour de la présidentielle 2022" : ""}) et marge de mobilisation (taux d'abstention aux européennes).${second ? " Présidentielle : bureaux appariés par numéro lorsque leurs inscrits varient de moins de 25 % (n.d. sinon)." : ""} Profil : LFI fort, moyen ou faible selon le tiers des bureaux de la commune (part LFI des exprimés aux européennes) ; abstention forte au-dessus de la médiane des bureaux. Le découpage des bureaux peut avoir évolué depuis le scrutin.`,
+      note: `Priorité 1 : un quart des bureaux (quatre au plus), classés par potentiel = moyenne de deux scores z calculés entre les bureaux de la commune : réservoir (part LFI des exprimés aux européennes${second ? ", moyennée avec la part de J.-L. Mélenchon au 1er tour de la présidentielle 2022" : ""}) et marge de mobilisation (taux d'abstention ${abstLg ? "au 1er tour des législatives 2024" : "aux européennes"}).${second ? " Présidentielle : bureaux appariés par numéro lorsque leurs inscrits varient de moins de 25 % (n.d. sinon)." : ""} Profil : LFI fort, moyen ou faible selon le tiers des bureaux de la commune (part LFI des exprimés aux européennes) ; abstention forte au-dessus de la médiane des bureaux. Le découpage des bureaux peut avoir évolué depuis le scrutin.`,
     });
     out.charts.push({
       id: "lfi_chart_bureaux",
@@ -1115,7 +1126,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       series: [
         { key: "lfi", label: "LFI européennes 2024" },
         ...(second ? [{ key: "mel", label: "Mélenchon présidentielle 2022" }] : []),
-        { key: "abst", label: "Abstention européennes 2024" },
+        { key: "abst", label: abstLg ? "Abstention législatives 2024" : "Abstention européennes 2024" },
       ],
       unit: "%",
       sources: [bvRef.source],
@@ -1183,8 +1194,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       const m17 = mapOf("PR17T1");
       const m22 = mapOf("PR22T1");
       const mlg = mapOf("LG24T1");
+      const nz = (k: string) => k.replace(/^0+(?=.)/, "");
       const pairOf = (m: Map<string, BureauResult>, b: BvRow) => {
-        const x = m.get(b.bv);
+        // Codes de bureau parfois écrits « 0001 » une année, « 1 » l'autre ; bureau unique : apparié d'office.
+        const x = m.get(b.bv) ?? [...m.values()].find((r) => nz(r.bv) === nz(b.bv)) ?? (m.size === 1 && ranked.length === 1 ? [...m.values()][0] : undefined);
         return x && b.inscrits && Math.abs(x.inscrits - b.inscrits) / b.inscrits <= 0.25 ? x : null;
       };
       const r1 = (v: number | null | undefined) => (v == null ? null : Math.round(v * 10) / 10);
@@ -1283,11 +1296,14 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         if (v19 && v24) parts.push(`${fmtNumber(v24.voix)} voix aux européennes 2024, contre ${fmtNumber(v19.voix)} en 2019`);
         if (v17 && v22) parts.push(`${fmtNumber(v22.voix)} voix pour J.-L. Mélenchon à la présidentielle 2022, contre ${fmtNumber(v17.voix)} en 2017`);
         const up = rows.filter((r) => r.evoE != null).sort((a, b) => b.evoE! - a.evoE!).slice(0, 3).filter((r) => r.evoE! > 0);
+        // Sens de l'évolution : sur les deux comparaisons disponibles (européennes, présidentielles).
+        const sens = [v19 && v24 ? Math.sign(v24.voix > v19.voix * 1.05 ? 1 : v24.voix < v19.voix * 0.95 ? -1 : 0) : null, v17 && v22 ? Math.sign(v22.voix > v17.voix * 1.05 ? 1 : v22.voix < v17.voix * 0.95 ? -1 : 0) : null].filter((x): x is number => x != null);
+        const evoHead = !sens.length ? "Évolution" : sens.every((x) => x > 0) ? "La France insoumise a gagné des voix" : sens.every((x) => x < 0) ? "La France insoumise a perdu des voix" : sens.every((x) => x === 0) ? "Un vote insoumis stable" : "Une évolution contrastée";
         if (parts.length)
           ids.ou.push(
             addF({
               kind: "constat",
-              text: `${B(v19 && v24 ? (v24.voix > v19.voix * 1.05 ? "La France insoumise a gagné des voix" : v24.voix < v19.voix * 0.95 ? "La France insoumise a perdu des voix" : "Un vote insoumis stable") : "Évolution")} : ${parts.join(" ; ")}.${up.length ? ` Plus forte progression : ${up.length > 1 ? "bureaux" : "bureau"} ${joinFr(up.map((r) => dv(r.b.bv)))}.` : ""}`,
+              text: `${B(evoHead)} : ${parts.join(" ; ")}.${up.length ? ` Plus forte progression : ${up.length > 1 ? "bureaux" : "bureau"} ${joinFr(up.map((r) => dv(r.b.bv)))}.` : ""}`,
               evidence: ranked.map((b) => `lfi_bv_ins@bureau_vote:${commune.code}-${b.bv}`),
               weight: 84,
             }),
@@ -1556,6 +1572,19 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       const weak = new Map<string, { names: string[]; bvs: string[]; l: number; ev: string[] }>();
       const evAll: string[] = [];
       const label = (q: Quartier) => (q.kind === "qpv" ? leQuartier(q) : quartierLabel(q.nom));
+      // Quartier en partie dans un bureau prioritaire (centre du quartier dans ce bureau, ou bureau qui porte son nom).
+      const touchesPrio = (q: Quartier) => {
+        const mot = q.nom.split(/[\s-]+/).filter((w) => w.length >= 5).pop();
+        if (mot && prio.some((p) => (labels.get(p.bv) ?? "").toLowerCase().includes(mot.toLowerCase()))) return true;
+        if (!q.geometry) return false;
+        try {
+          const [lon, lat] = turf.pointOnFeature(q.geometry as GeoJSON.Polygon).geometry.coordinates;
+          const bv = bvAt(lon, lat);
+          return !!bv && prio.some((p) => p.bv === bv);
+        } catch {
+          return false;
+        }
+      };
       // QPV d'abord : un IRIS entièrement couvert par les bureaux d'un QPV déjà cité n'apporte rien de plus.
       for (const q of [...shown].sort((x, y) => (x.kind === y.kind ? 0 : x.kind === "qpv" ? -1 : 1))) {
         const bvs = qBureaux.get(q.code) ?? [];
@@ -1563,7 +1592,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         const poor = q.stats.pauvrete != null && comPov != null && q.stats.pauvrete >= comPov + 5;
         if (!l) {
           // Quartier déjà couvert par un bureau prioritaire : pas de question contradictoire.
-          if (poor && q.kind === "qpv" && !prio.some((p) => quartierOf(p.bv)?.code === q.code))
+          if (poor && q.kind === "qpv" && !prio.some((p) => quartierOf(p.bv)?.code === q.code) && !touchesPrio(q))
             ids2.quartiers.push(addF({ kind: "hypothese", text: `${B(cap(leQuartier(q)))} est partagé entre plusieurs bureaux de vote : on ne connaît pas son vote. Quartier populaire, il devrait nous être favorable : qui y connaissons-nous ?`, evidence: [`taux_pauvrete_quartier@quartier:${q.kind}:${q.code}`], weight: 60 }));
           continue;
         }
@@ -1938,7 +1967,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     plan.push({
       action: "Porte-à-porte",
       ou: `Bureau ${dv(p.bv)}${labels.has(p.bv) ? ` — ${p.label}` : ""}${quartierOf(p.bv) ? ` (${quartierLabel(quartierOf(p.bv)!.nom)})` : ""}`,
-      infos: `${fmtNumber(p.abstN)} inscrits n'ont pas voté${abstWhen} (${pp(p.abstPct)}) ; vote LFI à ${pp(p.lfiPctExp)}${lfiComExp != null ? `, contre ${pp(lfiComExp)} dans la commune` : ""}`,
+      infos: `${fmtNumber(p.abstN)} inscrits n'ont pas voté${abstWhen} (${pp(p.abstPct)}) ; vote LFI à ${pp(p.lfiPctExp)}${lfiComExp != null && ranked.length > 1 ? `, contre ${pp(lfiComExp)} dans la commune` : ""}`,
       quand: WEEKEND.porte,
       bv: dv(p.bv),
     });
@@ -2015,7 +2044,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const prioBvSet = new Set(prio.map((p) => p.bv));
   const hlmRank = [...hlm].filter((r) => r.logements >= 10).sort((a, b) => Number(!!(b.bv && prioBvSet.has(b.bv))) - Number(!!(a.bv && prioBvSet.has(a.bv))) || b.logements - a.logements);
   // Rues : résidences d'une même voie, rattachées au bureau qui regroupe le plus de leurs logements.
-  const rues = hlmByStreet(hlm.filter((r) => r.logements >= 5)).map((r) => {
+  // Une rue partagée entre plusieurs bureaux compte pour chacun (mêmes chiffres que les feuilles de porte-à-porte).
+  const rues = hlmByStreet(hlm.filter((r) => r.logements >= 5), (r) => r.bv ?? "").map((r) => {
     const w = new Map<string, number>();
     for (const x of r.items) if (x.bv) w.set(x.bv, (w.get(x.bv) ?? 0) + x.logements);
     return { ...r, bv: [...w].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null };
@@ -2080,7 +2110,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       sources: [c.residences.source],
       note: "Toutes les résidences du catalogue situées dans la commune, par nombre de logements. En surbrillance : résidences du Crous et foyers de jeunes travailleurs, où le porte-à-porte est proposé systématiquement.",
     });
-  const hlmTop = ruesRank.filter((r) => r.logements >= 40).slice(0, 2);
+  // Dans l'ordre de la liste « logements sociaux » (bureaux prioritaires d'abord) : le texte et la liste disent la même chose.
+  const hlmTop = ruesRank.filter((r) => r.logements >= 20).slice(0, 2);
   const deVoie = (v: string) => {
     const low = v.charAt(0).toLowerCase() + v.slice(1);
     if (!/^(rue|avenue|allée|boulevard|place|chemin|impasse|square|cours|quai|route|résidence|cité|mail|esplanade|passage|sente|villa)\b/i.test(v)) return `de ${v}`;
@@ -2116,7 +2147,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const access: string[] = [];
   if (c.stations?.stations.length) {
     const s = c.stations.stations;
-    const names = s.map((x) => (/^gare\b/i.test(x.nom) ? x.nom : `gare de ${x.nom}`));
+    const names = s.map((x) => (/^gare\b/i.test(x.nom) ? x.nom : `gare ${deNom(x.nom)}`));
     access.push(joinFr(names));
   }
   const trainParis = c.timetables?.stations.map((s) => s.paris?.minMinutes).filter((x): x is number => x != null).sort((a, b) => a - b)[0];
@@ -2255,8 +2286,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         title: "Élections municipales 2026",
         theme: "strategie",
         columns: [
-          { key: "liste", label: "Liste (tête de liste)", wide: true },
-          { key: "nuance", label: "Nuance" },
+          { key: "liste", label: lists.some(({ a, b }) => (b?.tete || a?.tete || "").trim()) ? "Liste (tête de liste)" : "Liste", wide: true },
+          ...(lists.some(({ a, b }) => (b ?? a)?.nuance) ? [{ key: "nuance", label: "Nuance" }] : []),
           { key: "t1", label: "1er tour (% exprimés)", align: "right" },
           ...(t2 ? [{ key: "t2", label: "2nd tour (% exprimés)", align: "right" as const }] : []),
           { key: "sieges", label: "Sièges au conseil", align: "right" },
@@ -2411,14 +2442,18 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (has("lfi_bureaux")) {
     prose(ouMain.slice(0, 1));
     // Une seule carte (vote LFI) ; sur le site, un bouton « Participation » bascule sur l'autre carte du groupe.
-    blocks.push({ type: "map", mapId: "lfi_map_bv" });
-    if (has("lfi_bureaux_prio")) blocks.push({ type: "table", tableId: "lfi_bureaux_prio" });
+    // Un seul bureau : carte, classement et graphique n'apprennent rien de plus que les chiffres de la commune.
+    const multiBv = ranked.length >= 2;
+    if (multiBv) blocks.push({ type: "map", mapId: "lfi_map_bv" });
+    if (multiBv && has("lfi_bureaux_prio")) blocks.push({ type: "table", tableId: "lfi_bureaux_prio" });
     if (insc.ficheText) blocks.push({ type: "paragraph", text: insc.ficheText });
     prose(ouEvo.slice(0, 1));
     // Détail : classement complet, présidentielle 2022, évolution par bureau.
-    detail.push({ type: "heading", text: "Classement de tous les bureaux de vote" });
-    detail.push({ type: "table", tableId: "lfi_bureaux" }, { type: "chart", chartId: "lfi_chart_bureaux" });
-    if (out.maps.some((m) => m.id === "lfi_map_bv_p22")) detail.push({ type: "map", mapId: "lfi_map_bv_p22" });
+    if (multiBv) {
+      detail.push({ type: "heading", text: "Classement de tous les bureaux de vote" });
+      detail.push({ type: "table", tableId: "lfi_bureaux" }, { type: "chart", chartId: "lfi_chart_bureaux" });
+      if (out.maps.some((m) => m.id === "lfi_map_bv_p22")) detail.push({ type: "map", mapId: "lfi_map_bv_p22" });
+    }
     const rest = ids.ou.filter((id) => !ouMain.slice(0, 1).includes(id) && !ouEvo.slice(0, 1).includes(id));
     if (rest.length) detail.push({ type: "findings", ids: rest, style: "prose" });
     if (has("lfi_evolution")) detail.push({ type: "table", tableId: "lfi_evolution" });
@@ -2444,9 +2479,20 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // Estimation des portes : 1,4 électeur inscrit par logement ; un binôme frappe à environ 30 portes par heure.
   const PAR_LOGEMENT = 1.4;
   const PORTES_HEURE = 30;
+  // Habitat dispersé (moins de 150 logements au km² dans le bureau : bourg et hameaux) : signalé, commencer par le bourg.
+  const kmBv = (bv: string) => {
+    const f = c.bvGeo?.features.find((x) => String(x.properties?.bv) === bv);
+    try {
+      return f ? turf.area(f as GeoJSON.Feature<GeoJSON.Polygon>) / 1e6 : null;
+    } catch {
+      return null;
+    }
+  };
   const portesBv = prio.map((p) => {
     const portes = Math.round(p.inscrits / PAR_LOGEMENT / 10) * 10;
-    return { p, portes, binomes: Math.max(1, Math.ceil(portes / (PORTES_HEURE * 2.5))) };
+    const km2 = kmBv(p.bv);
+    const disperse = km2 != null && km2 > 0 && portes / km2 < 150;
+    return { p, portes, disperse, binomes: Math.max(1, Math.ceil(portes / (PORTES_HEURE * 2.5))) };
   });
   const totalBinomes = portesBv.reduce((n, x) => n + x.binomes, 0);
   const totalPortes = portesBv.reduce((n, x) => n + x.portes, 0);
@@ -2466,7 +2512,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         { bv: "", lieu: "**Total**", portes: `~${fmtNumber(totalPortes)}`, binomes: `${totalBinomes} (${totalBinomes * 2} militants)` },
       ],
       sources: bvRef ? [bvRef.source] : [],
-      note: `Estimation : un logement pour ${String(PAR_LOGEMENT).replace(".", ",")} électeur inscrit, un binôme frappe à environ ${PORTES_HEURE} portes par heure, sur 2 h 30. Avec moins de monde, suivre l'ordre du tableau${portesBv.length > 1 ? ` (bureau ${dv(portesBv[0].p.bv)} d'abord)` : ""} et finir l'après-midi.`,
+      note: `Estimation : un logement pour ${String(PAR_LOGEMENT).replace(".", ",")} électeur inscrit, un binôme frappe à environ ${PORTES_HEURE} portes par heure, sur 2 h 30${portesBv.some((x) => x.disperse) ? ` ; habitat dispersé (bourg et hameaux${portesBv.length > 1 ? ` : bureau${portesBv.filter((x) => x.disperse).length > 1 ? "x" : ""} ${joinFr(portesBv.filter((x) => x.disperse).map((x) => dv(x.p.bv)))}` : ""}) : commencer par le bourg, où les portes sont proches ; les hameaux demandent des voitures et plus de temps` : ""}. Avec moins de monde, suivre l'ordre du tableau${portesBv.length > 1 ? ` (bureau ${dv(portesBv[0].p.bv)} d'abord)` : ""} et finir l'après-midi.`,
     });
   }
 
@@ -2503,7 +2549,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       const auT2 = lfiL && t2?.listes.some((l) => sameList(l, lfiL));
       const ville = m.ville ? ` (ville de ${m.ville})` : "";
       municipalLfi = lfiL
-        ? `${B("Municipales 2026")}${ville} : une liste LFI, « ${lfiL.libelle} » (tête de liste : ${lfiL.tete}), ${pct(lfiL.pctExprimes, 0)} au 1er tour${auT2 ? ", présente au 2nd tour" : ""}${lfiL.elu ? " ; élus au conseil municipal" : ""}.`
+        ? `${B("Municipales 2026")}${ville} : une liste LFI, « ${lfiL.libelle} »${lfiL.tete.trim() ? ` (tête de liste : ${lfiL.tete})` : ""}, ${pct(lfiL.pctExprimes, 0)} au 1er tour${auT2 ? ", présente au 2nd tour" : ""}${lfiL.elu ? " ; élus au conseil municipal" : ""}.`
         : ug
           ? `${B("Municipales 2026")}${ville} : pas de liste LFI ; liste d'union de la gauche « ${ug.libelle} » (${pct(ug.pctExprimes, 0)} au 1er tour).`
           : `${B("Municipales 2026")}${ville} : pas de liste LFI.`;
@@ -2564,7 +2610,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (ruesRank.length)
       items.push({
         label: "Porte-à-porte (logements sociaux)",
-        count: n(ruesRank.length, "adresse", "adresses"),
+        count: `${n(ruesRank.length, "rue", "rues")}, ${fmtNumber(ruesRank.reduce((t, r) => t + r.logements, 0))} logements`,
         quand: WEEKEND.porte,
         details: ruesRank.slice(0, 15).map((r) => `${r.voie}${r.nums.length ? ` (${numsLabel(r.nums)})` : ""} : ${fmtNumber(r.logements)} logements${r.bv ? `, bureau ${dv(r.bv)}${prioBvSet.has(r.bv) ? " (prioritaire)" : ""}` : ""}`),
       });
@@ -2579,7 +2625,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (gares.length || stationsTc.length)
       items.push({ label: "Tractage (gares, métro, RER, tram)", count: n(gares.length + stationsTc.length, "lieu", "lieux"), quand: WEEKEND.station, details: [...gares.map((g) => `${gareNom(g.nom)} : ${g.infos}`), ...stationsTc.map((x) => x.nom)] });
     if (sup.length) items.push({ label: "Tractage (grandes surfaces)", count: n(sup.length, "magasin", "magasins"), quand: WEEKEND.supermarche, details: sup.map((v) => `${v.nom} : ${v.infos}`) });
-    if (conv.length) items.push({ label: "Moment convivial", count: n(conv.length, "lieu", "lieux"), details: conv.slice(0, 3).map((x) => `${x.nom} (${convTxt(x)})`) });
+    if (conv.length) items.push({ label: "Moment convivial", count: n(Math.min(conv.length, 5), "lieu", "lieux"), details: conv.slice(0, 5).map((x) => `${x.nom} (${convTxt(x)})`) });
     if (items.length) blocks.push({ type: "plan", items });
     else blocks.push({ type: "note", text: "Aucun lieu d'action identifié automatiquement (marchés, gares, commerces, établissements) : à compléter avec les militants locaux." });
   }

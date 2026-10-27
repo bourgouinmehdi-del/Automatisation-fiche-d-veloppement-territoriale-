@@ -137,8 +137,8 @@ export function parseMunicipalRow(r: Record<string, unknown>, tour: 1 | 2): Muni
   for (const blk of blocks.values()) {
     const voix = num(field(blk, /^voix$/i));
     if (voix == null) continue;
-    const nom = field(blk, /^nom/i, /nuance|^nom (de (la )?)?liste/i);
-    const prenom = field(blk, /^pr[ée]nom/i);
+    const nom = field(blk, /^nom/i, /nuance|^nom (de (la )?)?liste/i) || field(blk, /^nom.*t[êe]te|t[êe]te de liste.*nom/i);
+    const prenom = field(blk, /^pr[ée]nom/i) || field(blk, /pr[ée]nom.*t[êe]te|t[êe]te de liste.*pr[ée]nom/i);
     const lib = field(blk, /^libell[ée] (de )?(la )?liste$/i) || field(blk, /^libell[ée].*(abr|liste)/i);
     if (!nom && !lib) continue;
     listes.push({

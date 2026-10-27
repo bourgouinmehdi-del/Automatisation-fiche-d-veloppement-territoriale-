@@ -68,13 +68,14 @@ describe("métro, RER, tram (horaires IDFM)", () => {
       url: "",
       retrievedAt: "",
     };
-    // X → Z : métro 1 (5 + 10) puis RER A (5 + 6).
-    expect(routeTc(idx, new Set([0]), new Set([2]))).toEqual({ minutes: 26, lignes: ["métro 1", "RER A"] });
+    // X → Z : métro 1 (5 + 10), correspondance (3), puis RER A (5 + 6).
+    expect(routeTc(idx, new Set([0]), new Set([2]))).toEqual({ minutes: 29, lignes: ["métro 1", "RER A"] });
     // X → W : métro 1, marche vers « Y bis » (~150 m : 3 min), tram T3 (5 + 4).
     const r = routeTc(idx, new Set([0]), new Set([4]))!;
     expect(r.lignes).toEqual(["métro 1", "tram T3"]);
-    expect(r.minutes).toBeGreaterThanOrEqual(25);
-    expect(r.minutes).toBeLessThanOrEqual(28);
+    // + 3 min de correspondance.
+    expect(r.minutes).toBeGreaterThanOrEqual(28);
+    expect(r.minutes).toBeLessThanOrEqual(31);
     // Sens inverse (lignes décrites dans un seul sens).
     expect(routeTc(idx, new Set([2]), new Set([0]))?.lignes).toEqual(["RER A", "métro 1"]);
   });

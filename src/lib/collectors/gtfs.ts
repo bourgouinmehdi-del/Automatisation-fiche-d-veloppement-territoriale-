@@ -668,6 +668,8 @@ export function directTc(index: TcIndex, from: Set<number>, to: Set<number>): { 
 
 /** Minutes ajoutées à chaque montée dans une rame (attente moyenne, correspondance). */
 export const TC_BOARD_MIN = 5;
+/** Minutes ajoutées à chaque correspondance (descente avant la destination) : couloirs, quais. */
+export const TC_TRANSFER_MIN = 3;
 /** Correspondance à pied entre deux gares proches (≤ 300 m) : 80 m par minute. */
 const WALK_MAX_M = 300;
 
@@ -806,7 +808,7 @@ export function routeTc(index: TcIndex, from: Set<number>, to: Set<number>): { m
       for (const w of g.walk[st]) push(w.to, d + w.m, st);
     } else {
       const s = Math.floor((st - NS) / NL);
-      push(s, d, st); // descendre
+      push(s, d + (to.has(s) ? 0 : TC_TRANSFER_MIN), st); // descendre (correspondance : couloirs, quais)
       for (const e of g.ride.get(st - NS) ?? []) push(NS + e.to, d + e.m, st);
     }
   }

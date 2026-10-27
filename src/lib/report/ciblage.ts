@@ -274,12 +274,14 @@ export function buildCiblage(c: Collected): CiblageOutput {
   // mais seulement si ce sont de vraies villes (20 000 habitants et plus) : dans un département rural
   // (Creuse : Guéret 13 000 habitants), le chef-lieu est souvent le meilleur point d'appui.
   // (En circonscription, aucune ville n'est écartée : le territoire est déjà restreint.)
+  const epciSize = new Map(referentiel().epcis.map((e) => [e.code, e.membres.length]));
   const chosen: Unit[] = [];
   for (const u of ranked) {
     if (u.kind === "commune" && bigCities.includes(u.codes[0])) continue;
     if (chosen.length >= 5) break;
     if (u.score <= 0 && chosen.length >= 3) break;
-    if (!interco && u.epci && chosen.filter((x) => x.epci === u.epci).length >= 2) continue;
+    // Deux au plus par intercommunalité, sauf les très grandes (Métropole du Grand Paris : 130 communes).
+    if (!interco && u.epci && (epciSize.get(u.epci) ?? 0) <= 40 && chosen.filter((x) => x.epci === u.epci).length >= 2) continue;
     chosen.push(u);
   }
 
@@ -517,6 +519,13 @@ export function buildCiblage(c: Collected): CiblageOutput {
       text: `Le ciblage présenté ci-dessous a été réalisé à partir de la seule exploitation de données statistiques et électorales publiques, par des personnes qui ne vivent pas forcément ${circo ? "dans cette circonscription" : interco ? "dans cette intercommunalité" : "dans ce département"}. ${B(`Les informations qui y sont suggérées doivent être confrontées avec la connaissance du terrain des militant·es ${circo ? "de la circonscription" : interco ? "de l'intercommunalité" : deDep(dep.nom)}.`)}`,
     },
     { type: "list", title: "Territoires proposés pour un ciblage militant", items: chosen.map((u, k) => ({ text: `${B(`${k + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) },
+    // Les grandes villes en tête du classement mais écartées : dit dès le début, pas seulement sous le tableau.
+    ...(() => {
+      const hors = ranked.slice(0, ranked.indexOf(chosen[chosen.length - 1]) + 1).filter((u) => u.kind === "commune" && bigCities.includes(u.codes[0]));
+      return hors.length
+        ? [{ type: "paragraph" as const, text: `${joinFr(hors.map((u) => `${u.nom} (${ranked.indexOf(u) + 1}${ranked.indexOf(u) === 0 ? "re" : "e"} du classement)`))} ${hors.length > 1 ? "ne sont pas proposées" : "n'est pas proposée"} : ${hors.length > 1 ? "ce sont les plus grandes villes du département, souvent déjà couvertes" : "c'est l'une des deux plus grandes villes du département, souvent déjà couvertes"} par les groupes d'action.` }]
+        : [];
+    })(),
     ...(out.maps.some((m) => m.id === "ciblage_affiche") ? [{ type: "map" as const, mapId: "ciblage_affiche" }] : []),
     { type: "map", mapId: "ciblage_carte" },
     { type: "targets", items: targets },
