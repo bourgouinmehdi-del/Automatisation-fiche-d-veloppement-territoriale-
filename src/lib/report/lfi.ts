@@ -4,7 +4,7 @@ import type { BureauResult, ElectionResult } from "../collectors/elections";
 import { abstention, BvRow, FAMILIES, familyPerformance, frenchHours, lfiOverperformance, prettyBvLabel, rankBureaux, score } from "../analysis/political";
 import { gap, haversineKm } from "../analysis/stats";
 import { compass, electoralZones } from "../analysis/zones";
-import { servicesAccess } from "../analysis/services";
+import { OFFRE_KM, servicesAccess } from "../analysis/services";
 import { evidenceId } from "../analysis/findings";
 import { aNom, deNom, fmtNumber, fmtSigned, fmtValue, prettyFr } from "../format";
 import type { Block, ChartSpec, DataTable, Finding, GeoRef, Indicator, MapLegend, MapSpec, Section, SourceRef } from "../types";
@@ -2384,13 +2384,12 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     });
     const sv = c.bpe?.departement?.length && centres.length >= 8 ? servicesAccess(commune.code, centres, c.bpe.departement) : null;
     if (sv && sv.rows.length) {
-      const r1 = (v: number) => Math.round(v * 10) / 10;
       blocks.push({
         type: "services",
         title: "Accès aux services",
-        faibles: sv.faibles.slice(0, 6).map((x) => ({ cat: x.cat, label: x.label, km: r1(x.km), medKm: r1(x.medKm) })),
-        cats: sv.cats.map((k) => ({ cat: k.cat, label: k.label, niveau: k.niveau, details: sv.rows.filter((x) => x.cat === k.cat).map((x) => ({ label: x.label, km: r1(x.km), medKm: r1(x.medKm), surPlace: x.surPlace })) })),
-        note: `Distance à vol d'oiseau entre le centre de la commune et le service le plus proche, où qu'il soit dans le département, comparée à la médiane des ${sv.pairs} communes de taille comparable du département. Base permanente des équipements (INSEE, ${BPE_VINTAGE}). Première version, à l'échelle de la commune.`,
+        faibles: sv.faibles.slice(0, 6).map((x) => ({ cat: x.cat, label: x.label, txt: x.txtFaible })),
+        cats: sv.cats.map((k) => ({ cat: k.cat, label: k.label, niveau: k.niveau, details: sv.rows.filter((x) => x.cat === k.cat).map((x) => ({ label: x.label, txt: x.txt })) })),
+        note: `Comparaison avec la médiane des ${sv.pairs} communes de taille comparable du département. Médecin, pharmacie, dentiste, infirmier, crèche : nombre pour 10 000 habitants dans un rayon de ${OFFRE_KM} km (commune et communes proches). Autres services : distance à vol d'oiseau au plus proche, où qu'il soit dans le département ; 0 km s'il est dans la commune, écarts sous 2 km non comptés. Base permanente des équipements (INSEE, ${BPE_VINTAGE}).`,
       });
     }
   }
