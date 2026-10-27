@@ -83,7 +83,7 @@ export async function ciblageAcces(
   // 2. Villes militantes proches : au moins 2 groupes d'action actifs ou 200 parrains.
   const targetCodes = new Set(targets.flatMap((t) => t.codes));
   const hubs = [...bilan]
-    .filter(([code, b]) => !targetCodes.has(code) && (b.ga >= HUB_MIN_GA || b.parrains >= HUB_MIN_PARRAINS))
+    .filter(([code, b]) => !targetCodes.has(code) && b.ga >= 1 && (b.ga >= HUB_MIN_GA || b.parrains >= HUB_MIN_PARRAINS))
     .map(([code, b]) => ({ l: at(code), b }))
     .filter((x): x is { l: Lieu; b: (typeof x)["b"] } => !!x.l)
     .map((x) => ({ ...x, km: Math.min(...tgt.map((t) => turf.distance([x.l.lon, x.l.lat], [t.at.lon, t.at.lat]))) }))
@@ -167,6 +167,76 @@ export async function ciblageAcces(
     });
   if (!car.size && !train.size && !tc.size) return null;
 
+  // Carte : villes militantes, territoires visés, liaisons (fiche commune et ciblage).
+  type Hub = (typeof hubs)[number];
+  type Tgt = (typeof tgt)[number];
+  const mapOf = (o: { id: string; title: string; posterTitle: string; kicker?: string; subTarget: (t: Tgt) => string; subHub: (h: Hub) => string; sources: SourceRef[] }): MapSpec => {
+  const pts = [...hubs.map((h) => [h.l.lon, h.l.lat]), ...tgt.map((t) => [t.at.lon, t.at.lat])];
+  const bb0 = turf.bbox(turf.multiPoint(pts)) as Bbox;
+  const bbox = fitAspect(bb0, 0.18);
+  let tFeats = (c.depFeatures?.features ?? []).filter((f) => targetCodes.has(String((f.properties as { code?: string }).code)));
+  if (!tFeats.length && c.commune.contour && targetCodes.has(c.commune.code)) tFeats = [turf.feature(c.commune.contour as GeoJSON.Polygon, { code: c.commune.code, nom: c.commune.nom })];
+  const colorOf = new Map(targets.flatMap((t) => t.codes.map((k) => [k, t.color] as const)));
+  const base = o.sources[0] ?? c.depVoisins?.source;
+  const map: MapSpec = {
+    id: o.id,
+    title: o.title,
+    theme: "strategie",
+    bbox,
+    poster: { kicker: o.kicker ?? c.commune.departement.nom, title: o.posterTitle, source: "Source : bilan LFI (villes militantes), OSRM, SNCF. Fonds : IGN." },
+    layers: [
+      ...(c.depVoisins?.features.length
+        ? [{ id: "voisins", label: "Départements voisins", kind: "polygons" as const, data: turf.featureCollection(c.depVoisins.features), style: { fill: "#ece8df", stroke: "#b9b2a4", strokeWidth: 1 }, labelMode: "caps" as const, labelProperty: "nom", visible: true, source: c.depVoisins.source }]
+        : []),
+      ...(c.depFeatures?.features.length
+        ? [{ id: "communes", label: "Communes", kind: "polygons" as const, data: c.depFeatures, style: { fill: "#fffcf4", stroke: "#e2dccd", strokeWidth: 0.4 }, visible: true, source: c.depVoisins?.source ?? base! }]
+        : []),
+      ...(tFeats.length
+        ? [{ id: "cibles", label: "Territoires proposés", kind: "polygons" as const, data: turf.featureCollection(tFeats.map((f) => ({ ...f, properties: { ...(f.properties ?? {}), _fill: colorOf.get(String((f.properties as { code?: string }).code)) } }))), style: { fill: "#f3b51b", stroke: "#8a8170", strokeWidth: 0.6 }, legendItem: { label: "Territoire proposé", swatch: "fill" as const }, visible: true, source: c.depVoisins?.source ?? base! }]
+        : []),
+      {
+        id: "liaisons",
+        label: "Trajets",
+        kind: "lines",
+        data: turf.featureCollection(hubs.flatMap((h) => tgt.map((t) => turf.lineString([[h.l.lon, h.l.lat], [t.at.lon, t.at.lat]])))),
+        style: { stroke: "#4c0297", strokeWidth: 0.8, dash: "4 4" },
+        visible: true,
+        source: base!,
+      },
+      {
+        id: "arrivees",
+        label: "Territoires proposés",
+        kind: "points",
+        data: turf.featureCollection(tgt.map((t) => turf.point([t.at.lon, t.at.lat], { nom: t.nom, sub: o.subTarget(t) }))),
+        style: { fill: "#c98a00", stroke: "#ffffff", symbol: "circle", size: 12 },
+        labelMode: "callout",
+        labelProperty: "nom",
+        sublabelProperty: "sub",
+        labelColor: "#8a5a00",
+        visible: true,
+        source: base!,
+      },
+      {
+        id: "villes",
+        label: "Villes militantes",
+        kind: "points",
+        data: turf.featureCollection(hubs.map((h) => turf.point([h.l.lon, h.l.lat], { nom: h.l.nom, sub: o.subHub(h) }))),
+        style: { fill: "#4c0297", stroke: "#ffffff", symbol: "diamond", size: 15 },
+        labelMode: "callout",
+        labelProperty: "nom",
+        sublabelProperty: "sub",
+        labelColor: "#4c0297",
+        legendItem: { label: `Ville militante (groupe d'action actif ; ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains)`, swatch: "diamond" },
+        visible: true,
+        source: base!,
+      },
+    ],
+    note: "Liaisons en pointillé : trajets calculés (voir le tableau).",
+  };
+  return map;
+
+  };
+
   // Fiche commune : une ligne par ville militante (voiture, train direct).
   if (opts.fiche) {
     const t = tgt[0];
@@ -194,17 +264,30 @@ export async function ciblageAcces(
         tc: tc.get(`${h.l.code}|${t.at.code}`) ? `${fmtDuration(tc.get(`${h.l.code}|${t.at.code}`)!.minutes)} (${tc.get(`${h.l.code}|${t.at.code}`)!.ligne})` : "—",
       })),
       sources: sourcesF,
-      note: `Villes militantes : au moins ${HUB_MIN_GA} groupes d'action actifs ou ${HUB_MIN_PARRAINS} parrains (bilan LFI), à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour les villes de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus). Voiture : temps sans trafic (OSRM). Train : trajet direct le plus court un samedi et nombre de trains directs dans la journée, aller et retour (horaires SNCF).${tc.size ? ` Transports d'Île-de-France (métro, RER, Transilien, tram) : trajet le plus rapide, correspondances comprises, depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités) ; ${TC_BOARD_MIN} min comptées à chaque montée (attente, correspondance).` : ""} « — » : pas de trajet trouvé.`,
+      note: `Villes militantes : au moins un groupe d'action actif, et ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI), à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour les villes de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus). Voiture : temps sans trafic (OSRM). Train : trajet direct le plus court un samedi et nombre de trains directs dans la journée, aller et retour (horaires SNCF).${tc.size ? ` Transports d'Île-de-France (métro, RER, Transilien, tram) : trajet le plus rapide, correspondances comprises, depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités) ; ${TC_BOARD_MIN} min comptées à chaque montée (attente, correspondance).` : ""} « — » : pas de trajet trouvé.`,
     };
+    const mapF = mapOf({
+      id: "commune_acces_carte",
+      title: `Villes militantes proches de ${t.nom}`,
+      posterTitle: "Venir depuis les villes militantes proches",
+      kicker: t.nom,
+      subTarget: () => "",
+      subHub: (h) => {
+        const v = car.get(`${h.l.code}|${t.at.code}`);
+        return [v != null ? `${fmtDuration(v)} en voiture` : "", `${fmtNumber(h.b.ga)} groupe${h.b.ga > 1 ? "s" : ""}`].filter(Boolean).join(", ");
+      },
+      sources: sourcesF,
+    });
     const first = rowsF.find((x) => x.car != null);
     const blocksF: Block[] = [
       { type: "heading", text: "Venir depuis les villes militantes proches" },
       ...(first
         ? [{ type: "paragraph" as const, text: `**La plus proche : ${first.h.l.nom}**, à ${fmtDuration(first.car!)} en voiture${first.tr ? ` (${fmtDuration(first.tr.minutes)} en train direct)` : tc.get(`${first.h.l.code}|${t.at.code}`) ? ` (${fmtDuration(tc.get(`${first.h.l.code}|${t.at.code}`)!.minutes)} en ${tc.get(`${first.h.l.code}|${t.at.code}`)!.ligne})` : ""}.` }]
         : []),
+      { type: "map", mapId: mapF.id },
       { type: "table", tableId: tableF.id },
     ];
-    return { tables: [tableF], maps: [], blocks: blocksF };
+    return { tables: [tableF], maps: [mapF], blocks: blocksF };
   }
 
   // 5. Tableau : une ligne par territoire, une colonne par ville militante.
@@ -238,71 +321,17 @@ export async function ciblageAcces(
     rows,
     highlight: ranked.length ? [ranked[0].i] : [],
     sources,
-    note: `Villes militantes : au moins ${HUB_MIN_GA} groupes d'action actifs ou ${HUB_MIN_PARRAINS} parrains (bilan LFI), à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour les villes de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; ${hubs.length} retenues, par nombre de parrains. Voiture : temps sans trafic (OSRM). Train : trajet direct le plus court un samedi (horaires SNCF), sans correspondance ; « — » : pas de calcul possible.`,
+    note: `Villes militantes : au moins un groupe d'action actif, et ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI), à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour les villes de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; ${hubs.length} retenues, par nombre de parrains. Voiture : temps sans trafic (OSRM). Train : trajet direct le plus court un samedi (horaires SNCF), sans correspondance ; « — » : pas de calcul possible.`,
   };
 
-  // 6. Carte : villes militantes, territoires proposés, liaisons.
-  const pts = [...hubs.map((h) => [h.l.lon, h.l.lat]), ...tgt.map((t) => [t.at.lon, t.at.lat])];
-  const bb0 = turf.bbox(turf.multiPoint(pts)) as Bbox;
-  const bbox = fitAspect(bb0, 0.18);
-  const tFeats = (c.depFeatures?.features ?? []).filter((f) => targetCodes.has(String((f.properties as { code?: string }).code)));
-  const colorOf = new Map(targets.flatMap((t) => t.codes.map((k) => [k, t.color] as const)));
-  const base = sources[0] ?? c.depVoisins?.source;
-  const map: MapSpec = {
+  const map = mapOf({
     id: "ciblage_acces_carte",
     title: "Villes militantes proches et territoires proposés",
-    theme: "strategie",
-    bbox,
-    poster: { kicker: c.commune.departement.nom, title: "Rejoindre les territoires proposés", source: "Source : bilan LFI (villes militantes), OSRM, SNCF. Fonds : IGN." },
-    layers: [
-      ...(c.depVoisins?.features.length
-        ? [{ id: "voisins", label: "Départements voisins", kind: "polygons" as const, data: turf.featureCollection(c.depVoisins.features), style: { fill: "#ece8df", stroke: "#b9b2a4", strokeWidth: 1 }, labelMode: "caps" as const, labelProperty: "nom", visible: true, source: c.depVoisins.source }]
-        : []),
-      ...(c.depFeatures?.features.length
-        ? [{ id: "communes", label: "Communes", kind: "polygons" as const, data: c.depFeatures, style: { fill: "#fffcf4", stroke: "#e2dccd", strokeWidth: 0.4 }, visible: true, source: c.depVoisins?.source ?? base! }]
-        : []),
-      ...(tFeats.length
-        ? [{ id: "cibles", label: "Territoires proposés", kind: "polygons" as const, data: turf.featureCollection(tFeats.map((f) => ({ ...f, properties: { ...(f.properties ?? {}), _fill: colorOf.get(String((f.properties as { code?: string }).code)) } }))), style: { fill: "#f3b51b", stroke: "#8a8170", strokeWidth: 0.6 }, legendItem: { label: "Territoire proposé", swatch: "fill" as const }, visible: true, source: c.depVoisins?.source ?? base! }]
-        : []),
-      {
-        id: "liaisons",
-        label: "Trajets",
-        kind: "lines",
-        data: turf.featureCollection(hubs.flatMap((h) => tgt.map((t) => turf.lineString([[h.l.lon, h.l.lat], [t.at.lon, t.at.lat]])))),
-        style: { stroke: "#4c0297", strokeWidth: 0.8, dash: "4 4" },
-        visible: true,
-        source: base!,
-      },
-      {
-        id: "arrivees",
-        label: "Territoires proposés",
-        kind: "points",
-        data: turf.featureCollection(tgt.map((t) => turf.point([t.at.lon, t.at.lat], { nom: t.nom, sub: moy(t.at.code) != null ? `${fmtDuration(moy(t.at.code)!)} en moyenne` : "" }))),
-        style: { fill: "#c98a00", stroke: "#ffffff", symbol: "circle", size: 12 },
-        labelMode: "callout",
-        labelProperty: "nom",
-        sublabelProperty: "sub",
-        labelColor: "#8a5a00",
-        visible: true,
-        source: base!,
-      },
-      {
-        id: "villes",
-        label: "Villes militantes",
-        kind: "points",
-        data: turf.featureCollection(hubs.map((h) => turf.point([h.l.lon, h.l.lat], { nom: h.l.nom, sub: [h.b.ga ? `${fmtNumber(h.b.ga)} groupe${h.b.ga > 1 ? "s" : ""}` : "", `${fmtNumber(Math.round(h.b.parrains))} parrains`].filter(Boolean).join(", ") }))),
-        style: { fill: "#4c0297", stroke: "#ffffff", symbol: "diamond", size: 15 },
-        labelMode: "callout",
-        labelProperty: "nom",
-        sublabelProperty: "sub",
-        labelColor: "#4c0297",
-        legendItem: { label: `Ville militante (${HUB_MIN_GA} groupes actifs ou ${HUB_MIN_PARRAINS} parrains)`, swatch: "diamond" },
-        visible: true,
-        source: base!,
-      },
-    ],
-    note: "Liaisons en pointillé : trajets calculés (voir le tableau).",
-  };
+    posterTitle: "Rejoindre les territoires proposés",
+    subTarget: (t) => (moy(t.at.code) != null ? `${fmtDuration(moy(t.at.code)!)} en moyenne` : ""),
+    subHub: (h) => [h.b.ga ? `${fmtNumber(h.b.ga)} groupe${h.b.ga > 1 ? "s" : ""}` : "", `${fmtNumber(Math.round(h.b.parrains))} parrains`].filter(Boolean).join(", "),
+    sources,
+  });
 
   const best = ranked[0] ? tgt[ranked[0].i] : null;
   const worst = ranked.length > 1 ? tgt[ranked[ranked.length - 1].i] : null;

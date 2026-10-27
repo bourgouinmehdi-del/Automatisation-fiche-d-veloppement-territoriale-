@@ -97,6 +97,7 @@ export async function buildReport(
     const acc = await ciblageAcces(c, [{ nom: c.commune.nom, codes: [plm?.parent ?? c.commune.code], color: "#f3b51b" }], { fiche: true }).catch(() => null);
     if (acc) {
       lfi.tables.push(...acc.tables);
+      lfi.maps.push(...acc.maps);
       const bl = lfi.section.blocks;
       const iAcc = bl.findIndex((b) => b.type === "paragraph" && /^\*\*Accès\*\*/.test(b.text));
       const iField = bl.findIndex((b) => b.type === "fieldPlaces");

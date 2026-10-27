@@ -274,6 +274,9 @@ describe("chaîne de génération (API simulées)", () => {
     expect(String(accT?.rows[0].voiture)).toMatch(/min|h/);
     const lfiB = report.sections.find((x) => x.id === "LFI")!.blocks;
     expect(lfiB.some((b) => b.type === "heading" && b.text === "Venir depuis les villes militantes proches")).toBe(true);
+    expect(lfiB.some((b) => b.type === "map" && b.mapId === "commune_acces_carte")).toBe(true);
+    // Résidence aux coordonnées hors de la commune : écartée.
+    expect(JSON.stringify(report.tables.filter((t) => /hlm/.test(t.id)))).not.toMatch(/Lointains/);
     // Effectifs estimés pour les bureaux prioritaires.
     const tete = report.sections.find((x) => x.id === "LFI")!.blocks.find((b) => b.type === "paragraph" && /À avoir en tête/.test(b.text));
     expect(tete && "text" in tete ? tete.text : "").toMatch(/médecins généralistes .*\(6,3 dans le département\) ; .* de chômage/);

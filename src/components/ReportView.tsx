@@ -48,6 +48,13 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
   const hasFiche = r.sections.some((s) => s.id === "LFI");
   const hasCiblage = r.sections.some((s) => s.id === "CIBLAGE");
   const terrName = territoryName(r);
+  const headSub = hasCiblage
+    ? r.query.scope === "circonscription"
+      ? `Ciblage de la circonscription, ${r.commune.departement.nom} (${r.commune.departement.code})`
+      : r.query.scope === "epci"
+        ? `Ciblage de l'intercommunalité (${r.perimeter.communes.length} communes)`
+        : `Ciblage du département (${r.commune.departement.code}), ${r.commune.region.nom}`
+    : `${r.commune.departement.nom} (${r.commune.departement.code}), ${r.commune.region.nom}${r.commune.epci ? `. ${r.commune.epci.nom}` : ""}. Code INSEE ${r.commune.code}`;
   // L'outil s'ouvre sur la fiche seule ; le détail (bureaux, quartiers, porte-à-porte,
   // diagnostic A à I) est replié et s'affiche à la demande.
   const isMain = (id: string) => id === "LFI" || id === "CIBLAGE";
@@ -413,6 +420,11 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         <div className="fiche-band">
           <div className="fiche-kind">{s.id === "CIBLAGE" ? `Propositions de ciblage ${r.query.scope === "circonscription" ? "de la circonscription" : r.query.scope === "epci" ? "de l'intercommunalité" : "du département"}` : "Proposition de ciblage"}</div>
           <div className="display iso-soft mt-3 text-5xl leading-none">{s.id === "CIBLAGE" ? terrName : r.commune.nom}</div>
+          {/* Un seul en-tête : département, version et fraîcheur ici plutôt qu'au-dessus de la fiche. */}
+          <div className="mt-3 text-sm opacity-90">{headSub}</div>
+          <div className="mt-1 text-xs opacity-75">
+            Version {r.version}, générée le {fmtDate(r.updatedAt)}. Fraîcheur des données : {freshness}
+          </div>
         </div>
         <div className="p-5 md:p-8">{s.blocks.map(renderBlock)}</div>
       </section>
@@ -429,16 +441,17 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-4xl font-bold">{hasCiblage ? terrName : r.commune.nom}</h1>
-          <div className="mt-1 text-sm text-[var(--ink-2)]">
-            {hasCiblage ? (r.query.scope === "circonscription" ? `Ciblage de la circonscription, ${r.commune.departement.nom} (${r.commune.departement.code})` : r.query.scope === "epci" ? `Ciblage de l'intercommunalité (${r.perimeter.communes.length} communes)` : `Ciblage du département (${r.commune.departement.code}), ${r.commune.region.nom}`) : `${r.commune.departement.nom} (${r.commune.departement.code}), ${r.commune.region.nom}${r.commune.epci ? `. ${r.commune.epci.nom}` : ""}. Code INSEE ${r.commune.code}`}
+      <div className={`mb-6 flex flex-wrap items-end gap-4 ${hasFiche || hasCiblage ? "justify-end" : "justify-between"}`}>
+        {/* Fiche ou ciblage : le nom figure déjà dans le bandeau coloré de la fiche. */}
+        {!(hasFiche || hasCiblage) && (
+          <div>
+            <h1 className="text-4xl font-bold">{r.commune.nom}</h1>
+            <div className="mt-1 text-sm text-[var(--ink-2)]">{headSub}</div>
+            <div className="mt-1 text-xs text-[var(--muted)]">
+              Version {r.version}, générée le {fmtDate(r.updatedAt)}. Fraîcheur des données : {freshness}
+            </div>
           </div>
-          <div className="mt-1 text-xs text-[var(--muted)]">
-            Version {r.version}, générée le {fmtDate(r.updatedAt)}. Fraîcheur des données : {freshness}
-          </div>
-        </div>
+        )}
         <div className="no-print flex flex-wrap items-center gap-2">
           {(hasFiche || hasCiblage) ? (
             <a className="btn btn-primary" href={exp("pdf", "?fiche=1")}>
