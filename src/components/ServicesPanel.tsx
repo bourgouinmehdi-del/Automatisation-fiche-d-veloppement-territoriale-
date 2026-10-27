@@ -17,7 +17,8 @@ function Icon({ cat }: { cat: string }) {
 
 /** Accès aux services : « Points faibles » (par défaut) ou « Par catégorie ». */
 export default function ServicesPanel({ b }: { b: B }) {
-  const [mode, setMode] = useState<"faibles" | "cats">(b.faibles.length ? "faibles" : "cats");
+  const [mode, setMode] = useState<"faibles" | "cats">(b.faibles.length || b.enDessous?.length ? "faibles" : "cats");
+  const dessous = b.enDessous ?? [];
   return (
     <figure className="my-5 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -36,20 +37,32 @@ export default function ServicesPanel({ b }: { b: B }) {
         </div>
       </div>
       {mode === "faibles" ? (
-        b.faibles.length ? (
-          <ul className="space-y-2 text-sm">
-            {b.faibles.map((f) => (
-              <li key={f.label} className="flex items-center gap-2">
-                <Icon cat={f.cat} />
-                <span className="font-semibold">{f.label}</span>
-                <span className="text-[var(--ink-2)]">
-                  : {f.txt}
-                </span>
-              </li>
-            ))}
-          </ul>
+        b.faibles.length || dessous.length ? (
+          <div className="space-y-3 text-sm">
+            {(
+              [
+                [b.faibles, ""],
+                [dessous, b.faibles.length ? "Un peu en dessous des communes semblables" : "Aucun service très en retard, mais plusieurs un peu en dessous des communes semblables :"],
+              ] as const
+            )
+              .filter(([xs]) => xs.length)
+              .map(([xs, titre]) => (
+                <div key={titre || "faibles"}>
+                  {titre && <p className="mb-1.5 text-[var(--ink-2)]">{titre}</p>}
+                  <ul className="space-y-2">
+                    {xs.map((f) => (
+                      <li key={f.label} className="flex items-center gap-2">
+                        <Icon cat={f.cat} />
+                        <span className="font-semibold">{f.label}</span>
+                        <span className="text-[var(--ink-2)]">: {f.txt}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+          </div>
         ) : (
-          <p className="text-sm text-[var(--ink-2)]">Aucun service nettement moins accessible que dans les communes de taille comparable.</p>
+          <p className="text-sm text-[var(--ink-2)]">Aucun service moins accessible que dans les communes de taille comparable.</p>
         )
       ) : (
         <div className="divide-y divide-[var(--line)] text-sm">

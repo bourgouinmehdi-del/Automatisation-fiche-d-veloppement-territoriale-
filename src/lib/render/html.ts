@@ -250,8 +250,11 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       const faibles = b.faibles.length
         ? `<div class="sv-sub">Points faibles</div><ul class="sv-l">${b.faibles.map((f) => `<li><span class="sv-i">${ICONS[f.cat] ?? ""}</span><b>${esc(f.label)}</b> : ${esc(f.txt)}</li>`).join("")}</ul>`
         : "";
+      const dessous = b.enDessous?.length
+        ? `<div class="sv-sub">${b.faibles.length ? "Un peu en dessous des communes semblables" : "Pas de service très en retard, mais plusieurs un peu en dessous des communes semblables"}</div><ul class="sv-l">${b.enDessous.map((f) => `<li><span class="sv-i">${ICONS[f.cat] ?? ""}</span><b>${esc(f.label)}</b> : ${esc(f.txt)}</li>`).join("")}</ul>`
+        : "";
       const cats = `<div class="sv-sub">Par catégorie</div><table class="sv-t"><tbody>${b.cats.map((c) => `<tr><td><span class="sv-i">${ICONS[c.cat] ?? ""}</span><b>${esc(c.label)}</b></td><td class="sv-${c.niveau}">${niv[c.niveau]}</td><td class="sv-d">${c.details.map((d) => `${esc(d.label)} : ${esc(d.txt)}`).join(" ; ")}</td></tr>`).join("")}</tbody></table>`;
-      return `<figure class="services"><figcaption>${esc(b.title)}</figcaption>${faibles}${cats}<div class="pr-n">${esc(b.note)}</div></figure>`;
+      return `<figure class="services"><figcaption>${esc(b.title)}</figcaption>${faibles}${dessous}${cats}<div class="pr-n">${esc(b.note)}</div></figure>`;
     }
     case "plan":
       return `<div class="plan">${b.items

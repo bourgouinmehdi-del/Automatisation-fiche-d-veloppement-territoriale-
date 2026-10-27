@@ -2388,6 +2388,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         type: "services",
         title: "Accès aux services",
         faibles: sv.faibles.slice(0, 6).map((x) => ({ cat: x.cat, label: x.label, txt: x.txtFaible })),
+        enDessous: sv.rows.filter((x) => !x.faible && x.score >= 0.25).sort((a, b) => b.score - a.score).slice(0, 6).map((x) => ({ cat: x.cat, label: x.label, txt: x.txt })),
         cats: sv.cats.map((k) => ({ cat: k.cat, label: k.label, niveau: k.niveau, details: sv.rows.filter((x) => x.cat === k.cat).map((x) => ({ label: x.label, txt: x.txt })) })),
         note: `Comparaison avec la médiane des ${sv.pairs} communes de taille comparable du département. Médecin, pharmacie, dentiste, infirmier, crèche : nombre pour 10 000 habitants dans un rayon de ${OFFRE_KM} km (commune et communes proches). Autres services : distance à vol d'oiseau au plus proche, où qu'il soit dans le département ; 0 km s'il est dans la commune, écarts sous 2 km non comptés. Base permanente des équipements (INSEE, ${BPE_VINTAGE}).`,
       });

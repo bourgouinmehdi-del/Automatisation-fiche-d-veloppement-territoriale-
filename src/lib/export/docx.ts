@@ -278,6 +278,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       return [
         caption(b.title),
         ...b.faibles.map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : ${f.txt}`, font: FONT, size: 19 })] })),
+        ...(b.enDessous ?? []).map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : un peu en dessous, ${f.txt}`, font: FONT, size: 19 })] })),
         ...b.cats.map((c) => new Paragraph({ spacing: { after: 30 }, children: [new TextRun({ text: `${c.label} : `, font: FONT, size: 19, bold: true }), new TextRun({ text: niv[c.niveau], font: FONT, size: 19, color: c.niveau === "moins" ? "D1271C" : "52514E" })] })),
         new Paragraph({ spacing: { after: 160 }, children: [new TextRun({ text: b.note, font: FONT, size: 16, color: "52514E" })] }),
       ];
