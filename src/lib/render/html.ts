@@ -5,7 +5,7 @@ import { posterItems } from "./poster";
 import { SOURCES } from "../collectors/catalog";
 import { KIND_LABELS, THEME_LABELS } from "../analysis/findings";
 import { isSmallSample } from "../analysis/stats";
-import { fmtDate, fmtNumber, fmtValue, scoreColor, territoryName } from "../format";
+import { docTitle, fmtDate, fmtNumber, fmtValue, isTerritorial, scoreColor, territoryName } from "../format";
 import { FIELD_NOTE_LABELS } from "../types";
 import type { Block, DataTable, Finding, Indicator, MapSpec, Report, SourceRef } from "../types";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "./svg";
@@ -65,7 +65,7 @@ function kpisHtml(r: Report, ids: string[], cit: Citations) {
   return `<div class="kpis">${items
     .map(
       (i) =>
-        `<div class="kpi"><div class="kv">${esc(fmtValue(i.value, i.unit))}</div><div class="kl">${esc(i.label)}</div><div class="ks">${esc(i.year ?? "")} · [${cit.cite(i.source)}]${isSmallSample(i) || i.status === "partial" ? " · effectif faible" : ""}</div></div>`,
+        `<div class="kpi"><div class="kv">${esc(fmtValue(i.value, i.unit))}</div><div class="kl">${esc(i.label)}${i.geo.level !== "commune" ? ` — ${esc(i.geo.name)}` : ""}</div><div class="ks">${esc(i.year ?? "")} · [${cit.cite(i.source)}]${isSmallSample(i) || i.status === "partial" ? " · effectif faible" : ""}</div></div>`,
     )
     .join("")}</div>`;
 }
@@ -148,6 +148,29 @@ function missingHtml(r: Report, themes: string[]) {
 
 export type FicheStyle = "moderne" | "yonne";
 
+/**
+ * Blocs d'une partie : un titre suivi d'un court texte et d'une carte reste avec la carte (pas de titre
+ * seul en bas de page, la carte en haut de la suivante).
+ */
+export function blocksHtml(r: Report, blocks: Block[], cit: Citations, style: FicheStyle = "moderne"): string {
+  const out: string[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    const lead = b.type === "heading" || (b.type === "paragraph" && b.text.length < 300);
+    if (lead) {
+      let j = i + 1;
+      while (j < blocks.length && j - i < 3 && blocks[j].type === "paragraph" && (blocks[j] as { text: string }).text.length < 300) j++;
+      if (j < blocks.length && blocks[j].type === "map") {
+        out.push(`<div class="keep">${blocks.slice(i, j + 1).map((x) => blockHtml(r, x, cit, style)).join("\n")}</div>`);
+        i = j;
+        continue;
+      }
+    }
+    out.push(blockHtml(r, b, cit, style));
+  }
+  return out.join("\n");
+}
+
 export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle = "moderne"): string {
   switch (b.type) {
     case "paragraph": {
@@ -226,7 +249,7 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       const km = (v: number) => (v < 0.1 ? "sur place" : `${fmtNumber(v, v < 10 ? 1 : 0)} km`);
       const niv: Record<string, string> = { mieux: "Mieux desservie", comme: "Comme les communes semblables", moins: "Moins bien desservie" };
       const faibles = b.faibles.length
-        ? `<div class="sv-sub">Points faibles</div><ul class="sv-l">${b.faibles.map((f) => `<li><span class="sv-i">${ICONS[f.cat] ?? ""}</span><b>${esc(f.label)}</b> : le plus proche à ${km(f.km)}, contre ${km(f.medKm)} en général pour une commune de cette taille</li>`).join("")}</ul>`
+        ? `<div class="sv-sub">Points faibles</div><ul class="sv-l">${b.faibles.map((f) => `<li><span class="sv-i">${ICONS[f.cat] ?? ""}</span><b>${esc(f.label)}</b> : le plus proche à ${km(f.km)}, ${f.medKm < 0.1 ? "alors que la plupart des communes de cette taille en ont un sur place" : `contre ${km(f.medKm)} en général pour une commune de cette taille`}</li>`).join("")}</ul>`
         : "";
       const cats = `<div class="sv-sub">Par catégorie</div><table class="sv-t"><tbody>${b.cats.map((c) => `<tr><td><span class="sv-i">${ICONS[c.cat] ?? ""}</span><b>${esc(c.label)}</b></td><td class="sv-${c.niveau}">${niv[c.niveau]}</td><td class="sv-d">${c.details.map((d) => `${esc(d.label)} : ${d.surPlace ? "dans la commune" : km(d.km)}`).join(" ; ")}</td></tr>`).join("")}</tbody></table>`;
       return `<figure class="services"><figcaption>${esc(b.title)}</figcaption>${faibles}${cats}<div class="pr-n">${esc(b.note)}</div></figure>`;
@@ -340,6 +363,7 @@ h3.fh { font-size: 15pt; font-weight: 800; color: #4c0297; margin: 7mm 0 3mm; pa
 .sv-t { font-size: 8.6pt; } .sv-t td { padding: 1mm 1.5mm; border-bottom: 1px solid #eeeeec; vertical-align: top; }
 .sv-moins { color: #d1271c; font-weight: 700; white-space: nowrap; } .sv-mieux { color: #1b7f55; white-space: nowrap; } .sv-comme { color: #52514e; white-space: nowrap; } .sv-d { color: #52514e; }
 .plan { margin: 3mm 0; break-inside: auto; }
+.keep { break-inside: avoid; }
 .pl-i { border-top: 1px solid #e7e6e2; padding: 1.5mm 0; break-inside: avoid; }
 .pl-h { display: flex; justify-content: space-between; gap: 4mm; } .pl-h span { color: #4c0297; font-weight: 700; font-size: 9.5pt; white-space: nowrap; }
 .pl-q { color: #52514e; font-size: 8.4pt; }
@@ -443,7 +467,7 @@ export function renderReportHtml(r: Report, opts: { standalone?: boolean; sectio
   // Le corps est rendu en premier pour numéroter les sources dans l'ordre d'apparition.
   const body = opts.sectionIds
     ? ""
-    : sections.map((s) => `<section class="part" id="part-${s.id}"><h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>${s.blocks.map((b) => blockHtml(r, b, cit)).join("\n")}</section>`)
+    : sections.map((s) => `<section class="part" id="part-${s.id}"><h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>${blocksHtml(r, s.blocks, cit)}</section>`)
     .join("\n");
   const statusClass = (s: string) => (s === "ok" || s === "cache" ? "ok" : s === "failed" ? "ko" : "wa");
   const STATUS_FR: Record<string, string> = { ok: "Réussi", cache: "Cache", stale: "Cache périmé", partial: "Partiel", failed: "Échec", skipped: "Non exécuté" };
@@ -470,7 +494,7 @@ export function renderReportHtml(r: Report, opts: { standalone?: boolean; sectio
 </section>`;
 
   const scopeLabel = { commune: "Commune", epci: "Intercommunalité", circonscription: "Circonscription législative", departement: "Département", custom: "Territoire personnalisé" }[r.query.scope];
-  const cover = `<section class="cover"><div><div class="kicker">Diagnostic territorial</div><h1>${esc(r.commune.nom)}</h1><div class="sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}) · ${esc(r.commune.region.nom)}${r.commune.epci ? ` · ${esc(r.commune.epci.nom)}` : ""}</div><p class="sub" style="margin-top:4mm">Périmètre d'analyse : ${esc(scopeLabel)} — ${esc(r.perimeter.label)}</p>
+  const cover = `<section class="cover"><div><div class="kicker">${isTerritorial(r) ? "Développement territorial" : "Diagnostic territorial"}</div><h1>${esc(isTerritorial(r) ? territoryName(r) : r.commune.nom)}</h1><div class="sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}) · ${esc(r.commune.region.nom)}${r.commune.epci ? ` · ${esc(r.commune.epci.nom)}` : ""}</div><p class="sub" style="margin-top:4mm">Périmètre d'analyse : ${esc(scopeLabel)} — ${esc(r.perimeter.label)}</p>
 ${splitWarnings(r).main.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}
 <div class="warn" style="border-color:#2a78d6;background:#eef5fd">Ce document est produit automatiquement à partir de statistiques publiques agrégées. Ses constats doivent être confrontés à la connaissance de terrain des acteurs locaux.</div></div>
 <div class="toc"><h3>Sommaire</h3><ul style="list-style:none;padding-left:0">${r.sections.map((s) => `<li>${s.letter ? `<strong>${s.letter}.</strong> ` : "★ "}${esc(s.title)}</li>`).join("")}</ul><p>Annexe : méthodologie, journal de collecte et bibliographie.</p></div>
@@ -485,7 +509,7 @@ ${splitWarnings(r).main.map((w) => `<div class="warn">${esc(w)}</div>`).join("")
       : ciblage
       ? `<header class="fiche-head"><div class="fiche-k">Propositions de ciblage ${r.query.scope === "circonscription" ? "de la circonscription" : r.query.scope === "epci" ? "de l'intercommunalité" : "du département"}</div><h1${titleClass(territoryName(r))}>${esc(territoryName(r))}</h1><div class="fiche-sub">${esc(r.commune.region.nom)}</div><div class="fiche-meta">Généré le ${esc(fmtDate(r.updatedAt))}, version ${r.version}</div></header>`
       : `<header class="fiche-head"><div class="fiche-k">Proposition de ciblage</div><h1${titleClass(r.commune.nom)}>${esc(r.commune.nom)}</h1><div class="fiche-sub">${esc(r.commune.departement.nom)} (${esc(r.commune.departement.code)}), ${esc(r.commune.region.nom)}${r.commune.epci ? `. ${esc(r.commune.epci.nom)}` : ""}</div><div class="fiche-meta">Code INSEE ${esc(r.commune.code)}, généré le ${esc(fmtDate(r.updatedAt))}, version ${r.version}</div></header>`;
-    const shortBody = sections.map((s) => `<section id="part-${s.id}">${s.id === "LFI" || s.id === "CIBLAGE" ? "" : `<h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>`}${s.blocks.map((b) => blockHtml(r, b, cit, style)).join("\n")}</section>`).join("\n");
+    const shortBody = sections.map((s) => `<section id="part-${s.id}">${s.id === "LFI" || s.id === "CIBLAGE" ? "" : `<h2>${s.letter ? `${s.letter}. ` : ""}${esc(s.title)}</h2>`}${blocksHtml(r, s.blocks, cit, style)}</section>`).join("\n");
     const biblio = `<section class="part fiche-src"><h2>Sources</h2><ol class="biblio">${cit
       .all()
       .map((s) => `<li>${esc(sourceLabel(s))}. Consulté le ${esc(fmtDate(s.retrievedAt))}. <a href="${esc(s.url)}">${esc(s.url.length > 140 ? s.url.slice(0, 137) + "…" : s.url)}</a></li>`)
@@ -496,7 +520,7 @@ ${splitWarnings(r).main.map((w) => `<div class="warn">${esc(w)}</div>`).join("")
   }
   const html = `${cover}\n${body}\n${method}`;
   if (opts.standalone === false) return html;
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Diagnostic territorial — ${esc(r.commune.nom)}</title><style>${REPORT_CSS}</style></head><body>${html}</body></html>`;
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${esc(docTitle(r, false))}</title><style>${REPORT_CSS}</style></head><body>${html}</body></html>`;
 }
 
 /** Résumé de fraîcheur : millésimes extrêmes et date de collecte la plus ancienne. */

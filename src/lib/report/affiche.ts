@@ -88,8 +88,10 @@ export function weekendHours(h: string): string {
 
 /** Horaires (« du mardi au samedi, 8 h – 13 h ») : ouvert le week-end ? null si inconnu. */
 export function openWeekend(h: string): boolean | null {
-  if (!/\d+ h/.test(h)) return null;
-  return /samedi|dimanche|tous les jours/i.test(h);
+  if (/samedi|dimanche|tous les jours|\b(sam|dim)\.|\b(Sa|Su)\b/i.test(h)) return true;
+  // Jours de semaine seulement (« jeudi, 8 h – 13 h », « Jul-Aug jeu. 08:00-13:00 ») : pas un marché du week-end.
+  if (/lundi|mardi|mercredi|jeudi|vendredi|\b(lun|mar|mer|jeu|ven)\.|\b(Mo|Tu|We|Th|Fr)\b/i.test(h) && /\d/.test(h)) return false;
+  return null;
 }
 
 /** Fréquentation minimale d'une gare de tractage (voyageurs par jour). */

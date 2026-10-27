@@ -346,7 +346,7 @@ export interface LieuConvivial {
  */
 export async function collectConvivialite(http: TrackedHttp, bbox: Bbox): Promise<{ list: LieuConvivial[]; url: string; retrievedAt: string }> {
   const key = bbox.map((v) => v.toFixed(3)).join(",");
-  return cachedExtract(`convivial2|${key}`, 24 * 30, async () => {
+  return cachedExtract(`convivial3|${key}`, 24 * 30, async () => {
     const [w, s, e, n] = bbox;
     const b = `(${s},${w},${n},${e})`;
     const q = `[out:json][timeout:60];
@@ -366,7 +366,11 @@ out tags bb;`;
       const lat = el.lat ?? el.center?.lat ?? (el.bounds ? (el.bounds.minlat + el.bounds.maxlat) / 2 : undefined);
       if (lon == null || lat == null || !t.name) continue;
       if (/park|garden/.test(t.leisure ?? "")) {
-        if (t.garden && /private|residential|botanical/.test(t["garden:type"] ?? "")) continue;
+        // Lieux payants, privés ou qui ne se prêtent pas à un pique-nique militant : arboretum, jardins
+        // ouvriers ou partagés, parc d'hôpital ou de maison de retraite, cimetière, golf, zoo.
+        if (/private|residential|botanical|arboretum|community|allotment|kitchen/.test(t["garden:type"] ?? "")) continue;
+        if (/^(yes|true)$/i.test(t.fee ?? "") || /^(customers|permit|private|no)$/i.test(t.access ?? "")) continue;
+        if (/arboretum|jardins? (ouvriers?|familiaux|partag[ée]s?|potagers?)|potager|cimeti[èe]re|h[ôo]pital|aphp|ap-hp|ehpad|clinique|maison de retraite|golf|\bzoo\b|parc animalier/i.test(t.name)) continue;
         const bb = el.bounds;
         // Emprise rectangulaire × 0,6 : ordre de grandeur de la surface du parc.
         const ha = bb ? (0.6 * turf.distance([bb.minlon, bb.minlat], [bb.maxlon, bb.minlat]) * turf.distance([bb.minlon, bb.minlat], [bb.minlon, bb.maxlat]) * 1e6) / 1e4 : null;

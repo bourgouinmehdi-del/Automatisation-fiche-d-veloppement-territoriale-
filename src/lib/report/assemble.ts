@@ -783,7 +783,12 @@ export function assemble(c: Collected): Assembled {
         { key: "revenu", label: "Revenu médian (€/UC)", align: "right" as const, unit: "€" as const },
         { key: "pauvrete", label: "Taux de pauvreté (%)", align: "right" as const, unit: "%" as const },
         { key: "vacance", label: "Logements vacants (%)", align: "right" as const, unit: "%" as const },
-      ].filter((col) => ["commune", "code", "population"].includes(col.key) || perimeterRows.some((r) => r[col.key as keyof (typeof perimeterRows)[number]] != null)),
+      ].filter((col) => {
+        if (["commune", "code", "population"].includes(col.key)) return true;
+        const n = perimeterRows.filter((r) => r[col.key as keyof (typeof perimeterRows)[number]] != null).length;
+        // Densité : surfaces connues seulement dans le département ; colonne retirée si elle manque pour beaucoup de communes.
+        return col.key === "densite" ? n >= perimeterRows.length * 0.8 : n > 0;
+      }),
       rows: perimeterRows.length > 25 ? perimeterRows.filter((r, i) => i < 20 || r.code === commune.code) : perimeterRows,
       highlight: (perimeterRows.length > 25 ? perimeterRows.filter((r, i) => i < 20 || r.code === commune.code) : perimeterRows).map((r, i) => (r.code === commune.code ? i : -1)).filter((i) => i >= 0),
       sources: [c.popSource, ...(c.geoSource ? [c.geoSource] : []), ...(c.perimeterInsee[0]?.result.indicators[0] ? [c.perimeterInsee[0].result.indicators[0].source] : [])],

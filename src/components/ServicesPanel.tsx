@@ -45,7 +45,7 @@ export default function ServicesPanel({ b }: { b: B }) {
                 <Icon cat={f.cat} />
                 <span className="font-semibold">{f.label}</span>
                 <span className="text-[var(--ink-2)]">
-                  : le plus proche à {km(f.km)}, contre {km(f.medKm)} en général pour une commune de cette taille
+                  : le plus proche à {km(f.km)}, {f.medKm < 0.1 ? "alors que la plupart des communes de cette taille en ont un sur place" : `contre ${km(f.medKm)} en général pour une commune de cette taille`}
                 </span>
               </li>
             ))}

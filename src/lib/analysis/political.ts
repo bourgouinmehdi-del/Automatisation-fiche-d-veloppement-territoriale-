@@ -312,8 +312,13 @@ export function frenchHours(oh: string | null | undefined): string {
   };
   // Règles simples « Tu-Sa 08:00-19:00; Mo,Su off » → « du mardi au samedi, 8 h – 19 h ».
   const parts: string[] = [];
-  for (const rule of raw.split(/\s*;\s*/).filter(Boolean)) {
-    if (/^PH\s+(off|closed)$/.test(rule)) continue;
+  const MOIS: Record<string, string> = { Jan: "janvier", Feb: "février", Mar: "mars", Apr: "avril", May: "mai", Jun: "juin", Jul: "juillet", Aug: "août", Sep: "septembre", Oct: "octobre", Nov: "novembre", Dec: "décembre" };
+  for (const rule0 of raw.split(/\s*;\s*/).filter(Boolean)) {
+    if (/^PH\s+(off|closed)$/.test(rule0)) continue;
+    // Période de l'année (« Jul-Aug Th 08:00-13:00 » : marché d'été).
+    const mo = rule0.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?:-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))?:?\s+/);
+    const periode = mo ? ` (${mo[2] ? `de ${MOIS[mo[1]]} à ${MOIS[mo[2]]}` : `en ${MOIS[mo[1]]}`})` : "";
+    const rule = mo ? rule0.slice(mo[0].length) : rule0;
     const m = rule.match(/^((?:(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?,?)+)\s+(off|closed|(?:\d{1,2}:\d{2}-\d{1,2}:\d{2},?\s*)+)$/);
     if (!m) return frenchHoursRaw(raw);
     if (/off|closed/.test(m[2])) continue;
@@ -326,7 +331,7 @@ export function frenchHours(oh: string | null | undefined): string {
     });
     const times = m[2].split(",").map((x) => x.trim()).filter(Boolean).map((x) => x.split("-").map(hour).join(" – "));
     const dayTxt = days.length > 1 ? `${days.slice(0, -1).join(", ")} et ${days[days.length - 1]}` : days[0];
-    parts.push(`${dayTxt}, ${times.join(" et ")}`);
+    parts.push(`${dayTxt}, ${times.join(" et ")}${periode}`);
   }
   return parts.join(" ; ");
 }

@@ -136,12 +136,16 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
     }
   // Écart : en minutes de trajet, 1 km de plus pèse davantage près de chez soi (échelle logarithmique).
   const gap = (r: ServiceRow) => Math.log2((r.km + 0.5) / (r.medKm + 0.5));
-  const faibles = rows.filter((r) => gap(r) >= 0.8 && r.km - r.medKm >= 1.5 && !r.surPlace).sort((a, b) => gap(b) - gap(a));
+  // Point faible : nettement plus loin qu'ailleurs, et à plus de 3 km (en ville, 2 km de plus ne gênent guère).
+  const faibles = rows.filter((r) => gap(r) >= 0.8 && r.km - r.medKm >= 1.5 && r.km >= 3 && !r.surPlace).sort((a, b) => gap(b) - gap(a));
   const cats: CatScore[] = SERVICE_CATS.map((c) => {
     const rs = rows.filter((r) => r.cat === c.id);
     if (!rs.length) return null;
     const g = rs.reduce((s, r) => s + gap(r), 0) / rs.length;
-    return { cat: c.id, label: c.label, niveau: g >= 0.5 ? "moins" : g <= -0.5 ? "mieux" : "comme", items: rs.length } as CatScore;
+    // Une catégorie qui compte un point faible n'est pas dite « mieux desservie ».
+    const faible = rs.some((r) => faibles.includes(r));
+    const niveau = g >= 0.5 || (faible && g >= 0) ? "moins" : g <= -0.5 && !faible ? "mieux" : "comme";
+    return { cat: c.id, label: c.label, niveau, items: rs.length } as CatScore;
   }).filter((x): x is CatScore => !!x);
   return { rows, faibles, cats, pairs: pairs.length };
 }

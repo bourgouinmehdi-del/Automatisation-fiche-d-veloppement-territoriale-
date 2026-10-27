@@ -213,7 +213,10 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
             {items.map((i) => (
               <div key={i.id} className="card p-3" title={`${i.method ?? ""} ${i.limits ?? ""}`}>
                 <div className="text-xl font-bold text-[var(--accent-strong)]">{fmtValue(i.value, i.unit)}</div>
-                <div className="text-xs">{i.label}</div>
+                <div className="text-xs">
+                  {i.label}
+                  {i.geo.level !== "commune" ? ` — ${i.geo.name}` : ""}
+                </div>
                 <div className="mt-1 text-[11px] text-[var(--muted)]">
                   {i.year} [{cit.cite(i.source)}]{(isSmallSample(i) || i.status === "partial") && ", effectif faible"}
                 </div>

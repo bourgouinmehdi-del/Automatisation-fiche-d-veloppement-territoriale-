@@ -150,10 +150,10 @@ export function numsLabel(nums: string[]): string {
  * Logements sociaux regroupés par rue : résidences d'une même voie à moins
  * de 250 m les unes des autres (une longue avenue peut donner deux groupes).
  */
-export function hlmByStreet<T extends Residence>(residences: T[]): (RueHlm & { items: T[] })[] {
+export function hlmByStreet<T extends Residence>(residences: T[], keyOf?: (r: T) => string): (RueHlm & { items: T[] })[] {
   const byVoie = new Map<string, T[]>();
   for (const r of residences) {
-    const v = (r.voie ?? r.adresse.replace(/^\d+\s*\w?\s+/, "")).toUpperCase();
+    const v = `${(r.voie ?? r.adresse.replace(/^\d+\s*\w?\s+/, "")).toUpperCase()}|${keyOf ? keyOf(r) : ""}`;
     if (!byVoie.has(v)) byVoie.set(v, []);
     byVoie.get(v)!.push(r);
   }

@@ -99,9 +99,24 @@ export async function buildReport(
       lfi.tables.push(...acc.tables);
       lfi.maps.push(...acc.maps);
       const bl = lfi.section.blocks;
+      // « Accès » : les villes déjà dans le tableau des villes militantes n'y sont pas répétées (un seul temps par ville).
+      const villes = new Set((acc.tables[0]?.rows ?? []).map((r) => String(r.ville ?? "")));
+      const iAcc0 = bl.findIndex((b) => b.type === "paragraph" && /^\*\*Accès\*\*/.test(b.text));
+      if (iAcc0 >= 0) {
+        const b = bl[iAcc0] as { text: string };
+        const m = b.text.match(/^(\*\*Accès\*\* : )(.*?)( \((?:temps|distances)[^)]*\))?\.$/);
+        if (m) {
+          const parts = m[2].split(" ; ").filter((x) => ![...villes].some((v) => v && x.startsWith(`${v} à `)));
+          if (parts.length) b.text = `${m[1]}${parts.join(" ; ")}${parts.some((x) => /min|h \d/.test(x)) ? (m[3] ?? "") : ""}.`;
+          else bl.splice(iAcc0, 1);
+        }
+      }
+      // Ordre : accès, liste aux municipales, puis les villes militantes (carte et tableau).
+      const iMun = bl.findIndex((b) => b.type === "paragraph" && /^\*\*Municipales 2026\*\*/.test(b.text));
       const iAcc = bl.findIndex((b) => b.type === "paragraph" && /^\*\*Accès\*\*/.test(b.text));
       const iOp = bl.findIndex((b) => b.type === "heading" && b.text === "Opérationnel");
-      bl.splice(iAcc >= 0 ? iAcc + 1 : iOp >= 0 ? iOp + 1 : bl.length, 0, ...acc.blocks);
+      const at = iMun >= 0 ? iMun + 1 : iAcc >= 0 ? iAcc + 1 : iOp >= 0 ? iOp + 1 : bl.length;
+      bl.splice(at, 0, ...acc.blocks);
     }
   }
   a.indicators.push(...lfi.indicators);

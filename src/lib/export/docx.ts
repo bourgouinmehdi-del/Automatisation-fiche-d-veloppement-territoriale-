@@ -25,7 +25,7 @@ import {
 } from "docx";
 import { SOURCES } from "../collectors/catalog";
 import { KIND_LABELS } from "../analysis/findings";
-import { fmtDate, fmtNumber, fmtValue, territoryName } from "../format";
+import { docTitle, fmtDate, fmtNumber, fmtValue, territoryName } from "../format";
 import { cellText, Citations, freshness, selectFindings, sourceLabel } from "../render/html";
 import { inlineParts } from "../render/cite";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "../render/svg";
@@ -156,7 +156,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
     case "kpis": {
       const items = b.indicatorIds.map((id) => indicatorFor(r, id)).filter((i): i is Indicator => !!i && i.value != null);
       if (!items.length) return [];
-      return [caption("Indicateurs clés"), table(["Indicateur", "Valeur", "Millésime", "Source"], items.map((i) => [i.label, fmtValue(i.value, i.unit), i.year ?? "", `[${cit.cite(i.source)}]`]), [1])];
+      return [caption("Indicateurs clés"), table(["Indicateur", "Valeur", "Millésime", "Source"], items.map((i) => [`${i.label}${i.geo.level !== "commune" ? ` — ${i.geo.name}` : ""}`, fmtValue(i.value, i.unit), i.year ?? "", `[${cit.cite(i.source)}]`]), [1])];
     }
     case "comparison": {
       const geos = r.references;
@@ -278,7 +278,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       const niv: Record<string, string> = { mieux: "mieux desservie", comme: "comme les communes semblables", moins: "moins bien desservie" };
       return [
         caption(b.title),
-        ...b.faibles.map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : le plus proche à ${km(f.km)}, contre ${km(f.medKm)} en général pour une commune de cette taille`, font: FONT, size: 19 })] })),
+        ...b.faibles.map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : le plus proche à ${km(f.km)}, ${f.medKm < 0.1 ? "alors que la plupart des communes de cette taille en ont un sur place" : `contre ${km(f.medKm)} en général pour une commune de cette taille`}`, font: FONT, size: 19 })] })),
         ...b.cats.map((c) => new Paragraph({ spacing: { after: 30 }, children: [new TextRun({ text: `${c.label} : `, font: FONT, size: 19, bold: true }), new TextRun({ text: niv[c.niveau], font: FONT, size: 19, color: c.niveau === "moins" ? "D1271C" : "52514E" })] })),
         new Paragraph({ spacing: { after: 160 }, children: [new TextRun({ text: b.note, font: FONT, size: 16, color: "52514E" })] }),
       ];
@@ -484,7 +484,7 @@ export async function reportToDocx(r: Report, opts: { sectionIds?: string[]; sty
 
   const doc = new Document({
     creator: "fiche-territoriale",
-    title: `Diagnostic territorial — ${r.commune.nom}`,
+    title: docTitle(r, false),
     description: "Fiche générée automatiquement à partir de données publiques",
     features: { updateFields: true },
     styles: {
@@ -498,7 +498,7 @@ export async function reportToDocx(r: Report, opts: { sectionIds?: string[]; sty
     sections: [
       {
         properties: { page: { margin: { top: 1000, bottom: 1000, left: 900, right: 900 } } },
-        headers: { default: new Header({ children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: `Diagnostic territorial — ${r.commune.nom} (${r.commune.code})`, font: FONT, size: 15, color: "8A8984" })] })] }) },
+        headers: { default: new Header({ children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: docTitle(r), font: FONT, size: 15, color: "8A8984" })] })] }) },
         footers: {
           default: new Footer({
             children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ children: ["Page ", PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES], font: FONT, size: 15, color: "8A8984" })] })],

@@ -103,6 +103,14 @@ export function territoryName(r: { query: { scope: string }; perimeter: { label:
   return r.query.scope === "circonscription" || r.query.scope === "epci" ? r.perimeter.label.replace(/^./, (x) => x.toUpperCase()) : r.commune.departement.nom;
 }
 
+/** Ciblage d'un département, d'une intercommunalité ou d'une circonscription (et non fiche d'une commune). */
+export const isTerritorial = (r: { query: { scope: string } }) => ["departement", "epci", "circonscription"].includes(r.query.scope);
+
+/** Titre du document : « Diagnostic territorial — Ivry-sur-Seine (94041) » ou « Développement territorial — Val-de-Marne ». */
+export function docTitle(r: { query: { scope: string }; perimeter: { label: string }; commune: { nom: string; code: string; departement: { nom: string } } }, withCode = true): string {
+  return isTerritorial(r) ? `Développement territorial — ${territoryName(r)}` : `Diagnostic territorial — ${r.commune.nom}${withCode ? ` (${r.commune.code})` : ""}`;
+}
+
 /** Couleur d'un score de 0 à 100 : rouge (faible), ambre, vert (élevé). */
 export function scoreColor(v: number): string {
   const x = Math.max(0, Math.min(100, v)) / 100;
