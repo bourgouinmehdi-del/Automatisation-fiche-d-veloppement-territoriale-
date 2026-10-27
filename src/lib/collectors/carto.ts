@@ -389,6 +389,50 @@ out tags bb;`;
   });
 }
 
+/* ------------------------------------- piscines et cinémas (complément BPE) */
+
+export interface EquipementOsm {
+  /** Code BPE équivalent : F101 (piscine), F303 (cinéma). */
+  type: "F101" | "F303";
+  nom: string;
+  lon: number;
+  lat: number;
+}
+
+/**
+ * Piscines publiques et cinémas d'un département (OpenStreetMap), pour compléter la BPE quand un
+ * équipement y manque (piscine d'Annonay absente de la BPE 2025). 30 jours sur disque.
+ */
+export async function collectEquipementsOsm(http: TrackedHttp, bbox: Bbox): Promise<{ list: EquipementOsm[]; url: string; retrievedAt: string }> {
+  const key = bbox.map((v) => v.toFixed(2)).join(",");
+  return cachedExtract(`equiposm|${key}`, 24 * 30, async () => {
+    const [w, s, e, n] = bbox;
+    const b = `(${s},${w},${n},${e})`;
+    const q = `[out:json][timeout:120];
+(
+  nwr["leisure"="sports_centre"]["sport"~"swimming"]${b};
+  nwr["leisure"="water_park"]${b};
+  nwr["leisure"="swimming_pool"]["access"~"^(yes|public)$"]${b};
+  nwr["amenity"="cinema"]${b};
+);
+out center tags;`;
+    const r = await overpass<{ elements?: El[] }>(http, q);
+    const list: EquipementOsm[] = [];
+    for (const el of r.data?.elements ?? []) {
+      const t = el.tags ?? {};
+      const lon = el.lon ?? el.center?.lon;
+      const lat = el.lat ?? el.center?.lat;
+      if (lon == null || lat == null) continue;
+      if (/^(private|no|customers)$/i.test(t.access ?? "")) continue;
+      const type = t.amenity === "cinema" ? "F303" : "F101";
+      // Un bassin dans un centre aquatique déjà compté : un seul équipement.
+      if (list.some((x) => x.type === type && turf.distance([x.lon, x.lat], [lon, lat]) <= 0.3)) continue;
+      list.push({ type, nom: t.name ?? (type === "F303" ? "Cinéma" : "Piscine"), lon, lat });
+    }
+    return { list, url: `${r.url}?data=${encodeURIComponent(q)}`, retrievedAt: r.retrievedAt };
+  });
+}
+
 /* ---------------------------------------------------- grandes surfaces */
 
 export interface GrandeSurface {

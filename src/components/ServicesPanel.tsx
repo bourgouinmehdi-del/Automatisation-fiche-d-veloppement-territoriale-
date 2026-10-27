@@ -7,7 +7,7 @@ import { ICONS } from "@/lib/render/icons";
 type B = Extract<Block, { type: "services" }>;
 export const NIVEAU: Record<string, { txt: string; cls: string }> = {
   mieux: { txt: "Mieux desservie", cls: "text-[#1b7f55]" },
-  comme: { txt: "Comme les communes semblables", cls: "text-[var(--ink-2)]" },
+  comme: { txt: "Dans la moyenne du département", cls: "text-[var(--ink-2)]" },
   moins: { txt: "Moins bien desservie", cls: "text-[var(--mark)] font-semibold" },
 };
 
@@ -42,7 +42,7 @@ export default function ServicesPanel({ b }: { b: B }) {
             {(
               [
                 [b.faibles, ""],
-                [dessous, b.faibles.length ? "Un peu en dessous des communes semblables" : "Aucun service très en retard, mais plusieurs un peu en dessous des communes semblables :"],
+                [dessous, b.faibles.length ? "Un peu en dessous de l'habitant moyen du département" : "Aucun service très en retard, mais plusieurs un peu en dessous de l'habitant moyen du département :"],
               ] as const
             )
               .filter(([xs]) => xs.length)
@@ -62,7 +62,7 @@ export default function ServicesPanel({ b }: { b: B }) {
               ))}
           </div>
         ) : (
-          <p className="text-sm text-[var(--ink-2)]">Aucun service moins accessible que dans les communes de taille comparable.</p>
+          <p className="text-sm text-[var(--ink-2)]">Aucun service moins accessible que pour l'habitant moyen du département.</p>
         )
       ) : (
         <div className="divide-y divide-[var(--line)] text-sm">

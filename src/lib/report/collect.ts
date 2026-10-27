@@ -31,7 +31,7 @@ import { BureauGeo, collectBureauxGeo } from "../collectors/bureaux-geo";
 import { InternalData, loadInternalData } from "../collectors/interne";
 import { loadStmt, type StmtSeries } from "../collectors/emploi";
 import { CATALOGUE_URL, isPorteAPorte, loadCatalogue, residencesOf, residencesOfGeocoded, type ResidenceEtudiante } from "../collectors/residences-etudiantes";
-import { circoCommunes, circoLabel, collectCirconscriptions, collectConvivialite, collectDepartementsVoisins, collectFondOsm, collectGrandesSurfaces, collectStationsTC, fitAspect, type Bbox, type Circo, type FondOsm, type GrandeSurface, type LieuConvivial, type StationTC, type Residence } from "../collectors/carto";
+import { circoCommunes, circoLabel, collectCirconscriptions, collectConvivialite, collectDepartementsVoisins, collectEquipementsOsm, collectFondOsm, collectGrandesSurfaces, collectStationsTC, fitAspect, type Bbox, type Circo, type FondOsm, type GrandeSurface, type EquipementOsm, type LieuConvivial, type StationTC, type Residence } from "../collectors/carto";
 import { rankBureaux } from "../analysis/political";
 import { collectRpls, type RplsResult } from "../collectors/rpls";
 import { collectAdultes, type AdultesDep } from "../collectors/adultes";
@@ -174,6 +174,8 @@ export interface Collected {
   rpls?: RplsResult & { source: SourceRef };
   /** Cartes « affiche » (commune) : fond OpenStreetMap et résidences étudiantes. */
   fond?: FondOsm & { bbox: Bbox; source: SourceRef };
+  /** Piscines et cinémas du département (OpenStreetMap), complément de la BPE. */
+  equipOsm?: { list: EquipementOsm[]; source: SourceRef };
   /** Lieux pour un moment convivial (grands parcs, jardins à bière, grands bars). */
   convivialite?: { list: LieuConvivial[]; source: SourceRef };
   /** Hypermarchés et supermarchés des grands groupes desservis en transports en commun. */
@@ -1344,6 +1346,12 @@ export async function collect(
       });
       c.convivialite = { list: inside, source: ctx.ref("osm", r.url, r.retrievedAt) };
     });
+    // Piscines et cinémas du département : complètent la BPE pour l'accès aux services.
+    if (c.depFeatures?.features.length)
+      await ctx.step("osm", "services:piscines-cinemas", async (http) => {
+        const r = await collectEquipementsOsm(http, turf.bbox(c.depFeatures!) as Bbox);
+        c.equipOsm = { list: r.list, source: ctx.ref("osm", r.url, r.retrievedAt) };
+      });
     // Stations de métro, RER, tram et gares (points de rendez-vous du convoi), un peu au-delà de la commune.
     await ctx.step("osm", "cartes:transports", async (http) => {
       const r = await collectStationsTC(http, [cb[0] - 0.008, cb[1] - 0.006, cb[2] + 0.008, cb[3] + 0.006]);
