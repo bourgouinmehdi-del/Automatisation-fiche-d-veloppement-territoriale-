@@ -177,7 +177,7 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
         if (!Number.isFinite(val) || !Number.isFinite(med) || med <= 0) continue;
         const e = Math.max(0.05 * med, 0.1);
         const score = Math.log2((med + e) / (val + e));
-        const faible = val <= 0.65 * med;
+        const faible = val <= 0.7 * med;
         rows.push({
           cat: cat.id,
           label: it.label,
@@ -198,8 +198,13 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
     if (!rs.length) return null;
     const g = rs.reduce((s, r) => s + r.score, 0) / rs.length;
     const faible = rs.some((r) => r.faible);
+    // « Moins bien desservie » : écart moyen net, ou la plupart des services un peu moins accessibles
+    // (Ivry : médecins, dentistes, infirmiers, urgences tous un peu en dessous, sans point faible isolé).
+    const pire = rs.filter((r) => r.score >= 0.25).length;
+    const mieux = rs.filter((r) => r.score <= -0.25).length;
+    const moitie = Math.ceil(rs.length / 2);
     // Une catégorie avec un point faible n'est jamais « mieux desservie ».
-    const niveau = g >= 0.35 || (faible && g >= 0) ? "moins" : g <= -0.35 && !faible ? "mieux" : "comme";
+    const niveau = g >= 0.2 || (pire >= moitie && pire > mieux) || (faible && g >= 0) ? "moins" : !faible && (g <= -0.2 || (mieux >= moitie && mieux > pire)) ? "mieux" : "comme";
     return { cat: c.id, label: c.label, niveau, items: rs.length } as CatScore;
   }).filter((x): x is CatScore => !!x);
   return { rows, faibles, cats, pairs: pairs.length };
