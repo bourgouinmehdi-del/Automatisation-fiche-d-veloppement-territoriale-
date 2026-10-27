@@ -3,13 +3,23 @@
 import { useState } from "react";
 import type { Block } from "@/lib/types";
 import { ICONS } from "@/lib/render/icons";
+import { niveauAcces } from "@/lib/render/indice";
 
 type B = Extract<Block, { type: "services" }>;
 export const NIVEAU: Record<string, { txt: string; cls: string }> = {
   mieux: { txt: "Mieux desservie", cls: "text-[#1b7f55]" },
-  comme: { txt: "Dans la moyenne du département", cls: "text-[var(--ink-2)]" },
+  comme: { txt: "Dans la moyenne", cls: "text-[var(--ink-2)]" },
   moins: { txt: "Moins bien desservie", cls: "text-[var(--mark)] font-semibold" },
 };
+
+function Pastille({ v, big = false }: { v: number; big?: boolean }) {
+  const n = niveauAcces(v);
+  return (
+    <span className={`inline-block rounded-full font-semibold ${big ? "px-3 py-1 text-sm" : "px-2 py-0.5 text-xs"}`} style={{ background: n.bg, color: n.fg }}>
+      {n.txt}
+    </span>
+  );
+}
 
 function Icon({ cat }: { cat: string }) {
   return <span className="inline-flex shrink-0 text-[var(--accent)]" dangerouslySetInnerHTML={{ __html: ICONS[cat] ?? "" }} />;
@@ -37,13 +47,20 @@ export default function ServicesPanel({ b }: { b: B }) {
         </div>
       </div>
       {b.indice && (
-        <div className="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
-          <span>
-            Indice d'accès aux services :{" "}
-            <b className={b.indice.global < 85 ? "text-[var(--mark)]" : b.indice.global > 115 ? "text-[#1b7f55]" : ""}>{b.indice.global}</b>
-            <span className="text-[var(--ink-2)]"> ({b.indice.ref} = 100)</span>
-          </span>
-          <span className="text-xs text-[var(--ink-2)]">{b.indice.gammes.map((g) => `${g.label} : ${g.value}`).join(" ; ")}</span>
+        <div className="mb-4 rounded-md border border-[var(--line)] p-3">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span>Accès aux services, comparé {b.indice.ref === "France" ? "à l'habitant moyen en France" : "à l'habitant moyen du département"} :</span>
+            <Pastille v={b.indice.global} big />
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {b.indice.gammes.map((g) => (
+              <div key={g.label} className="text-xs">
+                <div className="font-semibold text-[var(--ink)]">{g.label}</div>
+                {g.exemples && <div className="mb-1 text-[var(--ink-2)]">{g.exemples}</div>}
+                <Pastille v={g.value} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {mode === "faibles" ? (
@@ -52,7 +69,7 @@ export default function ServicesPanel({ b }: { b: B }) {
             {(
               [
                 [b.faibles, ""],
-                [dessous, b.faibles.length ? "Un peu en dessous de l'habitant moyen du département" : "Aucun service très en retard, mais plusieurs un peu en dessous de l'habitant moyen du département :"],
+                [dessous, b.faibles.length ? "Un peu en dessous de la moyenne" : "Aucun service très en retard, mais plusieurs un peu en dessous de la moyenne :"],
               ] as const
             )
               .filter(([xs]) => xs.length)

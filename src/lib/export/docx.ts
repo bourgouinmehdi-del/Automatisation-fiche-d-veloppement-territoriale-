@@ -1,3 +1,4 @@
+import { niveauAcces } from "../render/indice";
 import { splitWarnings } from "../report/warnings";
 import { presenceSvg } from "../render/presence";
 import { posterItems } from "../render/poster";
@@ -274,10 +275,15 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
         new Paragraph({ spacing: { after: 120 }, children: [] }),
       ];
     case "services": {
-      const niv: Record<string, string> = { mieux: "mieux desservie", comme: "dans la moyenne du département", moins: "moins bien desservie" };
+      const niv: Record<string, string> = { mieux: "mieux desservie", comme: "dans la moyenne", moins: "moins bien desservie" };
       return [
         caption(b.title),
-        ...(b.indice ? [new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: `Indice d'accès aux services : ${b.indice.global} (${b.indice.ref} = 100). `, font: FONT, size: 19, bold: true }), new TextRun({ text: b.indice.gammes.map((g) => `${g.label} : ${g.value}`).join(" ; "), font: FONT, size: 17, color: "52514E" })] })] : []),
+        ...(b.indice
+          ? [
+              new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: `Accès aux services, comparé ${b.indice.ref === "France" ? "à l'habitant moyen en France" : "à l'habitant moyen du département"} : `, font: FONT, size: 19 }), new TextRun({ text: niveauAcces(b.indice.global).txt.toLowerCase(), font: FONT, size: 19, bold: true, color: niveauAcces(b.indice.global).ink.replace("#", "") })] }),
+              ...b.indice.gammes.map((g) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 20 }, children: [new TextRun({ text: `${g.label}${g.exemples ? ` (${g.exemples})` : ""} : `, font: FONT, size: 18 }), new TextRun({ text: niveauAcces(g.value).txt.toLowerCase(), font: FONT, size: 18, bold: true, color: niveauAcces(g.value).ink.replace("#", "") })] })),
+            ]
+          : []),
         ...b.faibles.map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : ${f.txt}`, font: FONT, size: 19 })] })),
         ...(b.enDessous ?? []).map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : un peu en dessous, ${f.txt}`, font: FONT, size: 19 })] })),
         ...b.cats.map((c) => new Paragraph({ spacing: { after: 30 }, children: [new TextRun({ text: `${c.label} : `, font: FONT, size: 19, bold: true }), new TextRun({ text: niv[c.niveau], font: FONT, size: 19, color: c.niveau === "moins" ? "D1271C" : "52514E" })] })),

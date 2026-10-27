@@ -74,10 +74,10 @@ export const SERVICE_CATS: { id: ServiceCat; label: string; items: { label: stri
  * proximité (au quotidien), intermédiaire, supérieure (plus rares).
  */
 export type Gamme = "proximite" | "intermediaire" | "superieure";
-export const GAMMES: Record<Gamme, { label: string; poids: number }> = {
-  proximite: { label: "proximité", poids: 0.5 },
-  intermediaire: { label: "intermédiaire", poids: 0.3 },
-  superieure: { label: "supérieure", poids: 0.2 },
+export const GAMMES: Record<Gamme, { label: string; exemples: string; poids: number }> = {
+  proximite: { label: "Au quotidien", exemples: "médecin, pharmacie, école, poste, supermarché", poids: 0.5 },
+  intermediaire: { label: "Moins souvent", exemples: "dentiste, crèche, collège, banque, police, piscine", poids: 0.3 },
+  superieure: { label: "Plus rarement", exemples: "lycée, urgences, maternité, gare, cinéma", poids: 0.2 },
 };
 const GAMME_OF: Record<string, Gamme> = {
   "Médecin généraliste": "proximite",
@@ -137,7 +137,7 @@ export interface ServicesResult {
   faibles: ServiceRow[];
   cats: CatScore[];
   /** Indice d'accès (France = 100) : global et par gamme. */
-  indice: { global: number; ref: "France" | "département"; gammes: { id: Gamme; label: string; value: number }[] } | null;
+  indice: { global: number; ref: "France" | "département"; gammes: { id: Gamme; label: string; exemples: string; value: number }[] } | null;
 }
 
 type Pt = [number, number];
@@ -286,9 +286,9 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
       const rs = rows.filter((r) => GAMME_OF[r.label] === g);
       if (!rs.length) return null;
       const m = rs.reduce((t, r) => t + r.score, 0) / rs.length;
-      return { id: g, label: GAMMES[g].label, value: Math.round(Math.max(0, Math.min(200, 100 * 2 ** -m))) };
+      return { id: g, label: GAMMES[g].label, exemples: GAMMES[g].exemples, value: Math.round(Math.max(0, Math.min(200, 100 * 2 ** -m))) };
     })
-    .filter((x): x is { id: Gamme; label: string; value: number } => !!x);
+    .filter((x): x is { id: Gamme; label: string; exemples: string; value: number } => !!x);
   const wTot = gammes.reduce((t, g) => t + GAMMES[g.id].poids, 0);
   const indice = gammes.length ? { global: Math.round(gammes.reduce((t, g) => t + g.value * GAMMES[g.id].poids, 0) / wTot), ref: (nat && Object.keys(nat).length ? "France" : "département") as "France" | "département", gammes } : null;
   return { rows, faibles, cats, indice };
