@@ -246,12 +246,11 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
         .map((i) => `<div class="gl ${i.tone ?? "neutral"}"><div class="gl-v">${esc(i.value)}</div><div class="gl-l">${esc(i.label)}</div>${i.detail ? `<div class="gl-d">${esc(i.detail)}</div>` : ""}</div>`)
         .join("")}</div>`;
     case "services": {
-      const km = (v: number) => (v < 0.1 ? "sur place" : `${fmtNumber(v, v < 10 ? 1 : 0)} km`);
       const niv: Record<string, string> = { mieux: "Mieux desservie", comme: "Comme les communes semblables", moins: "Moins bien desservie" };
       const faibles = b.faibles.length
-        ? `<div class="sv-sub">Points faibles</div><ul class="sv-l">${b.faibles.map((f) => `<li><span class="sv-i">${ICONS[f.cat] ?? ""}</span><b>${esc(f.label)}</b> : le plus proche à ${km(f.km)}, ${f.medKm < 0.1 ? "alors que la plupart des communes de cette taille en ont un sur place" : `contre ${km(f.medKm)} en général pour une commune de cette taille`}</li>`).join("")}</ul>`
+        ? `<div class="sv-sub">Points faibles</div><ul class="sv-l">${b.faibles.map((f) => `<li><span class="sv-i">${ICONS[f.cat] ?? ""}</span><b>${esc(f.label)}</b> : ${esc(f.txt)}</li>`).join("")}</ul>`
         : "";
-      const cats = `<div class="sv-sub">Par catégorie</div><table class="sv-t"><tbody>${b.cats.map((c) => `<tr><td><span class="sv-i">${ICONS[c.cat] ?? ""}</span><b>${esc(c.label)}</b></td><td class="sv-${c.niveau}">${niv[c.niveau]}</td><td class="sv-d">${c.details.map((d) => `${esc(d.label)} : ${d.surPlace ? "dans la commune" : km(d.km)}`).join(" ; ")}</td></tr>`).join("")}</tbody></table>`;
+      const cats = `<div class="sv-sub">Par catégorie</div><table class="sv-t"><tbody>${b.cats.map((c) => `<tr><td><span class="sv-i">${ICONS[c.cat] ?? ""}</span><b>${esc(c.label)}</b></td><td class="sv-${c.niveau}">${niv[c.niveau]}</td><td class="sv-d">${c.details.map((d) => `${esc(d.label)} : ${esc(d.txt)}`).join(" ; ")}</td></tr>`).join("")}</tbody></table>`;
       return `<figure class="services"><figcaption>${esc(b.title)}</figcaption>${faibles}${cats}<div class="pr-n">${esc(b.note)}</div></figure>`;
     }
     case "plan":

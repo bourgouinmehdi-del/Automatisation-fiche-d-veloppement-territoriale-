@@ -183,8 +183,8 @@ describe("chaîne de génération (API simulées)", () => {
     const sv = fiche.blocks.find((b) => b.type === "services") as Extract<(typeof fiche.blocks)[number], { type: "services" }>;
     expect(sv.cats.map((k) => k.cat)).toEqual(expect.arrayContaining(["sante", "securite"]));
     const ph = sv.cats.find((k) => k.cat === "sante")!.details.find((d) => d.label === "Pharmacie")!;
-    expect(ph.surPlace).toBe(false);
-    expect(ph.km).toBeGreaterThan(2);
+    // Pharmacie : offre à portée (pour 10 000 habitants à moins de 5 km), comparée aux communes semblables.
+    expect(ph.txt).toMatch(/pour 10 000 habitants à moins de 5 km \(communes semblables : /);
     // À quoi s'attendre à la porte, sur 100 adultes.
     const prof = report.tables.find((x) => x.id === "lfi_profils");
     expect(prof?.rows.map((r) => r.profil)).toEqual(expect.arrayContaining(["A voté Mélenchon à la présidentielle 2022", "A voté LFI aux européennes 2024", "Inscrit, mais n'a pas voté en 2024"]));

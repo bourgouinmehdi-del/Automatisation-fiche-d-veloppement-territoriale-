@@ -21,7 +21,7 @@ describe("accès aux services en ville", () => {
     // Lycée dans toutes les communes sauf la première, à 2 km environ.
     const equip = communes.slice(1).map((c) => eq("C301", c.code, c.at[0], c.at[1]));
     const r = servicesAccess("59000", communes.map((c, i) => (i === 0 ? { ...c, at: [2.99, 50.6] as [number, number] } : c)), equip)!;
-    expect(r.rows.find((x) => x.label === "Lycée")!.km).toBeLessThan(3);
+    expect(r.rows.find((x) => x.label === "Lycée")!.val).toBeLessThan(3);
     expect(r.faibles).toEqual([]);
   });
 });

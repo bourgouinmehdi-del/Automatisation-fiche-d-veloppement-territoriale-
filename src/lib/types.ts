@@ -277,8 +277,8 @@ export type Block =
   | {
       type: "services";
       title: string;
-      faibles: { cat: string; label: string; km: number; medKm: number }[];
-      cats: { cat: string; label: string; niveau: "mieux" | "comme" | "moins"; details: { label: string; km: number; medKm: number; surPlace: boolean }[] }[];
+      faibles: { cat: string; label: string; txt: string }[];
+      cats: { cat: string; label: string; niveau: "mieux" | "comme" | "moins"; details: { label: string; txt: string }[] }[];
       note: string;
     }
   /** Plan d'action : une ligne par type d'action, le nombre de lieux et la liste dépliable. */

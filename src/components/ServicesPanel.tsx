@@ -3,10 +3,8 @@
 import { useState } from "react";
 import type { Block } from "@/lib/types";
 import { ICONS } from "@/lib/render/icons";
-import { fmtNumber } from "@/lib/format";
 
 type B = Extract<Block, { type: "services" }>;
-const km = (v: number) => (v < 0.1 ? "sur place" : `${fmtNumber(v, v < 10 ? 1 : 0)} km`);
 export const NIVEAU: Record<string, { txt: string; cls: string }> = {
   mieux: { txt: "Mieux desservie", cls: "text-[#1b7f55]" },
   comme: { txt: "Comme les communes semblables", cls: "text-[var(--ink-2)]" },
@@ -45,7 +43,7 @@ export default function ServicesPanel({ b }: { b: B }) {
                 <Icon cat={f.cat} />
                 <span className="font-semibold">{f.label}</span>
                 <span className="text-[var(--ink-2)]">
-                  : le plus proche à {km(f.km)}, {f.medKm < 0.1 ? "alors que la plupart des communes de cette taille en ont un sur place" : `contre ${km(f.medKm)} en général pour une commune de cette taille`}
+                  : {f.txt}
                 </span>
               </li>
             ))}
@@ -65,7 +63,7 @@ export default function ServicesPanel({ b }: { b: B }) {
               <ul className="mt-1.5 space-y-0.5 pl-7 text-[var(--ink-2)]">
                 {c.details.map((d) => (
                   <li key={d.label}>
-                    {d.label} : {d.surPlace ? "dans la commune" : `à ${km(d.km)}`} (communes semblables : {km(d.medKm)})
+                    {d.label} : {d.txt}
                   </li>
                 ))}
               </ul>
