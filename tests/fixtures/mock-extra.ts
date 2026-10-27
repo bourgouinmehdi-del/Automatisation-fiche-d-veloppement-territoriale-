@@ -140,6 +140,8 @@ export function mockExtra(url: URL): Response | null {
     add(320, "12", "DES ROSES", "LES MUSICIENS", "QN06099M", 0.02, 0.01);
     add(180, "4", "DES ROSES", "CLOS DES ROSES", "QN06099M", 0.0206, 0.0104);
     add(24, "7", "DU MARCHE", "", "", 0.005, 0.03);
+    // Coordonnées erronées (résidence placée à 80 km) : doit être écartée.
+    add(30, "9", "DES LOINTAINS", "", "", 0.9, -0.5);
     return new Response(lines.join("\n"), { status: 200, headers: { "Content-Type": "text/csv" } });
   }
   // Cartes « affiche » : circonscriptions (deux moitiés du département fictif) et départements voisins.

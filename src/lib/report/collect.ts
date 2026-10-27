@@ -894,8 +894,21 @@ export async function collect(
           const nom = bare(x.nom) === bare(commune.nom) ? adresse : pf(x.nom);
           return { ...x, nom, adresse, ...(x.voie ? { voie: pf(x.voie) } : {}), ...(x.nums ? { nums: x.nums.map((n) => numVoie(n)) } : {}) };
         });
-        const ensembles = r.ensembles.map((x) => ({ ...x, nom: pf(x.nom) }));
-        if (r.total) c.rpls = { ...r, residences, ensembles, source: ctx.ref("rpls", r.url, r.retrievedAt, { vintage: r.millesime ?? undefined }) };
+        // Coordonnées erronées dans le répertoire (Faches-Thumesnil : résidences placées près de Saint-Quentin) :
+        // on écarte ce qui tombe à plus de 300 m de la commune.
+        const inCommune = (lon: number, lat: number) => {
+          if (!commune.contour) return true;
+          try {
+            return turf.booleanPointInPolygon([lon, lat], commune.contour as GeoJSON.Polygon) || turf.pointToPolygonDistance([lon, lat], commune.contour as GeoJSON.Polygon, { units: "kilometers" }) <= 0.3;
+          } catch {
+            return true;
+          }
+        };
+        const kept = residences.filter((x) => inCommune(x.lon, x.lat));
+        const horsCommune = residences.length - kept.length;
+        if (horsCommune) http.notes.push(`${horsCommune} résidence${horsCommune > 1 ? "s" : ""} écartée${horsCommune > 1 ? "s" : ""} : coordonnées hors de la commune dans le répertoire`);
+        const ensembles = r.ensembles.filter((x) => inCommune(x.lon, x.lat)).map((x) => ({ ...x, nom: pf(x.nom) }));
+        if (r.total) c.rpls = { ...r, residences: kept, ensembles, source: ctx.ref("rpls", r.url, r.retrievedAt, { vintage: r.millesime ?? undefined }) };
         else http.notes.push("Aucun logement social recensé dans la commune");
       },
       { theme: "logement", label: "Résidences de logements sociaux (RPLS)" },
