@@ -1,10 +1,11 @@
-import * as turf from "@turf/turf";
 import type { BpeEquipement } from "../collectors/bpe";
 import { fmtNumber } from "../format";
 
 /**
- * Accessibilité aux services, à l'échelle de la commune, comparée aux communes de taille semblable du
- * département (de la moitié au double de la population).
+ * Accessibilité aux services, à l'échelle de la commune, comparée à celle de l'habitant moyen du
+ * département (médiane pondérée par la population de toutes les communes). Les communes de même taille
+ * (de la moitié au double de la population) sont données en repère : comparer à elles seules effacerait
+ * le retard commun des petites villes et des bourgs délaissés.
  *
  * Trois mesures selon le service :
  * - services courants (médecin, pharmacie, dentiste, infirmier, crèche) : l'offre à portée, en nombre
@@ -79,13 +80,13 @@ export interface ServiceRow {
   mode: Mode;
   /** Distance (km) ou offre pour 10 000 habitants. */
   val: number;
-  /** Médiane des communes comparables, même mesure. */
+  /** Référence : habitant moyen du département (médiane pondérée par la population), même mesure. */
   med: number;
   surPlace: boolean;
-  /** Écart aux communes comparables (log2) : positif = moins bien desservie. */
+  /** Écart à la référence (log2) : positif = moins bien desservie. */
   score: number;
   faible: boolean;
-  /** Ligne lisible (« 4,1 pour 10 000 habitants à moins de 5 km (communes semblables : 6,4) »). */
+  /** Ligne lisible (« 4,1 pour 10 000 habitants à moins de 5 km (habitant moyen du département : 6,4 ; communes de même taille : 6,0) »). */
   txt: string;
   /** Phrase des points faibles. */
   txtFaible: string;
@@ -106,6 +107,11 @@ export interface ServicesResult {
 }
 
 type Pt = [number, number];
+/** Distance approchée en km (équirectangulaire : suffisant à l'échelle d'un département, et rapide). */
+const dkm = (a: Pt, b: Pt) => {
+  const x = (b[0] - a[0]) * Math.cos(((a[1] + b[1]) * Math.PI) / 360);
+  return Math.hypot(x, b[1] - a[1]) * 111.2;
+};
 const km = (v: number) => (v < 0.1 ? "sur place" : `${fmtNumber(v, v < 10 ? 1 : 0)} km`);
 const per = (v: number) => fmtNumber(v, v < 10 ? 1 : 0);
 
@@ -128,12 +134,25 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
   // Communes à moins de 5 km de chaque commune étudiée (population à portée).
   const voisinsMemo = new Map<string, { code: string; pop: number }[]>();
   const voisins = (x: { code: string; at: Pt; pop: number }) => {
-    if (!voisinsMemo.has(x.code)) voisinsMemo.set(x.code, communes.filter((y) => y.code === x.code || turf.distance(x.at, y.at) <= OFFRE_KM));
+    if (!voisinsMemo.has(x.code)) voisinsMemo.set(x.code, communes.filter((y) => y.code === x.code || dkm(x.at, y.at) <= OFFRE_KM));
     return voisinsMemo.get(x.code)!;
   };
   const median = (v: number[]) => {
     const s = v.filter(Number.isFinite).sort((a, b) => a - b);
     return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN;
+  };
+  // Référence : l'habitant moyen du département (médiane pondérée par la population de toutes ses
+  // communes). Comparer aux seules communes de même taille effacerait le retard commun des petites
+  // villes et des bourgs délaissés : elles comptent ici face à ce dont dispose un habitant ordinaire.
+  const medianePond = (vals: number[]) => {
+    const xs = communes.map((c, i) => ({ v: vals[i], w: Math.max(1, c.pop) })).filter((x) => Number.isFinite(x.v)).sort((a, b) => a.v - b.v);
+    const tot = xs.reduce((s, x) => s + x.w, 0);
+    let acc = 0;
+    for (const x of xs) {
+      acc += x.w;
+      if (acc >= tot / 2) return x.v;
+    }
+    return NaN;
   };
   const rows: ServiceRow[] = [];
   for (const cat of SERVICE_CATS)
@@ -145,25 +164,27 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
         const dist = (x: { code: string; at: Pt }) => {
           if (here(x.code)) return 0;
           let best = Infinity;
-          for (const e of pts) best = Math.min(best, turf.distance(x.at, [e.lon, e.lat]));
+          for (const e of pts) best = Math.min(best, dkm(x.at, [e.lon, e.lat]));
           return best;
         };
         const val = dist(me);
         const med = median(pairs.map(dist));
-        if (!Number.isFinite(val) || !Number.isFinite(med)) return null;
-        const score = Math.log2((Math.max(val, DIST_MIN) + 0.5) / (Math.max(med, DIST_MIN) + 0.5));
-        const faible = score >= 0.6 && val - med >= 1.5 && val >= 3;
+        const ref = medianePond(communes.map(dist));
+        if (!Number.isFinite(val) || !Number.isFinite(ref)) return null;
+        const score = Math.log2((Math.max(val, DIST_MIN) + 0.5) / (Math.max(ref, DIST_MIN) + 0.5));
+        const faible = score >= 0.6 && val - ref >= 1.5 && val >= 3;
+        const semblables = Number.isFinite(med) ? ` ; communes de même taille : ${km(med)}` : "";
         return {
           cat: cat.id,
           label: it.label,
           mode: "distance",
           val,
-          med,
+          med: ref,
           surPlace: val === 0,
           score,
           faible,
-          txt: `${val === 0 ? "dans la commune" : `à ${km(val)}`} (communes semblables : ${km(med)})`,
-          txtFaible: `le plus proche à ${km(val)}, ${med < 0.1 ? "alors que la plupart des communes de cette taille en ont un sur place" : `contre ${km(med)} en général pour une commune de cette taille`}`,
+          txt: `${val === 0 ? "dans la commune" : `à ${km(val)}`} (habitant moyen du département : ${km(ref)}${semblables})`,
+          txtFaible: `le plus proche à ${km(val)}, contre ${km(ref)} pour l'habitant moyen du département${Number.isFinite(med) ? ` (communes de même taille : ${km(med)})` : ""}`,
         };
       };
       // Offre à portée : équipements de la commune et à moins de 5 km, pour 10 000 habitants à portée.
@@ -171,26 +192,28 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
         const offre = (x: { code: string; at: Pt; pop: number }) => {
           const vs = voisins(x);
           const set = new Set(vs.map((v) => v.code));
-          const n = pts.filter((e) => set.has(e.commune) || turf.distance(x.at, [e.lon, e.lat]) <= OFFRE_KM).length;
+          const n = pts.filter((e) => set.has(e.commune) || dkm(x.at, [e.lon, e.lat]) <= OFFRE_KM).length;
           const pop = vs.reduce((s, v) => s + v.pop, 0);
           return pop > 0 ? (10000 * n) / pop : NaN;
         };
         const val = offre(me);
         const med = median(pairs.map(offre));
-        if (!Number.isFinite(val) || !Number.isFinite(med) || med <= 0) return null;
-        const e = Math.max(0.05 * med, 0.1);
-        const score = Math.log2((med + e) / (val + e));
+        const ref = medianePond(communes.map(offre));
+        if (!Number.isFinite(val) || !Number.isFinite(ref) || ref <= 0) return null;
+        const e = Math.max(0.05 * ref, 0.1);
+        const score = Math.log2((ref + e) / (val + e));
+        const semblables = Number.isFinite(med) ? ` ; communes de même taille : ${per(med)}` : "";
         return {
           cat: cat.id,
           label: it.label,
           mode: "offre",
           val,
-          med,
+          med: ref,
           surPlace: here(code),
           score,
-          faible: val <= seuilFaible * med,
-          txt: `${per(val)} pour 10 000 habitants à moins de ${OFFRE_KM} km (communes semblables : ${per(med)})`,
-          txtFaible: `${per(val)} pour 10 000 habitants à moins de ${OFFRE_KM} km, contre ${per(med)} en général pour une commune de cette taille`,
+          faible: val <= seuilFaible * ref,
+          txt: `${per(val)} pour 10 000 habitants à moins de ${OFFRE_KM} km (habitant moyen du département : ${per(ref)}${semblables})`,
+          txtFaible: `${per(val)} pour 10 000 habitants à moins de ${OFFRE_KM} km, contre ${per(ref)} pour l'habitant moyen du département${Number.isFinite(med) ? ` (communes de même taille : ${per(med)})` : ""}`,
         };
       };
       let row: ServiceRow | null;

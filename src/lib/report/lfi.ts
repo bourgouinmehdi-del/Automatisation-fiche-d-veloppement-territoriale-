@@ -2382,7 +2382,20 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         return [];
       }
     });
-    const sv = c.bpe?.departement?.length && centres.length >= 8 ? servicesAccess(commune.code, centres, c.bpe.departement) : null;
+    // Piscines et cinémas d'OpenStreetMap absents de la BPE (à plus de 400 m d'un équipement BPE du même type).
+    const equip = [...(c.bpe?.departement ?? [])];
+    for (const o of c.equipOsm?.list ?? []) {
+      if (equip.some((e) => e.type === o.type && e.lon != null && e.lat != null && turf.distance([e.lon, e.lat], [o.lon, o.lat]) <= 0.4)) continue;
+      const f = (c.depFeatures?.features ?? []).find((x) => {
+        try {
+          return turf.booleanPointInPolygon([o.lon, o.lat], x as GeoJSON.Feature<GeoJSON.Polygon>);
+        } catch {
+          return false;
+        }
+      });
+      if (f) equip.push({ type: o.type, nom: o.nom, commune: String((f.properties as { code?: string }).code), lon: o.lon, lat: o.lat, qp: null, adresse: "" });
+    }
+    const sv = equip.length && centres.length >= 8 ? servicesAccess(commune.code, centres, equip) : null;
     if (sv && sv.rows.length) {
       blocks.push({
         type: "services",
@@ -2390,7 +2403,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         faibles: sv.faibles.slice(0, 6).map((x) => ({ cat: x.cat, label: x.label, txt: x.txtFaible })),
         enDessous: sv.rows.filter((x) => !x.faible && x.score >= 0.25).sort((a, b) => b.score - a.score).slice(0, 6).map((x) => ({ cat: x.cat, label: x.label, txt: x.txt })),
         cats: sv.cats.map((k) => ({ cat: k.cat, label: k.label, niveau: k.niveau, details: sv.rows.filter((x) => x.cat === k.cat).map((x) => ({ label: x.label, txt: x.txt })) })),
-        note: `Comparaison avec la médiane des ${sv.pairs} communes de taille comparable du département. Médecin, pharmacie, dentiste, infirmier, crèche : nombre pour 10 000 habitants dans un rayon de ${OFFRE_KM} km (commune et communes proches). Urgences, maternité, gare : distance à vol d'oiseau au plus proche, où qu'il soit dans le département (0 km s'il est dans la commune, écarts sous 2 km non comptés). Autres services : les deux mesures, la moins favorable est retenue (en ville, le nombre pour la population ; à la campagne, la distance). Base permanente des équipements (INSEE, ${BPE_VINTAGE}).`,
+        note: `Comparaison avec l'habitant moyen du département (médiane pondérée par la population de toutes les communes) ; en repère, les ${sv.pairs} communes de taille comparable. Médecin, pharmacie, dentiste, infirmier, crèche : nombre pour 10 000 habitants dans un rayon de ${OFFRE_KM} km (commune et communes proches). Urgences, maternité, gare : distance à vol d'oiseau au plus proche, où qu'il soit dans le département (0 km s'il est dans la commune, écarts sous 2 km non comptés). Autres services : les deux mesures, la moins favorable est retenue (en ville, le nombre pour la population ; à la campagne, la distance). Base permanente des équipements (INSEE, ${BPE_VINTAGE})${c.equipOsm?.list.length ? ", complétée par OpenStreetMap pour les piscines et cinémas" : ""}.`,
       });
     }
   }

@@ -274,7 +274,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
         new Paragraph({ spacing: { after: 120 }, children: [] }),
       ];
     case "services": {
-      const niv: Record<string, string> = { mieux: "mieux desservie", comme: "comme les communes semblables", moins: "moins bien desservie" };
+      const niv: Record<string, string> = { mieux: "mieux desservie", comme: "dans la moyenne du département", moins: "moins bien desservie" };
       return [
         caption(b.title),
         ...b.faibles.map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : ${f.txt}`, font: FONT, size: 19 })] })),

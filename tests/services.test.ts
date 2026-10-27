@@ -23,7 +23,7 @@ describe("accès aux services", () => {
     const equip = communes.flatMap((c, i) => Array.from({ length: i === 0 ? 2 : 10 }, () => eq("D265", c.code, c.at[0], c.at[1])));
     const r = servicesAccess("07000", communes, equip)!;
     const med = r.rows.find((x) => x.label === "Médecin généraliste")!;
-    expect(med.txt).toBe("1,3 pour 10 000 habitants à moins de 5 km (communes semblables : 6,7)");
+    expect(med.txt).toBe("1,3 pour 10 000 habitants à moins de 5 km (habitant moyen du département : 6,7 ; communes de même taille : 6,7)");
     expect(r.faibles.map((x) => x.label)).toContain("Médecin généraliste");
     expect(r.cats.find((x) => x.cat === "sante")!.niveau).toBe("moins");
   });
@@ -65,5 +65,19 @@ describe("services en ville (mesure mixte)", () => {
     expect(r.cats.find((x) => x.cat === "culture")!.niveau).toBe("moins");
     // La poste : pareil partout, « comme ».
     expect(r.cats.find((x) => x.cat === "public")!.niveau).toBe("comme");
+  });
+});
+
+describe("référence : l'habitant moyen du département", () => {
+  it("signale une petite ville délaissée même quand ses semblables le sont aussi", () => {
+    // Une grande ville (200 000 habitants, 20 piscines) et 12 petites villes sans piscine, à 15 km.
+    const petites = Array.from({ length: 12 }, (_, i) => ({ code: `07${String(i).padStart(3, "0")}`, at: [4 + i * 0.01, 45.3] as [number, number], pop: 15000 }));
+    const grande = { code: "07999", at: [4, 45.43] as [number, number], pop: 200000 };
+    const eq = (type: string, commune: string, lon: number, lat: number) => ({ type, nom: "", commune, lon, lat, qp: null, adresse: "" });
+    const equip = Array.from({ length: 20 }, () => eq("F101", grande.code, grande.at[0], grande.at[1]));
+    const r = servicesAccess("07000", [...petites, grande], equip)!;
+    const pis = r.rows.find((x) => x.label === "Piscine")!;
+    expect(pis.faible).toBe(true);
+    expect(pis.txtFaible).toMatch(/^le plus proche à 1\d km, contre sur place pour l'habitant moyen du département \(communes de même taille : 1\d km\)$/);
   });
 });
