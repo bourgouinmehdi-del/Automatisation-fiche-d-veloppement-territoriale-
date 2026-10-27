@@ -34,6 +34,7 @@ const BIG_HUB_PARRAINS = 2000;
 const BIG_HUB_MAX_KM = 130;
 /** Communes voisines avec un groupe d'action actif, quelle que soit leur taille. */
 const LOCAL_GA_KM = 25;
+const parrainsTxt = (n: number) => `${fmtNumber(Math.round(n))} parrain${Math.round(n) > 1 ? "s" : ""}`;
 
 interface Lieu {
   code: string;
@@ -95,9 +96,14 @@ export async function ciblageAcces(
       return (ville && (x.km <= HUB_MAX_KM || (x.b.parrains >= BIG_HUB_PARRAINS && x.km <= BIG_HUB_MAX_KM))) || x.km <= LOCAL_GA_KM;
     });
   const max = opts.fiche ? HUB_MAX_FICHE : HUB_MAX;
+  // Moitié : les communes les plus proches (souvent un seul groupe) ; puis les villes militantes les plus
+  // proches (Figeac avant Toulouse) ; la dernière place à la plus grande ville à portée (Toulouse, Paris).
+  const estVille = (x: (typeof cands)[number]) => x.b.ga >= HUB_MIN_GA || x.b.parrains >= HUB_MIN_PARRAINS;
   const nearest = [...cands].sort((a, b) => a.km - b.km).slice(0, Math.ceil(max / 2));
-  const biggest = cands.filter((x) => !nearest.includes(x)).sort((a, b) => b.b.parrains - a.b.parrains).slice(0, max - nearest.length);
-  const hubs = [...nearest, ...biggest];
+  const reste = cands.filter((x) => !nearest.includes(x) && estVille(x));
+  const grande = [...reste].sort((a, b) => b.b.parrains - a.b.parrains)[0];
+  const villes = reste.filter((x) => x !== grande).sort((a, b) => a.km - b.km).slice(0, Math.max(0, max - nearest.length - 1));
+  const hubs = [...nearest, ...villes, ...(grande && nearest.length + villes.length < max ? [grande] : [])];
   if (!hubs.length) return null;
 
   // 3. Voiture : une matrice OSRM (villes militantes → territoires).
@@ -151,7 +157,8 @@ export async function ciblageAcces(
     const gareSet = (key: string, lon: number, lat: number, km: number) => {
       const g = groups.find((x) => x.key === key);
       const own = g ? railStations(r, g.stations) : new Set<number>();
-      if (own.size) return own;
+      // Île-de-France : le RER et le métro (calculés à part) font le travail ; pas de détour par une gare parisienne.
+      if (own.size || IDF.has(key.slice(0, 2))) return own;
       const near = r.stations.map((st, i) => ({ i, d: turf.distance([lon, lat], [st.lon, st.lat]) })).filter((x) => x.d <= km).sort((a, b) => a.d - b.d);
       if (near.length) gareProche.set(key, r.stations[near[0].i].nom);
       return new Set(near.slice(0, 1).map((x) => x.i));
@@ -190,7 +197,8 @@ export async function ciblageAcces(
             : new Set<number>();
         if (!inside.size) continue;
         for (const h of hubs.filter((x) => idf(x.l.code))) {
-          const from = near(h.l.lon, h.l.lat, 1.2);
+          // Stations déjà dans la commune visée : pas de trajet (« 0 min à pied ») ; on part des autres.
+          const from = new Set([...near(h.l.lon, h.l.lat, 1.2)].filter((i) => !inside.has(i)));
           const r = from.size ? routeTc(index, from, inside) : null;
           // Lignes : « métro 7 », « métro 9, puis RER C », « métro 9, RER A, puis tram T3 ».
           if (r) tc.set(`${h.l.code}|${t.at.code}`, { minutes: r.minutes, ligne: r.lignes.length > 1 ? `${r.lignes.slice(0, -1).join(", ")}, puis ${r.lignes[r.lignes.length - 1]}` : (r.lignes[0] ?? "à pied") });
@@ -223,7 +231,7 @@ export async function ciblageAcces(
           if (!inside.size) continue;
           for (const { h } of pairs) {
             const key = `${h.l.code}|${t.at.code}`;
-            const from = new Set(index.stations.flatMap((st, i) => (turf.distance([h.l.lon, h.l.lat], [st.lon, st.lat]) <= 1.2 ? [i] : [])));
+            const from = new Set(index.stations.flatMap((st, i) => (!inside.has(i) && turf.distance([h.l.lon, h.l.lat], [st.lon, st.lat]) <= 1.2 ? [i] : [])));
             const v = from.size ? routeTc(index, from, inside) : null;
             if (v && (!tc.has(key) || v.minutes < tc.get(key)!.minutes)) tc.set(key, { minutes: v.minutes, ligne: v.lignes.length > 1 ? `${v.lignes.slice(0, -1).join(", ")}, puis ${v.lignes[v.lignes.length - 1]}` : (v.lignes[0] ?? "à pied") });
           }
@@ -236,9 +244,16 @@ export async function ciblageAcces(
   // Train : direct (nombre de trains), sinon avec correspondance ; la correspondance est signalée
   // aussi quand elle fait gagner au moins un quart d'heure.
   const viaTxt = (v: { minutes: number; changes: string[] }) => `${fmtDuration(v.minutes)}, ${v.changes.length ? `changement${v.changes.length > 1 ? "s" : ""} à ${v.changes.join(", ")}` : "direct"}`;
+  // Un train bien plus long que la voiture (Lezennes → Faches par Douai : 2 h 17 contre 11 min) n'est pas une option.
+  const utile = (h: string, t: string, m: number | undefined) => {
+    const v = car.get(`${h}|${t}`);
+    return m != null && (v == null || m <= v * 2 + 15);
+  };
   const trainTxt = (h: string, t: string, short = false) => {
-    const r = train.get([h, t].sort().join("|"));
-    const v = trainVia.get(`${h}|${t}`);
+    const r0 = train.get([h, t].sort().join("|"));
+    const v0 = trainVia.get(`${h}|${t}`);
+    const r = r0 && utile(h, t, r0.minutes) ? r0 : undefined;
+    const v = v0 && utile(h, t, v0.minutes) ? v0 : undefined;
     const g = gareProche.get(t);
     const jusqua = g ? ` jusqu'à ${g}` : "";
     const pre = short ? "train " : "";
@@ -248,7 +263,10 @@ export async function ciblageAcces(
     }
     return v ? `${pre}${viaTxt(v)}${jusqua}` : "";
   };
-  const trainMin = (h: string, t: string) => Math.min(train.get([h, t].sort().join("|"))?.minutes ?? Infinity, trainVia.get(`${h}|${t}`)?.minutes ?? Infinity);
+  const trainMin = (h: string, t: string) => {
+    const m = Math.min(train.get([h, t].sort().join("|"))?.minutes ?? Infinity, trainVia.get(`${h}|${t}`)?.minutes ?? Infinity);
+    return utile(h, t, m) ? m : Infinity;
+  };
 
   // Carte : villes militantes, territoires visés, liaisons (fiche commune et ciblage).
   type Hub = (typeof hubs)[number];
@@ -342,13 +360,13 @@ export async function ciblageAcces(
       ],
       rows: rowsF.map(({ h, car: v, tr: r }) => ({
         ville: h.l.nom,
-        militants: [h.b.ga ? `${fmtNumber(h.b.ga)} groupe${h.b.ga > 1 ? "s" : ""} actif${h.b.ga > 1 ? "s" : ""}` : "", `${fmtNumber(Math.round(h.b.parrains))} parrains`].filter(Boolean).join(", "),
+        militants: [h.b.ga ? `${fmtNumber(h.b.ga)} groupe${h.b.ga > 1 ? "s" : ""} actif${h.b.ga > 1 ? "s" : ""}` : "", parrainsTxt(h.b.parrains)].filter(Boolean).join(", "),
         voiture: v != null ? fmtDuration(v) : "—",
-        train: trainTxt(h.l.code, t.at.code).replace(/ jusqu'à .*$/, "") || (r ? `${fmtDuration(r.minutes)} direct` : "—"),
+        train: trainTxt(h.l.code, t.at.code).replace(/ jusqu'à .*$/, "") || "—",
         tc: tc.get(`${h.l.code}|${t.at.code}`) ? `${fmtDuration(tc.get(`${h.l.code}|${t.at.code}`)!.minutes)} (${tc.get(`${h.l.code}|${t.at.code}`)!.ligne})` : "—",
       })),
       sources: sourcesF,
-      note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; les plus proches d'abord, puis les plus grandes. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF) ; pour un train direct, nombre de trains directs dans la journée, aller et retour ; avec correspondance, ${RAIL_CHANGE_MIN} min au moins dans une même gare, et changement de gare dans une même ville estimé (15 min plus 4 min par km).${tc.size ? ` Métro, RER, tram : trajet le plus rapide, correspondances comprises, depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités ou du réseau urbain) ; ${TC_BOARD_MIN} min comptées à chaque montée (attente) et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""}${gareProche.get(t.at.code) ? ` Pas de gare dans la commune : gare la plus proche, ${gareProche.get(t.at.code)}.` : ""} « — » : pas de trajet trouvé.`,
+      note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; les plus proches d'abord, puis les plus grandes. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF) ; pour un train direct, nombre de trains directs dans la journée, aller et retour ; avec correspondance, ${RAIL_CHANGE_MIN} min au moins dans une même gare, et changement de gare dans une même ville estimé (15 min plus 4 min par km).${tc.size ? ` Métro, RER, tram : trajet le plus rapide, correspondances comprises, depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités ou du réseau urbain) ; ${TC_BOARD_MIN} min comptées à chaque montée (attente) et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""}${gareProche.get(t.at.code) && rowsF.some(({ h }) => trainTxt(h.l.code, t.at.code)) ? ` Pas de gare dans la commune : gare la plus proche, ${gareProche.get(t.at.code)}.` : ""} « — » : pas de trajet trouvé.`,
     };
     const mapF = mapOf({
       id: "commune_acces_carte",
@@ -411,7 +429,7 @@ export async function ciblageAcces(
     title: "Villes militantes proches et territoires proposés",
     posterTitle: "Rejoindre les territoires proposés",
     subTarget: (t) => (moy(t.at.code) != null ? `${fmtDuration(moy(t.at.code)!)} en moyenne` : ""),
-    subHub: (h) => [h.b.ga ? `${fmtNumber(h.b.ga)} groupe${h.b.ga > 1 ? "s" : ""}` : "", `${fmtNumber(Math.round(h.b.parrains))} parrains`].filter(Boolean).join(", "),
+    subHub: (h) => [h.b.ga ? `${fmtNumber(h.b.ga)} groupe${h.b.ga > 1 ? "s" : ""}` : "", parrainsTxt(h.b.parrains)].filter(Boolean).join(", "),
     sources,
   });
 

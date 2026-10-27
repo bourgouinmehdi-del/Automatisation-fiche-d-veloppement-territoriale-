@@ -141,7 +141,8 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
   const cats: CatScore[] = SERVICE_CATS.map((c) => {
     const rs = rows.filter((r) => r.cat === c.id);
     if (!rs.length) return null;
-    const g = rs.reduce((s, r) => s + gap(r), 0) / rs.length;
+    // Même règle que pour les points faibles : en ville, un service à moins de 3 km ne compte pas comme « plus loin ».
+    const g = rs.reduce((s, r) => s + (r.km < 3 ? Math.min(gap(r), 0) : gap(r)), 0) / rs.length;
     // Une catégorie qui compte un point faible n'est pas dite « mieux desservie ».
     const faible = rs.some((r) => faibles.includes(r));
     const niveau = g >= 0.5 || (faible && g >= 0) ? "moins" : g <= -0.5 && !faible ? "mieux" : "comme";

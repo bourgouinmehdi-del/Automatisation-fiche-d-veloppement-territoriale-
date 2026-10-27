@@ -653,6 +653,17 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       // « Bureau 5 », « Premier bureau de vote », « Deuxieme Bureau », « Bureau centralisateur » : génériques.
       .filter(([, v]) => !/^(bureau( de vote)?\s*(n°|no|num[ée]ro)?\s*\d+|(premier|deuxi[eè]me|troisi[eè]me|quatri[eè]me|cinqui[eè]me|sixi[eè]me|septi[eè]me|huiti[eè]me|neuvi[eè]me|dixi[eè]me|\d+(er|e|[eè]me))\s+bureau(\s+de\s+vote)?|bureau( de vote)?( centralisateur| unique| principal)?)$/i.test(v.trim())),
   );
+  // « 1 et 2 (Salle du Laminoir), 4 (École Jaurès) » : un même lieu de vote n'est nommé qu'une fois.
+  const bvListe = (bs: { bv: string }[]) => {
+    const groupes: { bvs: string[]; lab: string }[] = [];
+    for (const b of bs) {
+      const lab = labels.get(b.bv) ?? "";
+      const g = lab ? groupes.find((x) => x.lab === lab) : undefined;
+      if (g) g.bvs.push(b.bv);
+      else groupes.push({ bvs: [b.bv], lab });
+    }
+    return joinFr(groupes.map((g) => `${joinFr(g.bvs.map((x) => dv(x)))}${g.lab ? ` (${g.lab})` : ""}`));
+  };
   // Abstention par bureau : législatives 2024 (forte participation) quand tous les bureaux s'apparient.
   const ranked: BvRow[] = bvRef ? rankBureaux(bvRef.results, bvSecond?.results ?? null, labels, c.bureaux.find((b) => b.election.id === "LG24T1")?.results) : [];
   const abstBvLabel = ranked[0]?.abstSrc === "LG24T1" ? "législatives 2024" : "2024";
@@ -895,7 +906,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
             ),
           );
         }
-      } else if (prio.length && bvRef) {
+      } else if (prio.length && bvRef && prio.length < ranked.length) {
         const a24 = aggOf(c.bureaux.find((b) => b.election.id === "EU24")?.results, prioBvs);
         const a22 = aggOf(c.bureaux.find((b) => b.election.id === "PR22T1")?.results, prioBvs);
         vRows.push(vRow(`${prio.length > 1 ? "Bureaux" : "Bureau"} ${joinFr(prioBvs)} (à cibler)`, a24, a22, null, aggOf(bvLg, prioBvs)));
@@ -1332,7 +1343,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const lfiAll = (100 * allVoix) / (expOf(ranked) || 1);
     const abstTop = (100 * top.reduce((s, b) => s + b.abstN, 0)) / (topIns || 1);
     const abstAll = (100 * ranked.reduce((s, b) => s + b.abstN, 0)) / (allIns || 1);
-    const topNames = `${top.length > 1 ? "Les bureaux" : "Le bureau"} ${joinFr(top.map((b) => `${dv(b.bv)}${labels.has(b.bv) ? ` (${b.label})` : ""}`))}`;
+    const topNames = `${top.length > 1 ? "Les bureaux" : "Le bureau"} ${bvListe(top)}`;
     // Peu de bureaux : les écarts entre eux ne disent pas grand-chose, tout le territoire se couvre.
     if (ranked.length <= 3)
       ids.ou.push(
@@ -1867,12 +1878,26 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const groupesFournis = c.interne.files.some((f) => f === "groupes.csv" || f === "action-populaire.csv");
   // Bilan : groupes actifs des autres communes de l'intercommunalité (pas seulement la commune).
   const epciMembres = commune.epci ? (referentiel().epcis.find((e) => e.code === commune.epci!.code)?.membres ?? []) : [];
+  const centreOf = (code: string) => {
+    const f = c.depFeatures?.features.find((x) => String((x.properties as { code?: string }).code) === code);
+    try {
+      return f ? turf.centroid(f as GeoJSON.Feature<GeoJSON.Polygon>).geometry.coordinates : null;
+    } catch {
+      return null;
+    }
+  };
+  const ici = centreOf(commune.code);
+  const kmDe = (code: string) => {
+    const p = centreOf(code);
+    return ici && p ? turf.distance(ici, p) : 999;
+  };
   const gaVoisins = bilan && !plm
     ? epciMembres
         .filter((m) => m.code !== commune.code)
-        .map((m) => ({ nom: m.nom, ga: c.interne.bilan?.get(m.code)?.ga ?? 0 }))
+        .map((m) => ({ nom: m.nom, ga: c.interne.bilan?.get(m.code)?.ga ?? 0, km: kmDe(m.code) }))
         .filter((x) => x.ga > 0)
-        .sort((a, b) => b.ga - a.ga || a.nom.localeCompare(b.nom))
+        // Les plus proches d'abord (la phrase dit « les plus proches »).
+        .sort((a, b) => a.km - b.km || b.ga - a.ga || a.nom.localeCompare(b.nom))
     : [];
   const sansGroupe = !groupes.length && (bilan ? bilan.ga === 0 && !gaVoisins.length : groupesFournis);
   // Aucun groupe dans la commune, mais dans l'intercommunalité.
@@ -2226,7 +2251,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   else if (sansGroupe) synth.push({ text: `${B("Pas encore de groupe d'action")} dans la commune ni aux alentours : tout est à construire.` });
   else if (gaAilleurs) synth.push({ text: `${B("Pas de groupe d'action actif dans la commune")} : ${gaVoisins.length > 1 ? "les plus proches sont" : "le plus proche est"} à ${voisinsTxt}.` });
   if (prio.length && ranked.length <= 3) synth.push({ text: `${B("Où aller en priorité")} : toute la commune (${ranked.length} ${ranked.length > 1 ? "bureaux" : "bureau"} de vote), en commençant par le bureau ${dv(prio[0].bv)}${labels.has(prio[0].bv) ? ` (${prio[0].label})` : ""}.` });
-  else if (prio.length) synth.push({ text: `${B("Où aller en priorité")} : ${prio.length > 1 ? "les bureaux de vote" : "le bureau de vote"} ${joinFr(prio.map((p) => `${dv(p.bv)}${labels.has(p.bv) ? ` (${p.label})` : ""}`))}.` });
+  else if (prio.length) synth.push({ text: `${B("Où aller en priorité")} : ${prio.length > 1 ? "les bureaux de vote" : "le bureau de vote"} ${bvListe(prio)}.` });
   // Lieux nommés, avec jour et heure quand on les connaît ; rien de générique (sinon la ligne est omise).
   const lieuBv = (l: { lon: number | null; lat: number | null }) => {
     const nb = nearestBv(l.lon, l.lat);
