@@ -2519,9 +2519,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const aC = sum(adC, "adultes");
     const aD = sum(adRows, "adultes");
     if (aC >= 200 && c24 && d24) {
-      const voix = (r: ElectionResult, f: string) => (forceShares("EU24", r as unknown as VoteAgg)?.[f] ?? 0) * r.exprimes / 100;
+      const voix = (r: ElectionResult, f: string, eid = "EU24") => (forceShares(eid, r as unknown as VoteAgg)?.[f] ?? 0) * r.exprimes / 100;
       const rows: { profil: string; com: number | null; dep: number | null }[] = [
         { profil: "A parrainé la candidature de Jean-Luc Mélenchon", com: parrains != null ? (100 * parrains) / aC : null, dep: depParrains && aD ? (100 * depParrains) / aD : null },
+        ...(c22 ? [{ profil: "A voté Mélenchon à la présidentielle 2022", com: (100 * voix(c22, "lfi", "PR22T1")) / aC, dep: d22 && aD ? (100 * voix(d22, "lfi", "PR22T1")) / aD : null }] : []),
         { profil: "A voté LFI aux européennes 2024", com: (100 * voix(c24, "lfi")) / aC, dep: aD ? (100 * voix(d24, "lfi")) / aD : null },
         { profil: "A voté RN ou Reconquête en 2024 (accueil souvent plus froid)", com: (100 * (voix(c24, "rn") + voix(c24, "rec"))) / aC, dep: aD ? (100 * (voix(d24, "rn") + voix(d24, "rec"))) / aD : null },
         { profil: "Inscrit, mais n'a pas voté en 2024", com: (100 * abstention(c24).n) / aC, dep: aD ? (100 * abstention(d24).n) / aD : null },
@@ -2540,8 +2541,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         ],
         rows: rows.filter((r) => r.com != null && Number.isFinite(r.com)).map((r) => ({ profil: r.profil, com: f(r.com), dep: f(r.dep) })),
         highlight: [],
-        sources: [...elecSources.slice(0, 1), ...(c.adultes ? [c.adultes.source] : [])],
-        note: "Ordres de grandeur pour 100 adultes (18 ans et plus) rencontrés au hasard : électeurs des européennes 2024, parrains (données internes), adultes recensés par l'INSEE. Les catégories se recoupent (un électeur LFI peut avoir parrainé). Sympathisants : à venir, à partir des données internes.",
+        sources: [...elecSources.slice(0, 1), ...(p22?.source ? [p22.source] : []), ...(c.adultes ? [c.adultes.source] : [])],
+        note: "Ordres de grandeur pour 100 adultes (18 ans et plus) rencontrés au hasard : électeurs de la présidentielle 2022 (1er tour) et des européennes 2024, parrains (données internes), adultes recensés par l'INSEE. Les catégories se recoupent (un électeur LFI peut avoir parrainé). Sympathisants : à venir, à partir des données internes.",
       });
     }
   }
