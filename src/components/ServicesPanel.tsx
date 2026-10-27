@@ -31,21 +31,7 @@ export default function ServicesPanel({ b }: { b: B }) {
   const dessous = b.enDessous ?? [];
   return (
     <figure className="my-5 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <figcaption className="text-sm font-extrabold text-[var(--accent)]">{b.title}</figcaption>
-        <div className="no-print flex gap-1" role="group" aria-label="Lecture">
-          {(
-            [
-              ["faibles", "Points faibles"],
-              ["cats", "Détail par thème"],
-            ] as const
-          ).map(([m, l]) => (
-            <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)} className={`rounded-full border px-2.5 py-0.5 text-xs ${mode === m ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] text-[var(--ink-2)]"}`}>
-              {l}
-            </button>
-          ))}
-        </div>
-      </div>
+      <figcaption className="mb-3 text-sm font-extrabold text-[var(--accent)]">{b.title}</figcaption>
       {b.indice && (
         <div className="mb-4 rounded-md border border-[var(--line)] p-3">
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -68,6 +54,19 @@ export default function ServicesPanel({ b }: { b: B }) {
           </ul>
         </div>
       )}
+      {/* Onglets juste au-dessus de la liste qu'ils commandent. */}
+      <div className="no-print mb-3 flex gap-4 border-b border-[var(--line)] text-sm" role="tablist" aria-label="Lecture">
+        {(
+          [
+            ["faibles", "Points faibles"],
+            ["cats", "Détail par thème"],
+          ] as const
+        ).map(([m, l]) => (
+          <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`-mb-px border-b-2 pb-1.5 font-semibold ${mode === m ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--ink-2)] hover:text-[var(--ink)]"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
       {mode === "faibles" ? (
         b.faibles.length || dessous.length ? (
           <div className="space-y-3 text-sm">
@@ -83,10 +82,14 @@ export default function ServicesPanel({ b }: { b: B }) {
                   {titre && <p className="mb-1.5 text-[var(--ink-2)]">{titre}</p>}
                   <ul className="space-y-2">
                     {xs.map((f) => (
-                      <li key={f.label} className="flex items-center gap-2">
-                        <Icon cat={f.cat} />
-                        <span className="font-semibold">{f.label}</span>
-                        <span className="text-[var(--ink-2)]">: {f.txt}</span>
+                      <li key={f.label} className="flex items-start gap-2">
+                        <span className="mt-0.5">
+                          <Icon cat={f.cat} />
+                        </span>
+                        <span>
+                          <span className="font-semibold">{f.label}</span>
+                          <span className="text-[var(--ink-2)]"> : {f.txt}</span>
+                        </span>
                       </li>
                     ))}
                   </ul>
