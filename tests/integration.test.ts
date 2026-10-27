@@ -174,7 +174,14 @@ describe("chaîne de génération (API simulées)", () => {
     expect(fiche.blocks[0]).toMatchObject({ type: "callout", tone: "warning" });
     for (const t of ["glance", "heading", "map", "table"]) expect(types).toContain(t);
     const headings = fiche.blocks.filter((b) => b.type === "heading").map((b) => (b as { text: string }).text);
-    expect(headings).toEqual(expect.arrayContaining(["Profil sociodémographique du territoire", "Profil politique du territoire", "Actions recommandées"]));
+    expect(headings).toEqual(["Profil sociodémographique de la commune", "Profil politique de la commune", "Que faire ?", "Opérationnel", ...headings.slice(4)]);
+    // Que faire ? : une ligne par type d'action, le nombre de lieux, la liste dépliable.
+    const planB = fiche.blocks.find((b) => b.type === "plan") as Extract<(typeof fiche.blocks)[number], { type: "plan" }>;
+    expect(planB.items[0]).toMatchObject({ label: "Porte-à-porte (bureaux prioritaires)", count: "2 bureaux" });
+    expect(planB.items.some((i) => i.label === "Porte-à-porte (logements sociaux)" && i.details.length > 0)).toBe(true);
+    // À quoi s'attendre à la porte, sur 100 adultes.
+    const prof = report.tables.find((x) => x.id === "lfi_profils");
+    expect(prof?.rows.map((r) => r.profil)).toEqual(expect.arrayContaining(["A voté LFI aux européennes 2024", "Inscrit, mais n'a pas voté en 2024"]));
     // Fiche : plan d'action en tableau ; toutes les pistes détaillées en annexe.
     const plan = report.tables.find((t) => t.id === "lfi_plan")!;
     expect(plan.rows[0]).toMatchObject({ action: "Porte-à-porte", bv: "2" });
@@ -189,7 +196,7 @@ describe("chaîne de génération (API simulées)", () => {
     for (const b of fiche.blocks) if (b.type === "findings" && b.ids) for (const id of b.ids) expect(report.findings.some((f) => f.id === id)).toBe(true);
     // Profil socio synthétique : intro en langage courant, tableau limité aux indicateurs
     // déterminants (7 au plus), 3 phrases qualitatives au plus, retours du terrain par partie.
-    const iSocio = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil sociodémographique du territoire");
+    const iSocio = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil sociodémographique de la commune");
     const intro = fiche.blocks[iSocio + 1] as Extract<(typeof fiche.blocks)[number], { type: "paragraph" }>;
     expect(intro.type).toBe("paragraph");
     expect(intro.text).toMatch(/habitants/);
@@ -202,10 +209,15 @@ describe("chaîne de génération (API simulées)", () => {
     const parts = fiche.blocks.filter((b) => b.type === "fieldNotes").map((b) => (b as { part?: string }).part ?? "general");
     expect(parts).toEqual(expect.arrayContaining(["general", "socio", "politique", "actions"]));
     // Profil politique : graphiques et chiffres, pas de texte rédigé.
-    const iP = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil politique du territoire");
-    const iO = fiche.blocks.findIndex((b) => b.type === "heading" && /Où agir/.test(b.text));
+    const iP = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil politique de la commune");
+    const iO = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Que faire ?");
+    // Du général au particulier : résultats de la commune, bureau par bureau, puis présence militante.
+    const iVote = fiche.blocks.findIndex((b) => b.type === "table" && b.tableId === "lfi_vote");
+    const iMapBv = fiche.blocks.findIndex((b) => b.type === "map" && b.mapId === "lfi_map_bv");
+    const iPres = fiche.blocks.findIndex((b) => b.type === "presence");
+    expect(iP < iVote && iVote < iMapBv && iMapBv < iPres && iPres < iO).toBe(true);
     // Seul texte : l'introduction (quelques phrases tirées des tableaux).
-    const txt = fiche.blocks.slice(iP + 1, iO).filter((b) => b.type === "paragraph" || b.type === "findings");
+    const txt = fiche.blocks.slice(iP + 1, iVote).filter((b) => b.type === "paragraph" || b.type === "findings");
     expect(txt.length).toBeLessThanOrEqual(1);
     expect(fiche.blocks[iP + 1].type).toBe("paragraph");
     // Gras rendu en HTML, retiré du CSV.
@@ -275,6 +287,8 @@ describe("chaîne de génération (API simulées)", () => {
     const lfiB = report.sections.find((x) => x.id === "LFI")!.blocks;
     expect(lfiB.some((b) => b.type === "heading" && b.text === "Venir depuis les villes militantes proches")).toBe(true);
     expect(lfiB.some((b) => b.type === "map" && b.mapId === "commune_acces_carte")).toBe(true);
+    // Dans la partie « Opérationnel ».
+    expect(lfiB.findIndex((b) => b.type === "heading" && b.text === "Venir depuis les villes militantes proches")).toBeGreaterThan(lfiB.findIndex((b) => b.type === "heading" && b.text === "Opérationnel"));
     // Résidence aux coordonnées hors de la commune : écartée.
     expect(JSON.stringify(report.tables.filter((t) => /hlm/.test(t.id)))).not.toMatch(/Lointains/);
     // Effectifs estimés pour les bureaux prioritaires.
@@ -332,7 +346,7 @@ describe("chaîne de génération (API simulées)", () => {
     const svg = mapSvg(m);
     for (const t of ["COMPIÈGNE", "Propositions de ciblage : porte-à-porte et tractage", "Roberval", "#F91616", "Tractage : marché, gare", "OÙ AGIR", "Limite communale"]) expect(svg).toContain(t);
     const fiche = report.sections[0];
-    const iAct = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Actions recommandées");
+    const iAct = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Que faire ?");
     expect(fiche.blocks.slice(iAct).some((b) => b.type === "map" && b.mapId === "lfi_affiche")).toBe(true);
   });
 
@@ -388,8 +402,8 @@ describe("chaîne de génération (API simulées)", () => {
     expect(ch.series[0].key).toBe("ins");
     expect(ch.sepKey).toBe("Abstention");
     const fiche = report.sections[0];
-    const iPol = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil politique du territoire");
-    const iOu = fiche.blocks.findIndex((b) => b.type === "heading" && /Où agir/.test(b.text));
+    const iPol = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil politique de la commune");
+    const iOu = fiche.blocks.findIndex((b) => b.type === "map" && b.mapId === "lfi_map_bv");
     const iChart = fiche.blocks.findIndex((b) => b.type === "chart" && b.chartId === "lfi_chart_eu24");
     expect(iChart).toBeGreaterThan(iPol);
     expect(iChart).toBeLessThan(iOu);

@@ -100,8 +100,8 @@ export async function buildReport(
       lfi.maps.push(...acc.maps);
       const bl = lfi.section.blocks;
       const iAcc = bl.findIndex((b) => b.type === "paragraph" && /^\*\*Accès\*\*/.test(b.text));
-      const iField = bl.findIndex((b) => b.type === "fieldPlaces");
-      bl.splice(iAcc >= 0 ? iAcc + 1 : iField >= 0 ? iField : bl.length, 0, ...acc.blocks);
+      const iOp = bl.findIndex((b) => b.type === "heading" && b.text === "Opérationnel");
+      bl.splice(iAcc >= 0 ? iAcc + 1 : iOp >= 0 ? iOp + 1 : bl.length, 0, ...acc.blocks);
     }
   }
   a.indicators.push(...lfi.indicators);

@@ -221,6 +221,10 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       return `<div class="glance">${b.items
         .map((i) => `<div class="gl ${i.tone ?? "neutral"}"><div class="gl-v">${esc(i.value)}</div><div class="gl-l">${esc(i.label)}</div>${i.detail ? `<div class="gl-d">${esc(i.detail)}</div>` : ""}</div>`)
         .join("")}</div>`;
+    case "plan":
+      return `<div class="plan">${b.items
+        .map((it) => `<div class="pl-i"><div class="pl-h"><b>${esc(it.label)}</b><span>${esc(it.count)}</span></div>${it.quand ? `<div class="pl-q">${esc(it.quand)}</div>` : ""}<ul>${it.details.slice(0, 8).map((d) => `<li>${esc(d)}</li>`).join("")}${it.details.length > 8 ? `<li>… et ${it.details.length - 8} autres</li>` : ""}</ul></div>`)
+        .join("")}</div>`;
     case "presence":
       return `<figure class="presence"><figcaption>${esc(b.title)}</figcaption>${b.rows
         .map((row) => {
@@ -319,6 +323,11 @@ h3.fh { font-size: 15pt; font-weight: 800; color: #4c0297; margin: 7mm 0 3mm; pa
 .glance { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin: 4mm 0 3mm; break-inside: avoid; }
 .gl { border: 0; border-left: 1mm solid #e9e3d3; padding: .5mm 0 .5mm 3mm; }
 .gl.up { border-left-color: #d1271c; } .gl.up .gl-v { color: #d1271c; } .gl.down { border-left-color: #85877f; }
+.plan { margin: 3mm 0; break-inside: auto; }
+.pl-i { border-top: 1px solid #e7e6e2; padding: 1.5mm 0; break-inside: avoid; }
+.pl-h { display: flex; justify-content: space-between; gap: 4mm; } .pl-h span { color: #4c0297; font-weight: 700; font-size: 9.5pt; white-space: nowrap; }
+.pl-q { color: #52514e; font-size: 8.4pt; }
+.pl-i ul { margin: 1mm 0 0 5mm; padding: 0; font-size: 8.8pt; }
 .presence { border: 1px solid #e7e6e2; border-radius: 2mm; padding: 3mm 4mm; }
 .pr-row { display: grid; grid-template-columns: 46mm 1fr 46mm; gap: 3mm; align-items: center; margin: 1.5mm 0; }
 .pr-l b { display: block; font-size: 9.5pt; } .pr-l span, .pr-v span, .pr-n { display: block; font-size: 7.6pt; color: #52514e; }
