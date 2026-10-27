@@ -234,7 +234,7 @@ export const SOURCES: Record<string, SourceInfo> = {
     homepage: "https://www.data.gouv.fr/datasets/horaires-sncf",
     license: "Licence Ouverte 2.0 / ODbL selon les composantes",
     access: "Archive GTFS nationale lue en flux.",
-    limits: "Horaires théoriques d'un mardi de référence ; travaux et perturbations non pris en compte ; cars TER inclus s'ils figurent dans le GTFS.",
+    limits: "Horaires théoriques d'un jour de référence (mardi pour la desserte des gares, samedi pour les trajets) ; travaux et perturbations non pris en compte ; cars TER inclus s'ils figurent dans le GTFS. Correspondances : 8 min au moins dans une même gare ; changement de gare dans une même ville estimé (15 min plus 4 min par km).",
   },
   idfm_gtfs: {
     id: "idfm_gtfs",
@@ -243,7 +243,16 @@ export const SOURCES: Record<string, SourceInfo> = {
     homepage: "https://transport.data.gouv.fr/resources/80921",
     license: "Licence ODbL",
     access: "Archive GTFS lue en flux une fois par jour ; seules les lignes de métro, RER, train et tram sont gardées.",
-    limits: "Trajets directs seulement (sans correspondance) ; horaires théoriques.",
+    limits: "Horaires théoriques ; 5 min comptées à chaque montée (attente, correspondance), sans tenir compte de l'heure.",
+  },
+  transport: {
+    id: "transport",
+    name: "Horaires des réseaux urbains (transport.data.gouv.fr)",
+    producer: "Autorités organisatrices de la mobilité (point d'accès national transport.data.gouv.fr)",
+    homepage: "https://transport.data.gouv.fr/datasets?type=public-transit",
+    license: "Licence ODbL ou Licence Ouverte selon le réseau",
+    access: "Liste des jeux de données (API), puis archive GTFS du réseau ; seules les lignes de métro, de tram et de funiculaire sont gardées.",
+    limits: "Réseau trouvé d'après le nom des communes : un réseau qui ne publie pas ses horaires, ou les publie mal décrits, n'est pas trouvé. Horaires théoriques ; 5 min comptées à chaque montée.",
   },
   osrm: {
     id: "osrm",
