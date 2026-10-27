@@ -237,6 +237,7 @@ export function mockExtra(url: URL): Response | null {
       features: IRIS.map(([code, nom, geom]) => ({ type: "Feature", geometry: geom, properties: { code_insee: "60159", code_iris: code, nom_iris: nom, type_iris: "H" } })),
     });
   if (h === "eu.ftp.opendatasoft.com") return bin(gtfsZip());
+  if (h === "transport.data.gouv.fr") return json([]);
   if (h === "adresse.data.gouv.fr" && p.includes("adresses-60")) return bin(banGz());
   if (h === "router.project-osrm.org" && url.pathname.startsWith("/table/")) {
     // Matrice : 20 min par tranche de 0,1° d'écart (fictif).

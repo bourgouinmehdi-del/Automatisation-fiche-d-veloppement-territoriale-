@@ -181,7 +181,7 @@ async function collectTimetablesFresh(http: TrackedHttp, stations: StationInput[
   return { stations: out, url: GTFS_URL, retrievedAt: f.retrievedAt };
 }
 
-/* --------------------------------------------- trajets directs entre villes */
+/* --------------------------------------------- trains entre villes (samedi) */
 
 export interface TrainGroup {
   /** Identifiant du lieu (code INSEE). */
@@ -197,35 +197,48 @@ export interface DirectTrains {
   retrievedAt: string;
 }
 
-/**
- * Trains directs (sans correspondance) entre des villes, un samedi de référence :
- * pour chaque paire, la durée la plus courte et le nombre de trains. 24 h sur disque.
- */
-export function collectDirectTrains(http: TrackedHttp, groups: TrainGroup[], now = new Date()): Promise<DirectTrains> {
-  const key = `gtfsdirect|${now.toISOString().slice(0, 10)}|${hash(JSON.stringify(groups))}`;
-  return cachedExtract(key, 24, () => heavyLane.run(() => collectDirectTrainsFresh(http, groups, now)));
+/** Horaires SNCF d'un samedi : gares (zones d'arrêt) et courses (gares, arrivées, départs en minutes). */
+export interface RailIndex {
+  stations: { id: string; nom: string; lon: number; lat: number }[];
+  trips: { s: number[]; a: number[]; d: number[] }[];
+  date: string;
+  url: string;
+  retrievedAt: string;
 }
 
-async function collectDirectTrainsFresh(http: TrackedHttp, groups: TrainGroup[], now: Date): Promise<DirectTrains> {
+/**
+ * Toutes les courses SNCF (TGV, Intercités, TER, cars TER) d'un samedi de référence : le plus desservi
+ * des huit prochaines semaines (les convois ont lieu le week-end). 24 h sur disque.
+ */
+export function collectRailIndex(http: TrackedHttp, now = new Date()): Promise<RailIndex> {
+  return cachedExtract(`sncfidx|${now.toISOString().slice(0, 10)}`, 24, () => heavyLane.run(() => collectRailIndexFresh(http, now)));
+}
+
+async function collectRailIndexFresh(http: TrackedHttp, now: Date): Promise<RailIndex> {
   const f = await http.file(GTFS_URL, { timeoutMs: 1800000, retries: 1 });
   const file = f.data;
-  const groupOf = new Map<string, number>();
-  const areas: { id: string; lon: number; lat: number }[] = [];
-  const points: { id: string; parent: string }[] = [];
+  const areas = new Map<string, number>();
+  const stations: RailIndex["stations"] = [];
+  const points: { id: string; parent: string; nom: string; lon: number; lat: number }[] = [];
   await eachRow(file, "stops.txt", (v, col) => {
-    const lt = Number(v[col("location_type")] ?? "0");
-    if (lt === 1) areas.push({ id: v[col("stop_id")], lon: Number(v[col("stop_lon")]), lat: Number(v[col("stop_lat")]) });
-    else points.push({ id: v[col("stop_id")], parent: v[col("parent_station")] ?? "" });
+    const id = v[col("stop_id")];
+    const nom = v[col("stop_name")] ?? "";
+    const lon = Number(v[col("stop_lon")]);
+    const lat = Number(v[col("stop_lat")]);
+    if (Number(v[col("location_type")] ?? "0") === 1) {
+      areas.set(id, stations.length);
+      stations.push({ id, nom, lon, lat });
+    } else points.push({ id, parent: v[col("parent_station")] ?? "", nom, lon, lat });
   });
-  const near = (a: { lon: number; lat: number }, s: StationInput) => s.lon != null && s.lat != null && Math.hypot((a.lon - s.lon) * Math.cos((s.lat * Math.PI) / 180), a.lat - s.lat) * 111 < 0.4;
-  groups.forEach((g, gi) => {
-    for (const s of g.stations) {
-      const uic = s.uic.replace(/\D/g, "").slice(0, 8);
-      for (const a of areas) if ((uic.length >= 7 && a.id.includes(uic)) || near(a, s)) for (const p of points) if (p.parent === a.id) groupOf.set(p.id, gi);
+  const stationOf = new Map<string, number>();
+  for (const p of points) {
+    let i = areas.get(p.parent);
+    if (i == null) {
+      i = stations.length;
+      stations.push({ id: p.id, nom: p.nom, lon: p.lon, lat: p.lat });
     }
-  });
-  if (!groupOf.size) throw new Error("Gares absentes des horaires SNCF (GTFS)");
-  // Samedi de référence : le plus desservi des huit prochaines semaines (les convois ont lieu le week-end).
+    stationOf.set(p.id, i);
+  }
   const saturdays = new Set<string>();
   for (let k = 0; k < 60; k++) {
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + k));
@@ -238,33 +251,88 @@ async function collectDirectTrainsFresh(http: TrackedHttp, groups: TrainGroup[],
   });
   const date = [...perDate].sort((a, b) => b[1] - a[1])[0]?.[0] ?? [...saturdays][0];
   const services = new Set<string>();
+  const removed = new Set<string>();
   await eachRow(file, "calendar_dates.txt", (v, col) => {
-    if (v[col("date")] === date && v[col("exception_type")] === "1") services.add(v[col("service_id")]);
+    if (v[col("date")] !== date) return;
+    if (v[col("exception_type")] === "1") services.add(v[col("service_id")]);
+    else removed.add(v[col("service_id")]);
   });
   try {
     await eachRow(file, "calendar.txt", (v, col) => {
-      if (v[col("saturday")] === "1" && v[col("start_date")] <= date && v[col("end_date")] >= date) services.add(v[col("service_id")]);
+      const id = v[col("service_id")];
+      if (v[col("saturday")] === "1" && v[col("start_date")] <= date && v[col("end_date")] >= date && !removed.has(id)) services.add(id);
     });
   } catch {
     /* fichier absent */
   }
-  const trips = new Set<string>();
+  const active = new Set<string>();
   await eachRow(file, "trips.txt", (v, col) => {
-    if (services.has(v[col("service_id")])) trips.add(v[col("trip_id")]);
+    if (services.has(v[col("service_id")])) active.add(v[col("trip_id")]);
   });
-  const byTrip = new Map<string, Map<number, number>>();
+  const seq = new Map<string, { q: number; s: number; a: number; d: number }[]>();
   await eachRow(file, "stop_times.txt", (v, col) => {
-    const gi = groupOf.get(v[col("stop_id")]);
-    if (gi == null) return;
     const trip = v[col("trip_id")];
-    if (!trips.has(trip)) return;
-    const t = toMin(v[col("departure_time")] || v[col("arrival_time")]);
-    if (!byTrip.has(trip)) byTrip.set(trip, new Map());
-    const m = byTrip.get(trip)!;
-    if (!m.has(gi)) m.set(gi, t);
+    if (!active.has(trip)) return;
+    const s = stationOf.get(v[col("stop_id")]);
+    if (s == null) return;
+    const a = toMin(v[col("arrival_time")] || v[col("departure_time")]);
+    const d = toMin(v[col("departure_time")] || v[col("arrival_time")]);
+    if (!seq.has(trip)) seq.set(trip, []);
+    seq.get(trip)!.push({ q: Number(v[col("stop_sequence")]), s, a, d });
   });
+  const trips: RailIndex["trips"] = [];
+  for (const xs of seq.values()) {
+    if (xs.length < 2) continue;
+    xs.sort((x, y) => x.q - y.q);
+    trips.push({ s: xs.map((x) => x.s), a: xs.map((x) => x.a), d: xs.map((x) => x.d) });
+  }
+  if (!trips.length) throw new Error("Aucun train ce samedi dans les horaires SNCF (GTFS)");
+  // Index compact : seules les gares desservies ce jour-là.
+  const used = new Map<number, number>();
+  const out: RailIndex["stations"] = [];
+  for (const t of trips)
+    t.s = t.s.map((i) => {
+      if (!used.has(i)) {
+        used.set(i, out.length);
+        const st = stations[i];
+        out.push({ id: st.id, nom: st.nom.replace(/^Gare de /, ""), lon: Math.round(st.lon * 1e5) / 1e5, lat: Math.round(st.lat * 1e5) / 1e5 });
+      }
+      return used.get(i)!;
+    });
+  return { stations: out, trips, date, url: GTFS_URL, retrievedAt: f.retrievedAt };
+}
+
+/** Gares de l'index correspondant à des gares SNCF (code UIC, sinon à moins de 400 m). */
+export function railStations(index: RailIndex, stations: StationInput[]): Set<number> {
+  const out = new Set<number>();
+  for (const s of stations) {
+    const uic = s.uic.replace(/\D/g, "").slice(0, 8);
+    index.stations.forEach((a, i) => {
+      if ((uic.length >= 7 && a.id.includes(uic)) || (s.lon != null && s.lat != null && Math.hypot((a.lon - s.lon) * Math.cos((s.lat * Math.PI) / 180), a.lat - s.lat) * 111 < 0.4)) out.add(i);
+    });
+  }
+  return out;
+}
+
+/** Trains directs (sans correspondance) entre des villes, un samedi : durée la plus courte et nombre de trains par paire. */
+export async function collectDirectTrains(http: TrackedHttp, groups: TrainGroup[], now = new Date()): Promise<DirectTrains & { index: RailIndex }> {
+  const index = await collectRailIndex(http, now);
+  return { ...directTrains(index, groups), index };
+}
+
+export function directTrains(index: RailIndex, groups: TrainGroup[]): DirectTrains {
+  const groupOf = new Map<number, number>();
+  groups.forEach((g, gi) => {
+    for (const i of railStations(index, g.stations)) groupOf.set(i, gi);
+  });
+  if (!groupOf.size) throw new Error("Gares absentes des horaires SNCF (GTFS)");
   const pairs: DirectTrains["pairs"] = {};
-  for (const m of byTrip.values()) {
+  for (const t of index.trips) {
+    const m = new Map<number, number>();
+    t.s.forEach((s, k) => {
+      const gi = groupOf.get(s);
+      if (gi != null && !m.has(gi)) m.set(gi, t.d[k]);
+    });
     const gs = [...m.keys()];
     for (let i = 0; i < gs.length; i++)
       for (let j = i + 1; j < gs.length; j++) {
@@ -276,7 +344,164 @@ async function collectDirectTrainsFresh(http: TrackedHttp, groups: TrainGroup[],
         p.trains++;
       }
   }
-  return { pairs, date, url: GTFS_URL, retrievedAt: f.retrievedAt };
+  return { pairs, date: index.date, url: index.url, retrievedAt: index.retrievedAt };
+}
+
+/* Trains avec correspondance (algorithme « connection scan »). */
+
+/** Temps minimal de correspondance dans une même gare (minutes). */
+export const RAIL_CHANGE_MIN = 8;
+/**
+ * Changement de gare dans une même ville (Paris Gare de Lyon → Paris Montparnasse, Lille Flandres →
+ * Lille Europe) : 15 min plus 4 min par km. À pied jusqu'à 500 m.
+ */
+const cityTransfer = (km: number) => (km <= 0.5 ? Math.round((km * 1000) / 80) + 3 : Math.round(15 + 4 * km));
+
+interface RailGraph {
+  from: Int32Array;
+  to: Int32Array;
+  dep: Int32Array;
+  arr: Int32Array;
+  trip: Int32Array;
+  transfers: { to: number; m: number }[][];
+}
+const railGraphs = new WeakMap<RailIndex, RailGraph>();
+
+function railGraph(index: RailIndex): RailGraph {
+  const g0 = railGraphs.get(index);
+  if (g0) return g0;
+  const cs: [number, number, number, number, number][] = [];
+  index.trips.forEach((t, ti) => {
+    for (let k = 0; k + 1 < t.s.length; k++) if (t.s[k] !== t.s[k + 1]) cs.push([t.s[k], t.s[k + 1], t.d[k], Math.max(t.d[k], t.a[k + 1]), ti]);
+  });
+  cs.sort((x, y) => x[2] - y[2] || x[3] - y[3]);
+  const n = cs.length;
+  const g: RailGraph = { from: new Int32Array(n), to: new Int32Array(n), dep: new Int32Array(n), arr: new Int32Array(n), trip: new Int32Array(n), transfers: index.stations.map(() => []) };
+  cs.forEach((c, i) => {
+    g.from[i] = c[0];
+    g.to[i] = c[1];
+    g.dep[i] = c[2];
+    g.arr[i] = c[3];
+    g.trip[i] = c[4];
+  });
+  // Gares d'une même ville : même premier mot (« Paris », « Lille », « Lyon »), à moins de 7 km ; ou à moins de 500 m.
+  const city = (nom: string) => nom.toLowerCase().split(/[\s-]+/)[0];
+  const cell = 0.1;
+  const grid = new Map<string, number[]>();
+  index.stations.forEach((s, i) => {
+    const k = `${Math.floor(s.lon / cell)}|${Math.floor(s.lat / cell)}`;
+    if (!grid.has(k)) grid.set(k, []);
+    grid.get(k)!.push(i);
+  });
+  index.stations.forEach((s, i) => {
+    const gx = Math.floor(s.lon / cell);
+    const gy = Math.floor(s.lat / cell);
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        for (const j of grid.get(`${gx + dx}|${gy + dy}`) ?? []) {
+          if (j === i) continue;
+          const t = index.stations[j];
+          const km = Math.hypot((t.lon - s.lon) * Math.cos((s.lat * Math.PI) / 180), t.lat - s.lat) * 111;
+          if (km <= 0.5 || (km <= 7 && city(s.nom).length >= 4 && city(s.nom) === city(t.nom))) g.transfers[i].push({ to: j, m: cityTransfer(km) });
+        }
+  });
+  railGraphs.set(index, g);
+  return g;
+}
+
+export interface RailRoute {
+  /** Durée du trajet, du départ du premier train à l'arrivée. */
+  minutes: number;
+  /** Heure de départ (minutes depuis minuit). */
+  depart: number;
+  /** Gares de correspondance, dans l'ordre (« Lyon Part-Dieu », « Paris Gare de Lyon → Paris Montparnasse »). */
+  changes: string[];
+}
+
+/**
+ * Trajet en train le plus court un samedi, correspondances comprises (3 au plus), entre deux ensembles
+ * de gares, en partant entre `from` et `until` (par défaut 5 h – 14 h : arrivée pour la journée).
+ */
+export function routeRail(index: RailIndex, origins: Set<number>, targets: Set<number>, o: { earliest?: number; latest?: number; maxMinutes?: number } = {}): RailRoute | null {
+  if (!origins.size || !targets.size) return null;
+  const g = railGraph(index);
+  const NS = index.stations.length;
+  const NT = index.trips.length;
+  const earliest = o.earliest ?? 5 * 60;
+  const latest = o.latest ?? 14 * 60;
+  const departs = [...new Set(Array.from(g.dep).filter((d, i) => origins.has(g.from[i]) && d >= earliest && d <= latest))].sort((a, b) => a - b);
+  const ready = new Float64Array(NS);
+  const arr = new Float64Array(NS);
+  const readyFrom = new Int32Array(NS);
+  const reachedBy = new Int32Array(NS);
+  const tripBoard = new Int32Array(NT);
+  let best: RailRoute | null = null;
+  let bound = o.maxMinutes ?? 240;
+  for (const tau of departs) {
+    ready.fill(Infinity);
+    arr.fill(Infinity);
+    readyFrom.fill(-1);
+    reachedBy.fill(-1);
+    tripBoard.fill(-1);
+    for (const s of origins) {
+      ready[s] = tau;
+      arr[s] = tau;
+      readyFrom[s] = -2;
+    }
+    // Premier départ à cette heure.
+    let lo = 0;
+    let hi = g.dep.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (g.dep[mid] < tau) lo = mid + 1;
+      else hi = mid;
+    }
+    for (let c = lo; c < g.dep.length && g.dep[c] < tau + bound; c++) {
+      const t = g.trip[c];
+      const f = g.from[c];
+      if (tripBoard[t] < 0) {
+        if (ready[f] > g.dep[c]) continue;
+        tripBoard[t] = f;
+      }
+      const to = g.to[c];
+      const a = g.arr[c];
+      if (a >= arr[to]) continue;
+      arr[to] = a;
+      reachedBy[to] = t;
+      if (a + RAIL_CHANGE_MIN < ready[to]) {
+        ready[to] = a + RAIL_CHANGE_MIN;
+        readyFrom[to] = to;
+      }
+      for (const w of g.transfers[to])
+        if (a + w.m < ready[w.to]) {
+          ready[w.to] = a + w.m;
+          readyFrom[w.to] = to;
+        }
+      if (targets.has(to) && a - tau < bound) {
+        // Reconstitution : trains successifs, gares de correspondance.
+        const changes: string[] = [];
+        let e = to;
+        let ok = true;
+        for (let k = 0; k < 6; k++) {
+          const b = tripBoard[reachedBy[e]];
+          const prev = readyFrom[b];
+          if (prev === -2) break;
+          if (prev < 0) {
+            ok = false;
+            break;
+          }
+          changes.unshift(prev === b ? index.stations[b].nom : `${index.stations[prev].nom} → ${index.stations[b].nom}`);
+          e = prev;
+          if (k === 5) ok = false;
+        }
+        if (ok && changes.length <= 3) {
+          bound = a - tau;
+          best = { minutes: a - tau, depart: tau, changes };
+        }
+      }
+    }
+  }
+  return best;
 }
 
 /* ------------------------------------------- métro, RER, tram (Île-de-France) */
@@ -308,23 +533,48 @@ export interface TcIndex {
  * (≈ 150 Mo, bus compris) est lu une fois par jour ; seul cet index compact est gardé.
  */
 export function collectIdfmIndex(http: TrackedHttp, now = new Date()): Promise<TcIndex> {
-  return cachedExtract(`idfmtc2|${now.toISOString().slice(0, 10)}`, 24, () => heavyLane.run(() => collectIdfmIndexFresh(http)));
+  return cachedExtract(`idfmtc2|${now.toISOString().slice(0, 10)}`, 24, () => heavyLane.run(() => collectTcIndexFresh(http, IDFM_GTFS_URL, true)));
 }
 
-async function collectIdfmIndexFresh(http: TrackedHttp): Promise<TcIndex> {
-  const f = await http.file(IDFM_GTFS_URL, { timeoutMs: 1800000, retries: 1 });
+/** Réseau urbain hors Île-de-France (métro, tram, funiculaire), à partir de son GTFS. 24 h sur disque. */
+export function collectUrbanIndex(http: TrackedHttp, url: string, now = new Date()): Promise<TcIndex> {
+  return cachedExtract(`urbtc|${now.toISOString().slice(0, 10)}|${hash(url)}`, 24, () => heavyLane.run(() => collectTcIndexFresh(http, url, false)));
+}
+
+/** Type de ligne GTFS (types de base et types étendus). */
+const kindOf = (t: number) => (t === 0 || (t >= 900 && t < 1000) ? "tram" : t === 1 || (t >= 400 && t < 500) ? "metro" : t === 2 || (t >= 100 && t < 200) ? "train" : t === 5 || t === 7 || t === 12 || t === 1400 ? "funi" : null);
+
+async function collectTcIndexFresh(http: TrackedHttp, url: string, idf: boolean): Promise<TcIndex> {
+  const f = await http.file(url, { timeoutMs: 1800000, retries: 1, ...(idf ? {} : { ttlHours: 24 * 7 }) });
   const file = f.data;
-  // 1. Lignes ferrées, de métro et de tram (types GTFS 0, 1, 2).
+  // 1. Lignes ferrées, de métro et de tram.
   const routes = new Map<string, string>();
   await eachRow(file, "routes.txt", (v, col) => {
-    const type = Number(v[col("route_type")]);
-    if (![0, 1, 2].includes(type)) return;
+    const kind = kindOf(Number(v[col("route_type")]));
+    if (!kind) return;
     const short = (v[col("route_short_name")] ?? "").trim();
     const long = (v[col("route_long_name")] ?? "").trim();
     const name = short || long;
-    const ligne = type === 1 ? `métro ${name}` : type === 0 ? `tram ${name.replace(/^T?/, "T")}` : /^[A-E]$/.test(name) ? `RER ${name}` : /^[HJKLNPRUV]$/.test(name) ? `Transilien ${name}` : `train ${name}`;
+    const ligne = idf
+      ? kind === "metro"
+        ? `métro ${name}`
+        : kind === "tram"
+          ? `tram ${name.replace(/^T?/, "T")}`
+          : /^[A-E]$/.test(name)
+            ? `RER ${name}`
+            : /^[HJKLNPRUV]$/.test(name)
+              ? `Transilien ${name}`
+              : `train ${name}`
+      : kind === "metro"
+        ? `métro ${name}`
+        : kind === "tram"
+          ? `tram ${name}`
+          : kind === "funi"
+            ? `funiculaire ${name}`
+            : `train ${name}`;
     routes.set(v[col("route_id")], ligne);
   });
+  if (!routes.size) throw new Error("Aucune ligne de métro ou de tram dans ces horaires");
   // 2. Courses de ces lignes : 40 au plus par ligne et par sens (assez pour voir toutes les branches).
   const perKey = new Map<string, number>();
   const tripRoute = new Map<string, string>();
@@ -383,8 +633,8 @@ async function collectIdfmIndexFresh(http: TrackedHttp): Promise<TcIndex> {
     seen.add(sig);
     patterns.push({ ligne, stops, t: xs.map((x) => x.t) });
   }
-  if (!patterns.length) throw new Error("Aucune ligne de métro, RER ou tram dans les horaires IDFM");
-  return { stations, patterns, url: IDFM_GTFS_URL, retrievedAt: f.retrievedAt };
+  if (!patterns.length) throw new Error("Aucune ligne de métro, RER ou tram dans ces horaires");
+  return { stations, patterns, url, retrievedAt: f.retrievedAt };
 }
 
 /**
@@ -569,4 +819,46 @@ export function routeTc(index: TcIndex, from: Set<number>, to: Set<number>): { m
     }
   }
   return { minutes: dist.get(end)!, lignes };
+}
+
+/* ------------------------------------------- réseaux urbains hors Île-de-France */
+
+export const TRANSPORT_API = process.env.TRANSPORT_API_URL ?? "https://transport.data.gouv.fr/api/datasets";
+
+const norm = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+/** Jeux agrégés (régionaux, nationaux, cars) : trop gros, et sans intérêt pour le métro ou le tram. */
+const AGGREGATE = /agr[eé]gat|aggregat|national|sncf|\bter\b|r[eé]gion|interurbain|scolaire|flixbus|blablacar|autocar|car[s]? r[eé]gion/i;
+
+/**
+ * Jeux de données « transport public » (transport.data.gouv.fr) dont la description cite une des
+ * communes (code INSEE ou nom) et qui comptent un métro, un tram ou un funiculaire ; URL du GTFS.
+ * Le jeu retenu est ensuite vérifié sur le terrain (gares proches des villes concernées).
+ */
+export function pickUrbanGtfs(datasets: unknown[], o: { codes: string[]; names: string[] }, max = 2): { title: string; url: string }[] {
+  const names = o.names.map(norm).filter((n) => n.length >= 3);
+  const scored: { title: string; url: string; score: number }[] = [];
+  for (const d of datasets) {
+    if (!d || typeof d !== "object") continue;
+    const x = d as { type?: string; title?: string; resources?: { format?: string; url?: string; original_url?: string; is_available?: boolean; title?: string }[] };
+    if (x.type && x.type !== "public-transit") continue;
+    const title = String(x.title ?? "");
+    if (AGGREGATE.test(title)) continue;
+    const res = (x.resources ?? []).find((r) => /^gtfs$/i.test(String(r.format ?? "")) && r.is_available !== false && (r.url || r.original_url));
+    if (!res) continue;
+    const raw = JSON.stringify(d);
+    const text = ` ${norm(raw)} `;
+    if (!/\b(tram|tramway|metro|funiculaire|subway)\b/.test(text)) continue;
+    let score = 0;
+    for (const c of o.codes) if (raw.includes(`"${c}"`)) score += 3;
+    for (const n of names) if (text.includes(` ${n} `)) score += 2;
+    if (score) scored.push({ title, url: String(res.url || res.original_url), score });
+  }
+  return scored.sort((a, b) => b.score - a.score).slice(0, max).map(({ title, url }) => ({ title, url }));
 }
