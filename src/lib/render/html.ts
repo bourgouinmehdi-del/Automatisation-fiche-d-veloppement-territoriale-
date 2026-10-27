@@ -254,13 +254,13 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       const dessous = b.enDessous?.length
         ? `<div class="sv-sub">${b.faibles.length ? "Un peu en dessous de la moyenne" : "Pas de service très en retard, mais plusieurs un peu en dessous de la moyenne"}</div><ul class="sv-l">${b.enDessous.map((f) => `<li><span class="sv-i">${ICONS[f.cat] ?? ""}</span><b>${esc(f.label)}</b> : ${esc(f.txt)}</li>`).join("")}</ul>`
         : "";
-      const cats = `<div class="sv-sub">Par catégorie</div><table class="sv-t"><tbody>${b.cats.map((c) => `<tr><td><span class="sv-i">${ICONS[c.cat] ?? ""}</span><b>${esc(c.label)}</b></td><td class="sv-${c.niveau}">${niv[c.niveau]}</td><td class="sv-d">${c.details.map((d) => `${esc(d.label)} : ${esc(d.txt)}`).join(" ; ")}</td></tr>`).join("")}</tbody></table>`;
+      const cats = `<div class="sv-sub">Détail par thème</div><table class="sv-t"><tbody>${b.cats.map((c) => `<tr><td><span class="sv-i">${ICONS[c.cat] ?? ""}</span><b>${esc(c.label)}</b></td><td class="sv-${c.niveau}">${niv[c.niveau]}</td><td class="sv-d">${c.details.map((d) => `${esc(d.label)} : ${esc(d.txt)}`).join(" ; ")}</td></tr>`).join("")}</tbody></table>`;
       const pas = (v: number, big = false) => {
         const n = niveauAcces(v);
         return `<span class="sv-p${big ? " big" : ""}" style="background:${n.bg};color:${n.fg}">${n.txt}</span>`;
       };
       const indice = b.indice
-        ? `<div class="sv-ix"><div>Accès aux services, comparé ${b.indice.ref === "France" ? "à l'habitant moyen en France" : "à l'habitant moyen du département"} : ${pas(b.indice.global, true)}</div><div class="sv-g">${b.indice.gammes.map((g) => `<div><b>${esc(g.label)}</b>${g.exemples ? `<div class="sv-d">${esc(g.exemples)}</div>` : ""}${pas(g.value)}</div>`).join("")}</div></div>`
+        ? `<div class="sv-ix"><div>Accès aux services, comparé ${b.indice.ref === "France" ? "à l'habitant moyen en France" : "à l'habitant moyen du département"} : ${pas(b.indice.global, true)}</div><table class="sv-g"><tbody>${b.indice.gammes.map((g) => `<tr><td class="sv-gl"><b>${g.cat ? `<span class="sv-i">${ICONS[g.cat] ?? ""}</span>` : ""}${esc(g.label)}</b></td><td class="sv-gp">${pas(g.value)}</td><td class="sv-d">${esc(g.exemples ?? "")}</td></tr>`).join("")}</tbody></table></div>`
         : "";
       return `<figure class="services"><figcaption>${esc(b.title)}</figcaption>${indice}${faibles}${dessous}${cats}<div class="pr-n">${esc(b.note)}</div></figure>`;
     }
@@ -367,8 +367,10 @@ h3.fh { font-size: 15pt; font-weight: 800; color: #4c0297; margin: 7mm 0 3mm; pa
 .gl { border: 0; border-left: 1mm solid #e9e3d3; padding: .5mm 0 .5mm 3mm; }
 .gl.up { border-left-color: #d1271c; } .gl.up .gl-v { color: #d1271c; } .gl.down { border-left-color: #85877f; }
 .sv-ix { font-size: 9.5pt; margin: 1mm 0 3mm; border: 1px solid #e7e6e2; border-radius: 1.5mm; padding: 2mm 3mm; }
-.sv-g { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin-top: 2mm; font-size: 8.4pt; }
-.sv-p { display: inline-block; border-radius: 99px; padding: 0.4mm 2.2mm; font-weight: 700; font-size: 8.2pt; margin-top: 0.8mm; }
+.sv-g { margin-top: 2mm; font-size: 8.6pt; border-collapse: collapse; }
+.sv-g td { padding: 0.8mm 2mm 0.8mm 0; vertical-align: middle; border: 0; }
+.sv-gl { white-space: nowrap; } .sv-gp { white-space: nowrap; }
+.sv-p { display: inline-block; border-radius: 99px; padding: 0.4mm 2.2mm; font-weight: 700; font-size: 8.2pt; white-space: nowrap; }
 .sv-p.big { font-size: 9.5pt; padding: 0.8mm 3mm; }
 .services { border: 1px solid #e7e6e2; border-radius: 2mm; padding: 3mm 4mm; }
 .sv-sub { font-weight: 700; font-size: 9pt; margin: 1.5mm 0 1mm; color: #4c0297; }

@@ -107,3 +107,27 @@ describe("référence nationale et indice", () => {
     expect(r.indice!.global).toBeLessThan(50);
   });
 });
+
+describe("centre habité et thèmes", () => {
+  it("mesure depuis le bourg, pas depuis le centre géométrique (Compiègne et sa forêt)", () => {
+    const eq = (type: string, commune: string, lon: number, lat: number) => ({ type, nom: "", commune, lon, lat, qp: null, adresse: "" });
+    // 12 communes ; la première a son centre géométrique à 4 km de sa ville, où se trouvent écoles, médecins, poste.
+    const communes = Array.from({ length: 12 }, (_, i) => ({ code: `60${String(i).padStart(3, "0")}`, at: [2.8 + i * 0.2, 49.4] as [number, number], pop: 40000 }));
+    communes[0] = { ...communes[0], at: [2.86, 49.4] };
+    const ville: [number, number] = [2.8, 49.4];
+    const equip = [
+      ...communes.flatMap((c, i) => (i === 0 ? [] : ["C108", "D265", "A206", "D307"].map((t) => eq(t, c.code, c.at[0], c.at[1])))),
+      ...["C108", "D265", "A206", "D307"].map((t) => eq(t, "60000", ville[0], ville[1])),
+      // Gare dans la commune voisine, à 600 m de la ville ; police (A140, code 2025) en ville.
+      eq("E108", "60001", ville[0] + 0.008, ville[1]),
+      eq("E108", "60005", 3.8, 49.4),
+      eq("A140", "60000", ville[0], ville[1]),
+      eq("A140", "60003", 3.4, 49.4),
+    ];
+    const r = servicesAccess("60000", communes, equip)!;
+    expect(r.rows.find((x) => x.label === "Gare")!.val).toBeLessThan(1);
+    expect(r.rows.find((x) => x.label === "Police ou gendarmerie")!.surPlace).toBe(true);
+    expect(r.faibles.map((x) => x.label)).not.toContain("Gare");
+    expect(r.indice!.gammes.map((g) => g.label)).toEqual(expect.arrayContaining(["Se soigner", "Services publics", "Courses et transports"]));
+  });
+});
