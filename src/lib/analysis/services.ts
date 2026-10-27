@@ -6,18 +6,20 @@ import { fmtNumber } from "../format";
  * Accessibilité aux services, à l'échelle de la commune, comparée aux communes de taille semblable du
  * département (de la moitié au double de la population).
  *
- * Deux mesures selon le service :
+ * Trois mesures selon le service :
  * - services courants (médecin, pharmacie, dentiste, infirmier, crèche) : l'offre à portée, en nombre
  *   pour 10 000 habitants dans un rayon de 5 km (équipements de la commune et des communes proches,
  *   rapportés à leur population). Presque toutes les villes ont un médecin : c'est le nombre de
  *   médecins pour la population qui distingue un désert médical ;
- * - services plus rares (urgences, lycée, gare, piscine…) : la distance au plus proche, où qu'il soit
- *   dans le département. Un service dans la commune compte pour 0 km ; en deçà de 2 km, les écarts ne
- *   comptent pas (à pied ou en bus, la différence est faible).
+ * - urgences, maternité, gare : la distance au plus proche, où qu'il soit dans le département. Un
+ *   service dans la commune compte pour 0 km ; en deçà de 2 km, les écarts ne comptent pas ;
+ * - les autres (poste, banque, police, école, collège, lycée, supermarché, bibliothèque, piscine,
+ *   cinéma, France Services, France Travail) : les deux, et la moins favorable est retenue. À la
+ *   campagne la distance parle ; en ville, où tout est dans la commune, c'est l'offre pour la population.
  */
 
 export type ServiceCat = "sante" | "public" | "securite" | "education" | "commerce" | "transport" | "culture";
-type Mode = "offre" | "distance";
+type Mode = "offre" | "distance" | "mixte";
 
 export const SERVICE_CATS: { id: ServiceCat; label: string; items: { label: string; codes: string[]; mode: Mode }[] }[] = [
   {
@@ -36,32 +38,32 @@ export const SERVICE_CATS: { id: ServiceCat; label: string; items: { label: stri
     id: "public",
     label: "Services publics",
     items: [
-      { label: "France Services", codes: ["A128"], mode: "distance" },
-      { label: "France Travail", codes: ["A122"], mode: "distance" },
-      { label: "Poste (bureau, relais ou agence)", codes: ["A206", "A207", "A208"], mode: "distance" },
-      { label: "Banque", codes: ["A203"], mode: "distance" },
+      { label: "France Services", codes: ["A128"], mode: "mixte" },
+      { label: "France Travail", codes: ["A122"], mode: "mixte" },
+      { label: "Poste (bureau, relais ou agence)", codes: ["A206", "A207", "A208"], mode: "mixte" },
+      { label: "Banque", codes: ["A203"], mode: "mixte" },
     ],
   },
-  { id: "securite", label: "Sécurité", items: [{ label: "Police ou gendarmerie", codes: ["A101", "A104"], mode: "distance" }] },
+  { id: "securite", label: "Sécurité", items: [{ label: "Police ou gendarmerie", codes: ["A101", "A104"], mode: "mixte" }] },
   {
     id: "education",
     label: "Enfance et éducation",
     items: [
       { label: "Crèche", codes: ["D502"], mode: "offre" },
-      { label: "École", codes: ["C101", "C104", "C107", "C108", "C109"], mode: "distance" },
-      { label: "Collège", codes: ["C201"], mode: "distance" },
-      { label: "Lycée", codes: ["C301", "C302"], mode: "distance" },
+      { label: "École", codes: ["C101", "C104", "C107", "C108", "C109"], mode: "mixte" },
+      { label: "Collège", codes: ["C201"], mode: "mixte" },
+      { label: "Lycée", codes: ["C301", "C302"], mode: "mixte" },
     ],
   },
-  { id: "commerce", label: "Commerces", items: [{ label: "Supermarché ou hypermarché", codes: ["B104", "B105", "B101", "B102"], mode: "distance" }] },
+  { id: "commerce", label: "Commerces", items: [{ label: "Supermarché ou hypermarché", codes: ["B104", "B105", "B101", "B102"], mode: "mixte" }] },
   { id: "transport", label: "Transports", items: [{ label: "Gare", codes: ["E107", "E108", "E109"], mode: "distance" }] },
   {
     id: "culture",
     label: "Sports et culture",
     items: [
-      { label: "Bibliothèque", codes: ["F307"], mode: "distance" },
-      { label: "Piscine", codes: ["F101"], mode: "distance" },
-      { label: "Cinéma", codes: ["F303"], mode: "distance" },
+      { label: "Bibliothèque", codes: ["F307"], mode: "mixte" },
+      { label: "Piscine", codes: ["F101"], mode: "mixte" },
+      { label: "Cinéma", codes: ["F303"], mode: "mixte" },
     ],
   },
 ];
@@ -139,7 +141,7 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
       const pts = it.codes.flatMap((k) => byCode.get(k) ?? []);
       if (pts.length < 2) continue;
       const here = (c: string) => pts.some((e) => e.commune === c);
-      if (it.mode === "distance") {
+      const distRow = (): ServiceRow | null => {
         const dist = (x: { code: string; at: Pt }) => {
           if (here(x.code)) return 0;
           let best = Infinity;
@@ -148,13 +150,13 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
         };
         const val = dist(me);
         const med = median(pairs.map(dist));
-        if (!Number.isFinite(val) || !Number.isFinite(med)) continue;
+        if (!Number.isFinite(val) || !Number.isFinite(med)) return null;
         const score = Math.log2((Math.max(val, DIST_MIN) + 0.5) / (Math.max(med, DIST_MIN) + 0.5));
         const faible = score >= 0.6 && val - med >= 1.5 && val >= 3;
-        rows.push({
+        return {
           cat: cat.id,
           label: it.label,
-          mode: it.mode,
+          mode: "distance",
           val,
           med,
           surPlace: val === 0,
@@ -162,9 +164,10 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
           faible,
           txt: `${val === 0 ? "dans la commune" : `à ${km(val)}`} (communes semblables : ${km(med)})`,
           txtFaible: `le plus proche à ${km(val)}, ${med < 0.1 ? "alors que la plupart des communes de cette taille en ont un sur place" : `contre ${km(med)} en général pour une commune de cette taille`}`,
-        });
-      } else {
-        // Offre à portée : équipements de la commune et à moins de 5 km, pour 10 000 habitants à portée.
+        };
+      };
+      // Offre à portée : équipements de la commune et à moins de 5 km, pour 10 000 habitants à portée.
+      const offreRow = (seuilFaible: number): ServiceRow | null => {
         const offre = (x: { code: string; at: Pt; pop: number }) => {
           const vs = voisins(x);
           const set = new Set(vs.map((v) => v.code));
@@ -174,23 +177,38 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
         };
         const val = offre(me);
         const med = median(pairs.map(offre));
-        if (!Number.isFinite(val) || !Number.isFinite(med) || med <= 0) continue;
+        if (!Number.isFinite(val) || !Number.isFinite(med) || med <= 0) return null;
         const e = Math.max(0.05 * med, 0.1);
         const score = Math.log2((med + e) / (val + e));
-        const faible = val <= 0.7 * med;
-        rows.push({
+        return {
           cat: cat.id,
           label: it.label,
-          mode: it.mode,
+          mode: "offre",
           val,
           med,
           surPlace: here(code),
           score,
-          faible,
+          faible: val <= seuilFaible * med,
           txt: `${per(val)} pour 10 000 habitants à moins de ${OFFRE_KM} km (communes semblables : ${per(med)})`,
           txtFaible: `${per(val)} pour 10 000 habitants à moins de ${OFFRE_KM} km, contre ${per(med)} en général pour une commune de cette taille`,
-        });
+        };
+      };
+      let row: ServiceRow | null;
+      if (it.mode === "distance") row = distRow();
+      else if (it.mode === "offre") {
+        // Aucun à moins de 5 km : la distance au plus proche le dit mieux que « 0 pour 10 000 habitants ».
+        const o = offreRow(0.7);
+        row = o && o.val === 0 ? (distRow() ?? o) : o;
       }
+      else {
+        // Mixte (poste, école, lycée, piscine…) : à la campagne, c'est la distance qui compte ; en ville, où
+        // tout est « dans la commune », c'est le nombre pour la population (une piscine pour 65 000 habitants
+        // contre une pour 30 000). On retient la mesure la moins favorable ; aucun à moins de 5 km : la distance.
+        const d = distRow();
+        const o = offreRow(0.5);
+        row = !o || !d ? (o ?? d) : o.val === 0 ? d : o.score > d.score ? o : d;
+      }
+      if (row) rows.push(row);
     }
   const faibles = rows.filter((r) => r.faible).sort((a, b) => b.score - a.score);
   const cats: CatScore[] = SERVICE_CATS.map((c) => {
