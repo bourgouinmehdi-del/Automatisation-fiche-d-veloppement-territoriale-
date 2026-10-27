@@ -65,6 +65,9 @@ function bpeZip() {
   lines.push(`60;60159;B105;Supermarché fictif;${LON0 + 0.02};${LAT0 + 0.008};${QPV.code}`);
   lines.push(`60;60159;A128;France Services fictive;${LON0 + 0.006};${LAT0 + 0.025};CSZ`);
   lines.push(`60;60159;A122;Agence France Travail fictive;${LON0 + 0.008};${LAT0 + 0.022};CSZ`);
+  // Accès aux services : pharmacies dans les communes voisines, commissariat loin à Beauvais.
+  for (const [c, dx, dy] of [["60382", -1, 0], ["60338", 0, -1], ["60151", 0, 1], ["60156", -1, 1], ["60667", -1, -1]] as const) lines.push(`60;${c};D307;Pharmacie ${c};${LON0 + dx * 0.04};${LAT0 + dy * 0.04};CSZ`);
+  lines.push(`60;60057;A101;Commissariat fictif;${LON0 + 0.4};${LAT0 - 0.4};CSZ`, `60;60057;A101;Commissariat fictif 2;${LON0 + 0.42};${LAT0 - 0.42};CSZ`);
   for (let i = 0; i < 520; i++) lines.push(`60;60382;D265;Médecin ${i};${LON0 - 0.03};${LAT0 + 0.01};CSZ`);
   lines.push(`02;02001;D265;Hors département;3;49;CSZ`);
   return zip({ "BPE25.csv": lines.join("\n") });

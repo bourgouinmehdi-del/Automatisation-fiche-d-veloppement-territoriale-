@@ -11,6 +11,7 @@ import { fmtDate, fmtValue, scoreColor, territoryName } from "@/lib/format";
 import { cellText, Citations, inlineParts, sourceLabel } from "@/lib/render/cite";
 import ChartView from "./ChartView";
 import PresenceBars from "./PresenceBars";
+import ServicesPanel from "./ServicesPanel";
 import { useRole } from "./useRole";
 import { splitWarnings } from "@/lib/report/warnings";
 
@@ -142,6 +143,8 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
             })}
           </div>
         );
+      case "services":
+        return <ServicesPanel key={key} b={b} />;
       case "plan":
         return (
           <div key={key} className="plan my-4 divide-y divide-[var(--line)] rounded-lg border border-[var(--line)]">

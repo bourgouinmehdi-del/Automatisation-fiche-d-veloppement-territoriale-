@@ -15,7 +15,8 @@ export const BPE_URL = process.env.INSEE_BPE_URL ?? "https://www.insee.fr/fr/sta
 export const BPE_VINTAGE = "2025";
 
 /** Types d'équipements retenus (codes TYPEQU de la BPE 2025). */
-export const BPE_TYPES: Record<string, { label: string; group: "sante" | "public" | "commerce" | "education" }> = {
+export type BpeGroup = "sante" | "public" | "commerce" | "education" | "securite" | "transport" | "culture";
+export const BPE_TYPES: Record<string, { label: string; group: BpeGroup }> = {
   D265: { label: "Médecins généralistes", group: "sante" },
   D277: { label: "Chirurgiens-dentistes", group: "sante" },
   D281: { label: "Infirmiers", group: "sante" },
@@ -23,16 +24,31 @@ export const BPE_TYPES: Record<string, { label: string; group: "sante" | "public
   D108: { label: "Centres de santé", group: "sante" },
   D106: { label: "Urgences", group: "sante" },
   D107: { label: "Maternités", group: "sante" },
+  D502: { label: "Crèches", group: "education" },
   A128: { label: "France Services", group: "public" },
   A122: { label: "Agences France Travail", group: "public" },
   A206: { label: "Bureaux de poste", group: "public" },
   A207: { label: "Relais poste", group: "public" },
   A208: { label: "Agences postales", group: "public" },
+  A203: { label: "Banques", group: "public" },
+  A101: { label: "Commissariats de police", group: "securite" },
+  A104: { label: "Gendarmeries", group: "securite" },
   B104: { label: "Hypermarchés", group: "commerce" },
   B105: { label: "Supermarchés", group: "commerce" },
+  C101: { label: "Écoles maternelles", group: "education" },
+  C104: { label: "Écoles élémentaires", group: "education" },
+  C107: { label: "Écoles maternelles", group: "education" },
+  C108: { label: "Écoles élémentaires", group: "education" },
+  C109: { label: "Écoles primaires", group: "education" },
   C201: { label: "Collèges", group: "education" },
   C301: { label: "Lycées généraux et technologiques", group: "education" },
   C302: { label: "Lycées professionnels", group: "education" },
+  E107: { label: "Gares d'intérêt national", group: "transport" },
+  E108: { label: "Gares d'intérêt régional", group: "transport" },
+  E109: { label: "Gares d'intérêt local", group: "transport" },
+  F307: { label: "Bibliothèques", group: "culture" },
+  F101: { label: "Piscines", group: "culture" },
+  F303: { label: "Cinémas", group: "culture" },
 };
 
 export interface BpeEquipement {
@@ -54,6 +70,8 @@ export const isMaskedName = (n: string) => !n.trim() || /anonym|annonim|^n\.?d\.
 export interface BpeResult {
   /** Équipements de la commune. */
   commune: BpeEquipement[];
+  /** Équipements du département (accessibilité : le plus proche peut être dans la commune voisine). */
+  departement?: BpeEquipement[];
   /** Comptes par type et par commune du département. */
   countsByCommune: Map<string, Record<string, number>>;
   /** Comptes par type pour le département. */
@@ -65,8 +83,8 @@ export interface BpeResult {
 type BpeDep = Omit<BpeResult, "commune"> & { all: BpeEquipement[] };
 
 export async function collectBpe(http: TrackedHttp, codeInsee: string, dep: string): Promise<BpeResult> {
-  const d = await cachedExtract<BpeDep>(`bpe|${BPE_VINTAGE}|${dep}`, 24 * 30, () => heavyLane.run(() => bpeDepartement(http, dep)));
-  return { commune: d.all.filter((e) => e.commune === codeInsee), countsByCommune: d.countsByCommune, countsDep: d.countsDep, url: d.url, retrievedAt: d.retrievedAt };
+  const d = await cachedExtract<BpeDep>(`bpe2|${BPE_VINTAGE}|${dep}`, 24 * 30, () => heavyLane.run(() => bpeDepartement(http, dep)));
+  return { commune: d.all.filter((e) => e.commune === codeInsee), departement: d.all, countsByCommune: d.countsByCommune, countsDep: d.countsDep, url: d.url, retrievedAt: d.retrievedAt };
 }
 
 async function bpeDepartement(http: TrackedHttp, dep: string): Promise<BpeDep> {

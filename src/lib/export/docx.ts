@@ -25,7 +25,7 @@ import {
 } from "docx";
 import { SOURCES } from "../collectors/catalog";
 import { KIND_LABELS } from "../analysis/findings";
-import { fmtDate, fmtValue, territoryName } from "../format";
+import { fmtDate, fmtNumber, fmtValue, territoryName } from "../format";
 import { cellText, Citations, freshness, selectFindings, sourceLabel } from "../render/html";
 import { inlineParts } from "../render/cite";
 import { chartSvg, hasLocator, locatorSvg, mapSvg } from "../render/svg";
@@ -273,6 +273,16 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
         ),
         new Paragraph({ spacing: { after: 120 }, children: [] }),
       ];
+    case "services": {
+      const km = (v: number) => (v < 0.1 ? "sur place" : `${fmtNumber(v, v < 10 ? 1 : 0)} km`);
+      const niv: Record<string, string> = { mieux: "mieux desservie", comme: "comme les communes semblables", moins: "moins bien desservie" };
+      return [
+        caption(b.title),
+        ...b.faibles.map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : le plus proche à ${km(f.km)}, contre ${km(f.medKm)} en général pour une commune de cette taille`, font: FONT, size: 19 })] })),
+        ...b.cats.map((c) => new Paragraph({ spacing: { after: 30 }, children: [new TextRun({ text: `${c.label} : `, font: FONT, size: 19, bold: true }), new TextRun({ text: niv[c.niveau], font: FONT, size: 19, color: c.niveau === "moins" ? "D1271C" : "52514E" })] })),
+        new Paragraph({ spacing: { after: 160 }, children: [new TextRun({ text: b.note, font: FONT, size: 16, color: "52514E" })] }),
+      ];
+    }
     case "plan":
       return b.items.flatMap((it) => [
         new Paragraph({ spacing: { before: 120, after: 40 }, keepNext: true, children: [new TextRun({ text: it.label, font: FONT, size: 20, bold: true }), new TextRun({ text: ` : ${it.count}${it.quand ? ` (${it.quand})` : ""}`, font: FONT, size: 20, color: "52514E" })] }),
