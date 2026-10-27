@@ -1,5 +1,5 @@
 import type { BpeNational } from "../collectors/bpe";
-import { OFFRE_KM, SERVICE_CATS } from "./services";
+import { BOURG_CODES, centreBourg, OFFRE_KM, SERVICE_CATS } from "./services";
 
 /**
  * Référence nationale de l'accès aux services : pour chaque service, ce dont dispose l'habitant moyen
@@ -27,7 +27,18 @@ function weightedMedian(vals: { v: number; w: number }[]): number {
   return NaN;
 }
 
-export function nationalServiceRefs(communes: C[], bpe: BpeNational): ServicesRef {
+export function nationalServiceRefs(communes0: C[], bpe: BpeNational): ServicesRef {
+  // Centre habité de chaque commune (équipements du quotidien), comme pour la commune étudiée.
+  const parCommune = new Map<string, { lon: number; lat: number }[]>();
+  for (const code of BOURG_CODES) {
+    const t = bpe.byType[code];
+    if (!t) continue;
+    for (let i = 0; i < t.commune.length; i++) if (Number.isFinite(t.lon[i]) && Number.isFinite(t.lat[i])) (parCommune.get(t.commune[i]) ?? parCommune.set(t.commune[i], []).get(t.commune[i])!).push({ lon: t.lon[i], lat: t.lat[i] });
+  }
+  const communes = communes0.map((c) => {
+    const b = centreBourg(parCommune.get(c.code) ?? []);
+    return b ? { ...c, lon: b[0], lat: b[1] } : c;
+  });
   const centre = new Map(communes.map((c) => [c.code, c]));
   // Communes à moins de 5 km de chacune (population à portée).
   const cgrid = new Map<string, C[]>();

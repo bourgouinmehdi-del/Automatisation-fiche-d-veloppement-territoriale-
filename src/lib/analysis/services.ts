@@ -19,13 +19,15 @@ import { fmtNumber } from "../format";
  *   campagne la distance parle ; en ville, où tout est dans la commune, c'est l'offre pour la population.
  */
 
-export type ServiceCat = "sante" | "public" | "securite" | "education" | "commerce" | "transport" | "culture";
+export type ServiceCat = "sante" | "public" | "education" | "commerce" | "culture";
 type Mode = "offre" | "distance" | "mixte";
 
-export const SERVICE_CATS: { id: ServiceCat; label: string; items: { label: string; codes: string[]; mode: Mode }[] }[] = [
+/** Cinq thèmes, dits comme on en parle à la porte. */
+export const SERVICE_CATS: { id: ServiceCat; label: string; exemples: string; items: { label: string; codes: string[]; mode: Mode }[] }[] = [
   {
     id: "sante",
-    label: "Santé",
+    label: "Se soigner",
+    exemples: "médecin, pharmacie, dentiste, infirmier, urgences, maternité",
     items: [
       { label: "Médecin généraliste", codes: ["D265", "D201"], mode: "offre" },
       { label: "Pharmacie", codes: ["D307"], mode: "offre" },
@@ -38,29 +40,40 @@ export const SERVICE_CATS: { id: ServiceCat; label: string; items: { label: stri
   {
     id: "public",
     label: "Services publics",
+    exemples: "poste, France Services, France Travail, police ou gendarmerie",
     items: [
+      { label: "Poste (bureau, relais ou agence)", codes: ["A206", "A207", "A208"], mode: "mixte" },
       { label: "France Services", codes: ["A128"], mode: "mixte" },
       { label: "France Travail", codes: ["A122"], mode: "mixte" },
-      { label: "Poste (bureau, relais ou agence)", codes: ["A206", "A207", "A208"], mode: "mixte" },
-      { label: "Banque", codes: ["A203"], mode: "mixte" },
+      // A140 : police dans la BPE 2025 (A101 les années précédentes).
+      { label: "Police ou gendarmerie", codes: ["A140", "A101", "A104"], mode: "mixte" },
     ],
   },
-  { id: "securite", label: "Sécurité", items: [{ label: "Police ou gendarmerie", codes: ["A101", "A104"], mode: "mixte" }] },
   {
     id: "education",
-    label: "Enfance et éducation",
+    label: "École et petite enfance",
+    exemples: "crèche, école, collège, lycée",
     items: [
-      { label: "Crèche", codes: ["D502"], mode: "offre" },
+      { label: "Crèche", codes: ["D502", "D509"], mode: "offre" },
       { label: "École", codes: ["C101", "C104", "C107", "C108", "C109"], mode: "mixte" },
       { label: "Collège", codes: ["C201"], mode: "mixte" },
-      { label: "Lycée", codes: ["C301", "C302"], mode: "mixte" },
+      { label: "Lycée", codes: ["C301", "C302", "C303"], mode: "mixte" },
     ],
   },
-  { id: "commerce", label: "Commerces", items: [{ label: "Supermarché ou hypermarché", codes: ["B104", "B105", "B101", "B102"], mode: "mixte" }] },
-  { id: "transport", label: "Transports", items: [{ label: "Gare", codes: ["E107", "E108", "E109"], mode: "distance" }] },
+  {
+    id: "commerce",
+    label: "Courses et transports",
+    exemples: "supermarché, banque, gare",
+    items: [
+      { label: "Supermarché ou hypermarché", codes: ["B104", "B105", "B101", "B102"], mode: "mixte" },
+      { label: "Banque", codes: ["A203"], mode: "mixte" },
+      { label: "Gare", codes: ["E107", "E108", "E109"], mode: "distance" },
+    ],
+  },
   {
     id: "culture",
-    label: "Sports et culture",
+    label: "Sport et culture",
+    exemples: "bibliothèque, piscine, cinéma",
     items: [
       { label: "Bibliothèque", codes: ["F307"], mode: "mixte" },
       { label: "Piscine", codes: ["F101"], mode: "mixte" },
@@ -69,38 +82,22 @@ export const SERVICE_CATS: { id: ServiceCat; label: string; items: { label: stri
   },
 ];
 
+/** Équipements du quotidien qui situent le bourg (là où l'on habite), plutôt que le centre géométrique. */
+export const BOURG_CODES = ["D265", "D307", "C107", "C108", "C109", "A206", "B105"];
+
 /**
- * Gammes de services, d'après la fréquence du besoin (à la manière des gammes de la BPE de l'INSEE) :
- * proximité (au quotidien), intermédiaire, supérieure (plus rares).
+ * Centre habité d'une commune : point médian de ses équipements du quotidien (médecins, pharmacies,
+ * écoles, poste, supermarché), quand elle en a au moins trois. Le centre géométrique peut tomber dans
+ * une forêt (Compiègne : 53 km² dont la moitié en forêt, centre à 3 km de la gare).
  */
-export type Gamme = "proximite" | "intermediaire" | "superieure";
-export const GAMMES: Record<Gamme, { label: string; exemples: string; poids: number }> = {
-  proximite: { label: "Au quotidien", exemples: "médecin, pharmacie, école, poste, supermarché", poids: 0.5 },
-  intermediaire: { label: "Moins souvent", exemples: "dentiste, crèche, collège, banque, police, piscine", poids: 0.3 },
-  superieure: { label: "Plus rarement", exemples: "lycée, urgences, maternité, gare, cinéma", poids: 0.2 },
-};
-const GAMME_OF: Record<string, Gamme> = {
-  "Médecin généraliste": "proximite",
-  Pharmacie: "proximite",
-  Infirmier: "proximite",
-  École: "proximite",
-  "Poste (bureau, relais ou agence)": "proximite",
-  "Supermarché ou hypermarché": "proximite",
-  Dentiste: "intermediaire",
-  Crèche: "intermediaire",
-  Collège: "intermediaire",
-  Banque: "intermediaire",
-  "Police ou gendarmerie": "intermediaire",
-  "France Services": "intermediaire",
-  Bibliothèque: "intermediaire",
-  Piscine: "intermediaire",
-  Urgences: "superieure",
-  Maternité: "superieure",
-  Lycée: "superieure",
-  "France Travail": "superieure",
-  Gare: "superieure",
-  Cinéma: "superieure",
-};
+export function centreBourg(pts: { lon: number; lat: number }[]): [number, number] | null {
+  if (pts.length < 3) return null;
+  const med = (v: number[]) => {
+    const s = [...v].sort((a, b) => a - b);
+    return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+  };
+  return [med(pts.map((p) => p.lon)), med(pts.map((p) => p.lat))];
+}
 
 /** Rayon de l'offre à portée (km). */
 export const OFFRE_KM = 5;
@@ -137,7 +134,7 @@ export interface ServicesResult {
   faibles: ServiceRow[];
   cats: CatScore[];
   /** Indice d'accès (France = 100) : global et par gamme. */
-  indice: { global: number; ref: "France" | "département"; gammes: { id: Gamme; label: string; exemples: string; value: number }[] } | null;
+  indice: { global: number; ref: "France" | "département"; gammes: { id: ServiceCat; label: string; exemples: string; value: number }[] } | null;
 }
 
 type Pt = [number, number];
@@ -153,6 +150,15 @@ const per = (v: number) => fmtNumber(v, v < 10 ? 1 : 0);
  * `communes` : communes du département (code, centre, population). `equip` : équipements du département.
  */
 export function servicesAccess(code: string, communes: { code: string; at: Pt; pop: number }[], equip: BpeEquipement[], nat?: Record<string, { dist?: number; offre?: number }>): ServicesResult | null {
+  // Centre habité de chaque commune (voir centreBourg).
+  {
+    const parCommune = new Map<string, { lon: number; lat: number }[]>();
+    for (const e of equip) if (BOURG_CODES.includes(e.type) && e.lon != null && e.lat != null) (parCommune.get(e.commune) ?? parCommune.set(e.commune, []).get(e.commune)!).push({ lon: e.lon, lat: e.lat });
+    communes = communes.map((x) => {
+      const c = centreBourg(parCommune.get(x.code) ?? []);
+      return c ? { ...x, at: c } : x;
+    });
+  }
   const me = communes.find((x) => x.code === code);
   if (!me) return null;
   // Équipement sans coordonnées : placé au centre de sa commune plutôt qu'ignoré.
@@ -279,17 +285,14 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
     const niveau = g >= 0.2 || (pire >= moitie && pire > mieux) || (faible && g >= 0) ? "moins" : !faible && (g <= -0.2 || (mieux >= moitie && mieux > pire)) ? "mieux" : "comme";
     return { cat: c.id, label: c.label, niveau, items: rs.length } as CatScore;
   }).filter((x): x is CatScore => !!x);
-  // Indice : pour chaque gamme, 100 × 2^(−écart moyen) ; global pondéré (proximité 50 %, intermédiaire 30 %,
-  // supérieure 20 %) : on a besoin d'un médecin ou d'une école bien plus souvent que d'une maternité.
-  const gammes = (Object.keys(GAMMES) as Gamme[])
-    .map((g) => {
-      const rs = rows.filter((r) => GAMME_OF[r.label] === g);
-      if (!rs.length) return null;
-      const m = rs.reduce((t, r) => t + r.score, 0) / rs.length;
-      return { id: g, label: GAMMES[g].label, exemples: GAMMES[g].exemples, value: Math.round(Math.max(0, Math.min(200, 100 * 2 ** -m))) };
-    })
-    .filter((x): x is { id: Gamme; label: string; exemples: string; value: number } => !!x);
-  const wTot = gammes.reduce((t, g) => t + GAMMES[g.id].poids, 0);
-  const indice = gammes.length ? { global: Math.round(gammes.reduce((t, g) => t + g.value * GAMMES[g.id].poids, 0) / wTot), ref: (nat && Object.keys(nat).length ? "France" : "département") as "France" | "département", gammes } : null;
+  // Niveau d'ensemble et par thème : 100 × 2^(−écart moyen) (100 = comme l'habitant moyen, 50 = deux fois
+  // moins accessible) ; ensemble = moyenne des thèmes.
+  const themes = SERVICE_CATS.map((c) => {
+    const rs = rows.filter((r) => r.cat === c.id);
+    if (!rs.length) return null;
+    const m = rs.reduce((t, r) => t + r.score, 0) / rs.length;
+    return { id: c.id, label: c.label, exemples: c.exemples, value: Math.round(Math.max(0, Math.min(200, 100 * 2 ** -m))) };
+  }).filter((x): x is { id: ServiceCat; label: string; exemples: string; value: number } => !!x);
+  const indice = themes.length ? { global: Math.round(themes.reduce((t, g) => t + g.value, 0) / themes.length), ref: (nat && Object.keys(nat).length ? "France" : "département") as "France" | "département", gammes: themes } : null;
   return { rows, faibles, cats, indice };
 }

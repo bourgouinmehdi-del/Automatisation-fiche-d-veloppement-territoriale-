@@ -1203,7 +1203,7 @@ export async function collect(
     );
     // Référence nationale (habitant moyen en France) : calculée une fois pour toute la France, 30 jours.
     await ctx.step("bpe", "services:reference-nationale", async (http) => {
-      c.servicesRef = await cachedExtract(`servicesref|${BPE_VINTAGE}`, 24 * 30, () =>
+      c.servicesRef = await cachedExtract(`servicesref2|${BPE_VINTAGE}`, 24 * 30, () =>
         heavyLane.run(async () => {
           const [fr, bpe] = await Promise.all([franceCentres(http), readBpeNational(http)]);
           const communes = fr.communes.flatMap((x) => (x.centre ? [{ code: x.code, lon: x.centre.coordinates[0], lat: x.centre.coordinates[1], pop: x.population ?? 0 }] : []));

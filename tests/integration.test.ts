@@ -181,7 +181,7 @@ describe("chaîne de génération (API simulées)", () => {
     expect(planB.items.some((i) => i.label === "Porte-à-porte (logements sociaux)" && i.details.length > 0)).toBe(true);
     // Accès aux services : pas de pharmacie dans la commune, commissariat loin, mais comme les communes semblables.
     const sv = fiche.blocks.find((b) => b.type === "services") as Extract<(typeof fiche.blocks)[number], { type: "services" }>;
-    expect(sv.cats.map((k) => k.cat)).toEqual(expect.arrayContaining(["sante", "securite"]));
+    expect(sv.cats.map((k) => k.cat)).toEqual(expect.arrayContaining(["sante", "public"]));
     const ph = sv.cats.find((k) => k.cat === "sante")!.details.find((d) => d.label === "Pharmacie")!;
     // Pharmacie : offre à portée (pour 10 000 habitants à moins de 5 km), comparée aux communes semblables.
     expect(ph.txt).toMatch(/pour 10 000 habitants à moins de 5 km \(habitant moyen du département : /);

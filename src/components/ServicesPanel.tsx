@@ -25,7 +25,7 @@ function Icon({ cat }: { cat: string }) {
   return <span className="inline-flex shrink-0 text-[var(--accent)]" dangerouslySetInnerHTML={{ __html: ICONS[cat] ?? "" }} />;
 }
 
-/** Accès aux services : « Points faibles » (par défaut) ou « Par catégorie ». */
+/** Accès aux services : « Points faibles » (par défaut) ou « Détail par thème ». */
 export default function ServicesPanel({ b }: { b: B }) {
   const [mode, setMode] = useState<"faibles" | "cats">(b.faibles.length || b.enDessous?.length ? "faibles" : "cats");
   const dessous = b.enDessous ?? [];
@@ -37,7 +37,7 @@ export default function ServicesPanel({ b }: { b: B }) {
           {(
             [
               ["faibles", "Points faibles"],
-              ["cats", "Par catégorie"],
+              ["cats", "Détail par thème"],
             ] as const
           ).map(([m, l]) => (
             <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)} className={`rounded-full border px-2.5 py-0.5 text-xs ${mode === m ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] text-[var(--ink-2)]"}`}>
@@ -52,15 +52,20 @@ export default function ServicesPanel({ b }: { b: B }) {
             <span>Accès aux services, comparé {b.indice.ref === "France" ? "à l'habitant moyen en France" : "à l'habitant moyen du département"} :</span>
             <Pastille v={b.indice.global} big />
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <ul className="mt-3 space-y-1.5 text-sm">
             {b.indice.gammes.map((g) => (
-              <div key={g.label} className="text-xs">
-                <div className="font-semibold text-[var(--ink)]">{g.label}</div>
-                {g.exemples && <div className="mb-1 text-[var(--ink-2)]">{g.exemples}</div>}
+              <li key={g.label} className="grid grid-cols-[minmax(0,13rem)_auto_1fr] items-center gap-x-3">
+                <span className="flex items-center gap-1.5 font-semibold text-[var(--ink)]">
+                  {g.cat && <Icon cat={g.cat} />}
+                  {g.label}
+                </span>
                 <Pastille v={g.value} />
-              </div>
+                <span className="truncate text-xs text-[var(--ink-2)]" title={g.exemples}>
+                  {g.exemples}
+                </span>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       )}
       {mode === "faibles" ? (

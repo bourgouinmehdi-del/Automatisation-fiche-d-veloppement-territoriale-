@@ -25,6 +25,7 @@ export const BPE_TYPES: Record<string, { label: string; group: BpeGroup }> = {
   D106: { label: "Urgences", group: "sante" },
   D107: { label: "Maternités", group: "sante" },
   D502: { label: "Crèches", group: "education" },
+  D509: { label: "Micro-crèches", group: "education" },
   A128: { label: "France Services", group: "public" },
   A122: { label: "Agences France Travail", group: "public" },
   A206: { label: "Bureaux de poste", group: "public" },
@@ -32,6 +33,7 @@ export const BPE_TYPES: Record<string, { label: string; group: BpeGroup }> = {
   A208: { label: "Agences postales", group: "public" },
   A203: { label: "Banques", group: "public" },
   A101: { label: "Commissariats de police", group: "securite" },
+  A140: { label: "Police", group: "securite" },
   A104: { label: "Gendarmeries", group: "securite" },
   B104: { label: "Hypermarchés", group: "commerce" },
   B105: { label: "Supermarchés", group: "commerce" },
@@ -43,6 +45,7 @@ export const BPE_TYPES: Record<string, { label: string; group: BpeGroup }> = {
   C201: { label: "Collèges", group: "education" },
   C301: { label: "Lycées généraux et technologiques", group: "education" },
   C302: { label: "Lycées professionnels", group: "education" },
+  C303: { label: "Lycées agricoles", group: "education" },
   E107: { label: "Gares d'intérêt national", group: "transport" },
   E108: { label: "Gares d'intérêt régional", group: "transport" },
   E109: { label: "Gares d'intérêt local", group: "transport" },
@@ -83,7 +86,7 @@ export interface BpeResult {
 type BpeDep = Omit<BpeResult, "commune"> & { all: BpeEquipement[] };
 
 export async function collectBpe(http: TrackedHttp, codeInsee: string, dep: string): Promise<BpeResult> {
-  const d = await cachedExtract<BpeDep>(`bpe2|${BPE_VINTAGE}|${dep}`, 24 * 30, () => heavyLane.run(() => bpeDepartement(http, dep)));
+  const d = await cachedExtract<BpeDep>(`bpe3|${BPE_VINTAGE}|${dep}`, 24 * 30, () => heavyLane.run(() => bpeDepartement(http, dep)));
   return { commune: d.all.filter((e) => e.commune === codeInsee), departement: d.all, countsByCommune: d.countsByCommune, countsDep: d.countsDep, url: d.url, retrievedAt: d.retrievedAt };
 }
 
