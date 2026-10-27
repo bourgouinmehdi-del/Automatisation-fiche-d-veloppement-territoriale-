@@ -1,6 +1,6 @@
 import type { TrackedHttp } from "./context";
 import { num } from "./datagouv";
-import { zipCsvRows } from "./zip";
+import { splitCsvLine, zipCsvRows, zipLines } from "./zip";
 import { cachedExtract, heavyLane } from "../runtime";
 
 /**
@@ -116,4 +116,40 @@ async function bpeDepartement(http: TrackedHttp, dep: string): Promise<BpeDep> {
     }
     return { all, countsByCommune, countsDep, url: BPE_URL, retrievedAt: f.retrievedAt };
   }
+}
+
+/* ------------------------------------------------ toute la France (référence nationale) */
+
+/** Équipements des types retenus, pour toute la France : coordonnées et commune, par type. */
+export interface BpeNational {
+  /** Par type : [lon, lat] (NaN si inconnues) et code commune, en tableaux parallèles. */
+  byType: Record<string, { lon: number[]; lat: number[]; commune: string[] }>;
+}
+
+/** Lecture en flux du fichier national, sans garder les lignes entières (≈ 450 000 équipements). */
+export async function readBpeNational(http: TrackedHttp): Promise<BpeNational & { url: string; retrievedAt: string }> {
+  const f = await http.file(BPE_URL, { timeoutMs: 1800000, retries: 1 });
+  const byType: BpeNational["byType"] = {};
+  let col: Record<string, number> | null = null;
+  const types = new Set(Object.keys(BPE_TYPES));
+  await zipLines(
+    f.data,
+    (n) => /\.csv$/i.test(n) && !/varmod|dessin|meta/i.test(n),
+    (_e, line, i) => {
+      const v = splitCsvLine(line, ";").map((x) => x.replace(/^"|"$/g, ""));
+      if (i === 0) {
+        col = Object.fromEntries(v.map((h, k) => [h.trim(), k]));
+        return;
+      }
+      const type = v[col!.TYPEQU];
+      if (!types.has(type)) return;
+      const t = (byType[type] ??= { lon: [], lat: [], commune: [] });
+      const lon = num(v[col!.LONGITUDE]);
+      const lat = num(v[col!.LATITUDE]);
+      t.lon.push(lon ?? NaN);
+      t.lat.push(lat ?? NaN);
+      t.commune.push(v[col!.DEPCOM]);
+    },
+  );
+  return { byType, url: BPE_URL, retrievedAt: f.retrievedAt };
 }

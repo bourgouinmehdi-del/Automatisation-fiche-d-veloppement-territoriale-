@@ -277,6 +277,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       const niv: Record<string, string> = { mieux: "mieux desservie", comme: "dans la moyenne du département", moins: "moins bien desservie" };
       return [
         caption(b.title),
+        ...(b.indice ? [new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: `Indice d'accès aux services : ${b.indice.global} (${b.indice.ref} = 100). `, font: FONT, size: 19, bold: true }), new TextRun({ text: b.indice.gammes.map((g) => `${g.label} : ${g.value}`).join(" ; "), font: FONT, size: 17, color: "52514E" })] })] : []),
         ...b.faibles.map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : ${f.txt}`, font: FONT, size: 19 })] })),
         ...(b.enDessous ?? []).map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : un peu en dessous, ${f.txt}`, font: FONT, size: 19 })] })),
         ...b.cats.map((c) => new Paragraph({ spacing: { after: 30 }, children: [new TextRun({ text: `${c.label} : `, font: FONT, size: 19, bold: true }), new TextRun({ text: niv[c.niveau], font: FONT, size: 19, color: c.niveau === "moins" ? "D1271C" : "52514E" })] })),
