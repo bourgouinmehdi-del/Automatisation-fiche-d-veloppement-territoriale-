@@ -142,6 +142,30 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
             })}
           </div>
         );
+      case "plan":
+        return (
+          <div key={key} className="plan my-4 divide-y divide-[var(--line)] rounded-lg border border-[var(--line)]">
+            {b.items.map((it, k) => (
+              <details key={k} className="group px-4 py-2.5">
+                <summary className="flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <span className="font-semibold">
+                    <span className="mr-1.5 inline-block text-[var(--accent)] transition-transform group-open:rotate-90">▸</span>
+                    {it.label}
+                  </span>
+                  <span className="text-sm text-[var(--ink-2)]">
+                    {it.count}
+                    {it.quand ? ` · ${it.quand}` : ""}
+                  </span>
+                </summary>
+                <ul className="mt-2 list-disc space-y-1 pl-9 text-sm">
+                  {it.details.map((d, i) => (
+                    <li key={i}>{d}</li>
+                  ))}
+                </ul>
+              </details>
+            ))}
+          </div>
+        );
       case "presence":
         return <PresenceBars key={key} b={b} />;
       case "glance":

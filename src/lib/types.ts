@@ -273,6 +273,8 @@ export type Block =
       note?: string;
       rows: { label: string; sub?: string; n: number; nRef: number; r: number; rRef: number; rUnit: string }[];
     }
+  /** Plan d'action : une ligne par type d'action, le nombre de lieux et la liste dépliable. */
+  | { type: "plan"; items: { label: string; count: string; quand?: string; details: string[] }[] }
   /** Actions regroupées par type de lieu (porte-à-porte, marchés, gares…). */
   | { type: "actions"; title?: string; groups: { title: string; hint?: string; items: string[] }[] }
   | { type: "missing"; themes: ThemeId[] }

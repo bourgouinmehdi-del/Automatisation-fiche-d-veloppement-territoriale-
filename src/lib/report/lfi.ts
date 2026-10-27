@@ -314,69 +314,81 @@ const GAUCHE = ["pcf", "lfi", "eco", "ps"];
 const pts = (d: number) => `${fmtNumber(Math.abs(Math.round(d)))} point${Math.abs(Math.round(d)) > 1 ? "s" : ""}`;
 
 /**
- * Introduction du profil politique (quelques phrases, seulement ce qui ressort) : force dominante ou en
- * forte progression, état de la gauche, trajectoire de LFI par rapport à la France, participation,
- * écarts entre les zones de la commune.
+ * Introduction du profil politique : quelques phrases simples, peu de chiffres (les tableaux les donnent) :
+ * évolution de la gauche par rapport à la France, à qui elle profite, place de LFI en 2024, force de droite
+ * en forte progression, participation, écarts entre bureaux de vote.
  */
-export function politiqueIntro(parcours: { eid: string; sh: Record<string, number>; nat: Record<string, number>; abst: number | null }[], zones: { nom: string; lfi: number; lfi19: number | null }[]): string {
+export function politiqueIntro(
+  parcours: { eid: string; sh: Record<string, number>; nat: Record<string, number>; abst: number | null }[],
+  zones: { nom: string; lfi: number; lfi19: number | null }[],
+  o: { nom?: string; bvRange?: { min: number; max: number } | null } = {},
+): string {
   const by = new Map(parcours.map((p) => [p.eid, p]));
-  const last = by.get("EU24") ?? by.get("PR22T1");
   const out: string[] = [];
-  const Cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
-  // 1. Force en tête ; forte progression entre scrutins comparables (2019 → 2024, 2017 → 2022).
-  if (last) {
-    const top = Object.entries(last.sh).sort((a, b) => b[1] - a[1])[0];
-    const prog = [["EU19", "EU24"], ["PR17T1", "PR22T1"]]
-      .map(([a, b]) => ({ a: by.get(a), b: by.get(b) }))
-      .filter((x) => x.a && x.b)
-      .flatMap(({ a, b }) => Object.keys(b!.sh).filter((f) => f in a!.sh).map((f) => ({ f, a: a!, b: b!, d: b!.sh[f] - a!.sh[f], dn: (b!.nat[f] ?? 0) - (a!.nat[f] ?? 0) })))
-      .filter((x) => x.d >= 6 && x.d - x.dn >= 3 && x.a.sh[x.f] >= 1)
-      .sort((x, y) => y.d - x.d)[0];
-    const topTxt = `${Cap(NOM_FORCE[top[0]])} arrive en tête ${QUAND[last.eid]} (${pct(top[1], 0)})`;
-    if (prog && prog.f === top[0]) out.push(`${topTxt}, en forte progression : ${pct(prog.a.sh[prog.f], 0)} ${QUAND[prog.a.eid]}.`);
-    else {
-      out.push(`${topTxt}.`);
-      if (prog) out.push(`${Cap(NOM_FORCE[prog.f])} progresse fortement : de ${pct(prog.a.sh[prog.f], 0)} ${QUAND[prog.a.eid]} à ${pct(prog.b.sh[prog.f], 0)} ${QUAND[prog.b.eid]}.`);
-    }
-  }
-  // 2. La gauche (PCF, LFI, écologistes, PS) par rapport à la France, scrutin par scrutin.
-  const gaps = parcours.map((p) => ({ eid: p.eid, c: GAUCHE.reduce((s, f) => s + (p.sh[f] ?? 0), 0), n: GAUCHE.reduce((s, f) => s + (p.nat[f] ?? 0), 0) })).map((g) => ({ ...g, d: g.c - g.n }));
+  const ici = o.nom ? `à ${o.nom}` : "ici";
+  const LABEL: Record<string, string> = { pcf: "au PCF", lfi: "à la France insoumise", eco: "aux écologistes", ps: "au PS" };
+  // 1. La gauche (PCF, LFI, écologistes, PS) par rapport à la France, du premier au dernier scrutin.
+  const gaps = parcours.map((p) => ({ eid: p.eid, d: GAUCHE.reduce((s, f) => s + (p.sh[f] ?? 0), 0) - GAUCHE.reduce((s, f) => s + (p.nat[f] ?? 0), 0) }));
+  let gaucheMonte = false;
   if (gaps.length >= 2) {
-    const g = gaps[gaps.length - 1];
-    const trend = g.d - gaps[0].d;
-    const evo = trend <= -6 ? `, mais cette avance s'est réduite (${pts(gaps[0].d)} d'écart ${QUAND[gaps[0].eid]})` : trend >= 6 ? `, et l'écart se creuse (${pts(gaps[0].d)} ${QUAND[gaps[0].eid]})` : "";
-    if (gaps.every((x) => x.d >= 3)) out.push(`La gauche y fait mieux qu'en France à chaque élection : ${pct(g.c, 0)} ${QUAND[g.eid]}, contre ${pct(g.n, 0)}${evo}.`);
-    else if (gaps.every((x) => x.d <= -3)) out.push(`La gauche y fait moins bien qu'en France à chaque élection : ${pct(g.c, 0)} ${QUAND[g.eid]}, contre ${pct(g.n, 0)}.`);
-    else if (Math.abs(trend) >= 6) out.push(`La gauche ${trend > 0 ? "progresse" : "recule"} par rapport à la France : ${pts(gaps[0].d)} ${gaps[0].d >= 0 ? "au-dessus" : "en dessous"} de la moyenne nationale ${QUAND[gaps[0].eid]}, ${pts(g.d)} ${g.d >= 0 ? "au-dessus" : "en dessous"} ${QUAND[g.eid]}.`);
+    const a = gaps[0];
+    const b = gaps[gaps.length - 1];
+    const trend = b.d - a.d;
+    const depuis = `Depuis ${ANNEE[a.eid]}`;
+    if (trend >= 8) (out.push(`${depuis}, la gauche progresse fortement ${ici}.`), (gaucheMonte = true));
+    else if (trend >= 4) (out.push(`${depuis}, la gauche progresse ${ici}.`), (gaucheMonte = true));
+    else if (trend <= -8) out.push(`${depuis}, la gauche recule nettement ${ici}.`);
+    else if (trend <= -4) out.push(`${depuis}, la gauche recule ${ici}.`);
+    else if (b.d >= 5) out.push(`La gauche est plus forte ${ici} qu'en moyenne en France.`);
+    else if (b.d <= -5) out.push(`La gauche est plus faible ${ici} qu'en moyenne en France.`);
   }
-  // 3. LFI (ou J.-L. Mélenchon) par rapport à la France : trajectoire.
-  const lfi = parcours.filter((p) => p.sh.lfi != null && p.nat.lfi != null).map((p) => ({ eid: p.eid, d: p.sh.lfi - p.nat.lfi, c: p.sh.lfi }));
-  if (lfi.length >= 2) {
-    const a = lfi[0];
-    const b = lfi[lfi.length - 1];
-    const sens = (d: number) => (Math.abs(d) < 1.5 ? "au niveau de la moyenne nationale" : `${pts(d)} ${d > 0 ? "au-dessus" : "en dessous"} de la moyenne nationale`);
-    if ((Math.sign(a.d) !== Math.sign(b.d) && Math.max(Math.abs(a.d), Math.abs(b.d)) >= 3) || Math.abs(b.d - a.d) >= 5)
-      out.push(`LFI était ${sens(a.d)} en ${ANNEE[a.eid]}, ${sens(b.d)} en ${ANNEE[b.eid]}.`);
-    else if (lfi.every((x) => x.d >= 3)) out.push(`LFI y fait mieux qu'en France à chaque élection depuis ${ANNEE[a.eid]} (${pts(b.d)} de plus en ${ANNEE[b.eid]}).`);
-    else if (lfi.every((x) => x.d <= -3)) out.push(`LFI y fait moins bien qu'en France à chaque élection depuis ${ANNEE[a.eid]}.`);
-  }
-  // 4. Participation (européennes 2024, sinon présidentielle 2022).
-  const pa = by.get("EU24")?.abst != null ? { eid: "EU24", c: by.get("EU24")!.abst!, n: 48.51 } : by.get("PR22T1")?.abst != null ? { eid: "PR22T1", c: by.get("PR22T1")!.abst!, n: 26.31 } : null;
-  if (pa) {
-    const d = pa.c - pa.n;
-    out.push(d >= 3 ? `On y vote moins qu'en France : ${pct(pa.c, 0)} d'abstention ${QUAND[pa.eid]} (${pct(pa.n, 0)} en France).` : d <= -3 ? `On y vote plus qu'en France : ${pct(pa.c, 0)} d'abstention ${QUAND[pa.eid]} (${pct(pa.n, 0)} en France).` : `La participation est proche de la moyenne nationale.`);
-  }
-  // 5. Écarts entre les zones de la commune, et où LFI a progressé.
-  if (zones.length >= 2) {
-    const zs = [...zones].sort((a, b) => b.lfi - a.lfi);
-    const hi = zs[0];
-    const lo = zs[zs.length - 1];
-    const grow = zones.filter((z) => z.lfi19 != null).map((z) => ({ ...z, d: z.lfi - z.lfi19! })).sort((a, b) => b.d - a.d);
-    const avg = grow.length ? grow.reduce((s, z) => s + z.d, 0) / grow.length : 0;
-    if (grow.length >= 2 && grow[0].d >= 8 && grow[0].d >= 1.5 * Math.max(avg, 1))
-      out.push(`Le vote LFI a surtout progressé ${grow[0].nom} de la commune : de ${pct(grow[0].lfi19!, 0)} aux européennes 2019 à ${pct(grow[0].lfi, 0)} en 2024.`);
-    if (hi.lfi - lo.lfi >= 12) out.push(`Le vote LFI est très inégal d'une partie de la commune à l'autre : ${pct(hi.lfi, 0)} ${hi.nom}, ${pct(lo.lfi, 0)} ${lo.nom} (européennes 2024).`);
-  }
+  // 2. À qui profite la progression (européennes 2019 → 2024, par rapport à l'évolution nationale) ; place de LFI en 2024.
+  const e19 = by.get("EU19");
+  const e24 = by.get("EU24");
+  const rang = e24 ? Object.entries(e24.sh).sort((x, y) => y[1] - x[1]) : [];
+  const iLfi = rang.findIndex(([f]) => f === "lfi");
+  const place =
+    iLfi === 0
+      ? "qui y est arrivée en tête aux européennes de 2024"
+      : iLfi === 1 && rang[0][1] - rang[1][1] <= 4
+        ? `qui y talonnait ${NOM_FORCE[rang[0][0]]} aux européennes de 2024`
+        : iLfi === 1
+          ? `deuxième derrière ${NOM_FORCE[rang[0][0]]} aux européennes de 2024`
+          : "";
+  const placeSeule =
+    iLfi === 0
+      ? "LFI y est arrivée en tête aux européennes de 2024."
+      : iLfi === 1 && rang[0][1] - rang[1][1] <= 4
+        ? `LFI y talonnait ${NOM_FORCE[rang[0][0]]} aux européennes de 2024.`
+        : iLfi === 1
+          ? `LFI y est arrivée deuxième, derrière ${NOM_FORCE[rang[0][0]]}, aux européennes de 2024.`
+          : "";
+  if (gaucheMonte && e19 && e24) {
+    const gain = GAUCHE.map((f) => ({ f, g: (e24.sh[f] ?? 0) - (e19.sh[f] ?? 0) - ((e24.nat[f] ?? 0) - (e19.nat[f] ?? 0)) })).sort((x, y) => y.g - x.g)[0];
+    if (gain.g >= 2) out.push(`Cette progression profite surtout ${LABEL[gain.f]}${gain.f === "lfi" && place ? `, ${place}` : ""}.`);
+    if ((gain.g < 2 || gain.f !== "lfi") && placeSeule) out.push(placeSeule);
+  } else if (placeSeule) out.push(placeSeule);
+  // 3. Force de droite en tête et en forte progression.
+  const prog = [["EU19", "EU24"], ["PR17T1", "PR22T1"]]
+    .map(([a, b]) => ({ a: by.get(a), b: by.get(b) }))
+    .filter((x) => x.a && x.b)
+    .flatMap(({ a, b }) => ["rn", "rec", "lr", "ens"].filter((f) => f in b!.sh && f in a!.sh && a!.sh[f] >= 1).map((f) => ({ f, d: b!.sh[f] - a!.sh[f] - ((b!.nat[f] ?? 0) - (a!.nat[f] ?? 0)), abs: b!.sh[f] - a!.sh[f] })))
+    .filter((x) => x.abs >= 6 && x.d >= 3)
+    .sort((x, y) => y.abs - x.abs)[0];
+  if (prog) out.push(`${NOM_FORCE[prog.f].charAt(0).toUpperCase()}${NOM_FORCE[prog.f].slice(1)} y progresse aussi fortement${rang[0]?.[0] === prog.f ? " et arrive en tête" : ""}.`);
+  else if (rang[0] && !GAUCHE.includes(rang[0][0]) && iLfi !== 1) out.push(`${NOM_FORCE[rang[0][0]].charAt(0).toUpperCase()}${NOM_FORCE[rang[0][0]].slice(1)} arrive en tête aux européennes de 2024.`);
+  // 4. Participation.
+  const pa = e24?.abst != null ? e24.abst - 48.51 : by.get("PR22T1")?.abst != null ? by.get("PR22T1")!.abst! - 26.31 : null;
+  if (pa != null && pa >= 5) out.push("On y vote nettement moins qu'ailleurs.");
+  else if (pa != null && pa >= 3) out.push("On y vote un peu moins qu'ailleurs.");
+  else if (pa != null && pa <= -5) out.push("On y vote nettement plus qu'ailleurs.");
+  // 5. Écarts entre bureaux de vote ; partie de la commune où LFI a le plus progressé.
+  const r = o.bvRange;
+  if (r && r.max - r.min >= 20) out.push(`La commune est fortement ségréguée politiquement : les scores de LFI varient de ${pct(r.min, 0)} à ${pct(r.max, 0)} d'un bureau de vote à l'autre.`);
+  else if (r && r.max - r.min >= 12) out.push(`Le vote LFI varie nettement d'un quartier à l'autre (de ${pct(r.min, 0)} à ${pct(r.max, 0)} selon les bureaux).`);
+  const grow = zones.filter((z) => z.lfi19 != null).map((z) => ({ ...z, d: z.lfi - z.lfi19! })).sort((a, b) => b.d - a.d);
+  const avg = grow.length ? grow.reduce((s, z) => s + z.d, 0) / grow.length : 0;
+  if (grow.length >= 2 && grow[0].d >= 8 && grow[0].d >= 1.5 * Math.max(avg, 1)) out.push(`La progression de LFI s'est surtout faite ${grow[0].nom} de la commune.`);
   return out.join(" ");
 }
 
@@ -2292,7 +2304,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   });
   blocks.push({ type: "fieldNotes" });
 
-  blocks.push({ type: "heading", text: "Profil sociodémographique du territoire" });
+  // « de la commune » (« de l'arrondissement » à Paris, Lyon, Marseille, voir plmWording) ; groupement : « du territoire ».
+  const deLa = c.query.scope === "custom" ? "du territoire" : "de la commune";
+  blocks.push({ type: "heading", text: `Profil sociodémographique ${deLa}` });
   if (socioIntro.length) blocks.push({ type: "paragraph", text: socioIntro.join(" ") });
   if (has("lfi_socio")) blocks.push({ type: "table", tableId: "lfi_socio" });
   // Quartier qui concentre la pauvreté : en tête des phrases qualitatives (3 au plus).
@@ -2303,20 +2317,23 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
 
   // Profil politique : chiffres et graphiques seulement ; le texte (mairie, quartiers, parrainages) passe en annexe,
   // la lecture qualitative revient aux retours du terrain.
-  blocks.push({ type: "heading", text: "Profil politique du territoire" });
+  blocks.push({ type: "heading", text: `Profil politique ${deLa}` });
   {
-    const intro = politiqueIntro(parcours, zonesInfo);
+    const lfiBv = ranked.map((b) => b.lfiPctExp).filter((v) => Number.isFinite(v));
+    const intro = politiqueIntro(parcours, zonesInfo, { nom: plm ? undefined : commune.nom, bvRange: lfiBv.length >= 4 ? { min: Math.min(...lfiBv), max: Math.max(...lfiBv) } : null });
     if (intro) blocks.push({ type: "paragraph", text: intro });
   }
+  // Présence militante : après les résultats (du général au particulier).
+  const presenceBlocks: Block[] = [];
   if (groupes.length)
-    blocks.push({
+    presenceBlocks.push({
       type: "callout",
       tone: "accent",
       title: groupes.length > 1 ? `${groupes.length} groupes d'action` : "Groupe d'action",
       text: groupes.map(groupeText).join("\n"),
     });
-  else if (sansGroupe) blocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif")} dans la commune ni dans son intercommunalité.` });
-  else if (gaAilleurs) blocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif dans la commune.")} Dans l'intercommunalité : ${voisinsTxt}.` });
+  else if (sansGroupe) presenceBlocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif")} dans la commune ni dans son intercommunalité.` });
+  else if (gaAilleurs) presenceBlocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif dans la commune.")} Dans l'intercommunalité : ${voisinsTxt}.` });
   // Point de comparaison : les communes de même taille (en inscrits), pas la moyenne nationale.
   const tranche = bilan ? c.interne.bilanTranches?.find((t) => bilan.inscrits >= t.min && bilan.inscrits < t.max && t.inscrits) : undefined;
   if (bilan && tranche) {
@@ -2330,7 +2347,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       rRef: (nF / F.inscrits) * per,
       rUnit: unit,
     });
-    blocks.push({
+    presenceBlocks.push({
       type: "presence",
       title: `Présence militante LFI${plm ? ` (${plm.ville} entière)` : ""}`,
       rows: [
@@ -2345,7 +2362,6 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // (Sans données internes : rien dans la fiche, qui s'adresse aux élus ; le signalement figure dans le journal de collecte.)
   if (out.charts.some((x) => x.id === "lfi_chart_eu24")) blocks.push({ type: "chart", chartId: "lfi_chart_eu24" });
   if (has("lfi_vote")) blocks.push({ type: "table", tableId: "lfi_vote" });
-  blocks.push({ type: "fieldNotes", part: "politique" });
   const prose = (list: string[]) => list.length && blocks.push({ type: "findings", ids: list, style: "prose" });
   // Annexe : mairie, quartiers où LFI surperforme, parrainages.
   const politProse = [...ids2.quartiers.filter((id) => out.findings.find((f) => f.id === id)?.kind === "atout"), ...ids.parrains].slice(0, 2);
@@ -2363,7 +2379,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   }
   if (has("lfi_partis")) detail.push({ type: "table", tableId: "lfi_partis" });
 
-  blocks.push({ type: "heading", text: "Où agir : analyse par bureau de vote" });
+  // Bureau par bureau (dans le profil politique, après les résultats de la commune).
   const kindOf = (id: string) => out.findings.find((f) => f.id === id)?.kind;
   const ouMain = ids.ou.filter((id) => kindOf(id) === "atout");
   const ouEvo = ids.ou.filter((id) => /Évolution/.test(out.findings.find((f) => f.id === id)?.text ?? ""));
@@ -2385,11 +2401,14 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // Deux pistes à vérifier au plus ; les autres hypothèses passent en annexe.
   const hypQ = ids2.quartiers.filter((id) => kindOf(id) === "hypothese");
   const hyps = [...hypQ, ...ids.hyp];
+  const questions: Block[] = [];
   if (hyps.length) {
-    blocks.push({ type: "paragraph", text: `${B("Questions pour le terrain")} :` });
+    questions.push({ type: "paragraph", text: `${B("Questions pour le terrain")} :` });
     const fs = hyps.slice(0, 2).map((id) => out.findings.find((f) => f.id === id)!).filter(Boolean);
-    blocks.push({ type: "list", items: fs.map((f) => ({ text: f.text, evidence: f.evidence })) });
+    questions.push({ type: "list", items: fs.map((f) => ({ text: f.text, evidence: f.evidence })) });
   }
+  blocks.push(...presenceBlocks);
+  blocks.push({ type: "fieldNotes", part: "politique" });
   const otherHyps = [...hyps.slice(2), ...ids.spread];
   if (otherHyps.length) detail.push({ type: "heading", text: "Autres questions à vérifier" }, { type: "findings", ids: otherHyps, style: "prose" });
   if (has("lfi_quartiers")) detail.push({ type: "heading", text: "Profil des quartiers" }, { type: "table", tableId: "lfi_quartiers" });
@@ -2447,22 +2466,116 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const faitsTop = faits.sort((x, y) => y.poids - x.poids).slice(0, 3);
   const faitsTxt = faitsTop.map((f, i) => `${f.txt} (${f.dep}${i === 0 ? " dans le département" : ""})`).join(" ; ");
 
-  blocks.push({ type: "heading", text: "Actions recommandées" });
+  /* ---------------------------------------------------------- liste LFI aux municipales */
+  let municipalLfi = "";
+  {
+    const m = c.municipal;
+    const t1 = m?.rounds.find((r) => r.tour === 1);
+    if (m && t1?.listes.length) {
+      const lfiL = t1.listes.filter((l) => l.nuance === "LFI").sort((a, b) => b.pctExprimes - a.pctExprimes)[0];
+      const ug = t1.listes.filter((l) => l.nuance === "LUG").sort((a, b) => b.pctExprimes - a.pctExprimes)[0];
+      const t2 = m.rounds.find((r) => r.tour === 2);
+      const auT2 = lfiL && t2?.listes.some((l) => sameList(l, lfiL));
+      const ville = m.ville ? ` (ville de ${m.ville})` : "";
+      municipalLfi = lfiL
+        ? `${B("Municipales 2026")}${ville} : une liste LFI, « ${lfiL.libelle} » (tête de liste : ${lfiL.tete}), ${pct(lfiL.pctExprimes, 0)} au 1er tour${auT2 ? ", présente au 2nd tour" : ""}${lfiL.elu ? " ; élus au conseil municipal" : ""}.`
+        : ug
+          ? `${B("Municipales 2026")}${ville} : pas de liste LFI ; liste d'union de la gauche « ${ug.libelle} » (${pct(ug.pctExprimes, 0)} au 1er tour).`
+          : `${B("Municipales 2026")}${ville} : pas de liste LFI.`;
+    }
+  }
+
+  /* ---------------------------------------------------------- à quoi s'attendre à la porte */
+  // Sur 100 adultes rencontrés au hasard : ordres de grandeur, comparés au département.
+  {
+    const adRows = c.adultes?.rows ?? [];
+    const adC = adRows.filter((r) => r.com === commune.code);
+    const sum = (rows: typeof adRows, k: "adultes" | "adultesFr") => rows.reduce((s2, r) => s2 + r[k], 0);
+    const aC = sum(adC, "adultes");
+    const aD = sum(adRows, "adultes");
+    if (aC >= 200 && c24 && d24) {
+      const voix = (r: ElectionResult, f: string) => (forceShares("EU24", r as unknown as VoteAgg)?.[f] ?? 0) * r.exprimes / 100;
+      const rows: { profil: string; com: number | null; dep: number | null }[] = [
+        { profil: "A parrainé la candidature de Jean-Luc Mélenchon", com: parrains != null ? (100 * parrains) / aC : null, dep: depParrains && aD ? (100 * depParrains) / aD : null },
+        { profil: "A voté LFI aux européennes 2024", com: (100 * voix(c24, "lfi")) / aC, dep: aD ? (100 * voix(d24, "lfi")) / aD : null },
+        { profil: "A voté RN ou Reconquête en 2024 (accueil souvent plus froid)", com: (100 * (voix(c24, "rn") + voix(c24, "rec"))) / aC, dep: aD ? (100 * (voix(d24, "rn") + voix(d24, "rec"))) / aD : null },
+        { profil: "Inscrit, mais n'a pas voté en 2024", com: (100 * abstention(c24).n) / aC, dep: aD ? (100 * abstention(d24).n) / aD : null },
+        ...(insc.commune && insc.commune.ecart > 0 ? [{ profil: "Pas inscrit sur les listes (estimation)", com: (100 * insc.commune.ecart) / aC, dep: null }] : []),
+        { profil: "Nationalité étrangère (pas de vote aux présidentielles et législatives)", com: (100 * (aC - sum(adC, "adultesFr"))) / aC, dep: aD ? (100 * (aD - sum(adRows, "adultesFr"))) / aD : null },
+      ];
+      const f = (v: number | null) => (v == null || !Number.isFinite(v) ? "" : v < 0.1 ? "moins de 0,1" : v < 10 ? fmtNumber(Math.round(v * 10) / 10, 1) : fmtNumber(Math.round(v)));
+      out.tables.push({
+        id: "lfi_profils",
+        title: "À quoi s'attendre à la porte : sur 100 adultes",
+        theme: "strategie",
+        columns: [
+          { key: "profil", label: "", wide: true },
+          { key: "com", label: plm ? "Arrondissement" : "Commune", align: "right" as const },
+          { key: "dep", label: "Département", align: "right" as const },
+        ],
+        rows: rows.filter((r) => r.com != null && Number.isFinite(r.com)).map((r) => ({ profil: r.profil, com: f(r.com), dep: f(r.dep) })),
+        highlight: [],
+        sources: [...elecSources.slice(0, 1), ...(c.adultes ? [c.adultes.source] : [])],
+        note: "Ordres de grandeur pour 100 adultes (18 ans et plus) rencontrés au hasard : électeurs des européennes 2024, parrains (données internes), adultes recensés par l'INSEE. Les catégories se recoupent (un électeur LFI peut avoir parrainé). Sympathisants : à venir, à partir des données internes.",
+      });
+    }
+  }
+
+  /* ---------------------------------------------------------- que faire ? */
+  blocks.push({ type: "heading", text: "Que faire ?" });
   if (planIntro) blocks.push({ type: "paragraph", text: planIntro });
+  {
+    // Plan d'action : une ligne par type d'action, le nombre de lieux, la liste dépliable.
+    const items: Extract<Block, { type: "plan" }>["items"] = [];
+    const n = (k: number, un: string, plusieurs: string) => `${fmtNumber(k)} ${k > 1 ? plusieurs : un}`;
+    if (prio.length)
+      items.push({
+        label: "Porte-à-porte (bureaux prioritaires)",
+        count: n(prio.length, "bureau", "bureaux"),
+        quand: WEEKEND.porte,
+        details: prio.map((p) => `Bureau ${dv(p.bv)}${labels.has(p.bv) ? ` (${labels.get(p.bv)})` : ""} : ${fmtNumber(p.abstN)} inscrits n'ont pas voté, vote LFI à ${pp(p.lfiPctExp)}`),
+      });
+    if (ruesRank.length)
+      items.push({
+        label: "Porte-à-porte (logements sociaux)",
+        count: n(ruesRank.length, "adresse", "adresses"),
+        quand: WEEKEND.porte,
+        details: ruesRank.slice(0, 15).map((r) => `${r.voie}${r.nums.length ? ` (${numsLabel(r.nums)})` : ""} : ${fmtNumber(r.logements)} logements${r.bv ? `, bureau ${dv(r.bv)}${prioBvSet.has(r.bv) ? " (prioritaire)" : ""}` : ""}`),
+      });
+    if (resPorte.length)
+      items.push({
+        label: "Porte-à-porte (résidences étudiantes et foyers)",
+        count: n(resPorte.length, "résidence", "résidences"),
+        quand: WEEKEND.crous,
+        details: resPorte.map((r) => `${r.nom} (${resType(r)})`),
+      });
+    if (markets.length) items.push({ label: "Tractage (marchés)", count: n(markets.length, "marché", "marchés"), details: markets.map((m) => `${m.nom} : ${weekendHours(m.infos) || "jour du week-end à confirmer"}`) });
+    if (gares.length || stationsTc.length)
+      items.push({ label: "Tractage (gares, métro, RER, tram)", count: n(gares.length + stationsTc.length, "lieu", "lieux"), quand: WEEKEND.station, details: [...gares.map((g) => `${gareNom(g.nom)} : ${g.infos}`), ...stationsTc.map((x) => x.nom)] });
+    if (sup.length) items.push({ label: "Tractage (grandes surfaces)", count: n(sup.length, "magasin", "magasins"), quand: WEEKEND.supermarche, details: sup.map((v) => `${v.nom} : ${v.infos}`) });
+    if (conv.length) items.push({ label: "Moment convivial", count: n(conv.length, "lieu", "lieux"), details: conv.slice(0, 3).map((x) => `${x.nom} (${convTxt(x)})`) });
+    if (items.length) blocks.push({ type: "plan", items });
+    else blocks.push({ type: "note", text: "Aucun lieu d'action identifié automatiquement (marchés, gares, commerces, établissements) : à compléter avec les militants locaux." });
+  }
+  if (affiche) blocks.push({ type: "map", mapId: "lfi_affiche" });
+  if (has("lfi_profils")) blocks.push({ type: "table", tableId: "lfi_profils" });
   if (has("lfi_effectifs")) blocks.push({ type: "table", tableId: "lfi_effectifs" });
   if (faitsTop.length >= 2) blocks.push({ type: "paragraph", text: `${B("À avoir en tête à la porte")} : ${faitsTxt}.` });
-  if (affiche) blocks.push({ type: "map", mapId: "lfi_affiche" });
-  if (has("lfi_plan")) blocks.push({ type: "table", tableId: "lfi_plan" });
-  if (has("lfi_hlm")) blocks.push({ type: "table", tableId: "lfi_hlm" });
-  else blocks.push({ type: "note", text: "Aucun lieu d'action identifié automatiquement (marchés, gares, commerces, établissements) : à compléter avec les militants locaux." });
-  if (access.length) blocks.push({ type: "paragraph", text: `${B("Accès")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
-  // Détail : toutes les pistes et tous les lieux repérés.
+  blocks.push(...questions);
+  blocks.push({ type: "fieldPlaces" });
+  blocks.push({ type: "fieldNotes", part: "actions" });
+  // Le détail ligne par ligne (où, quand, pourquoi) et les logements sociaux rue par rue passent en annexe.
+  if (has("lfi_plan")) detail.push({ type: "heading", text: "Plan d'action détaillé" }, { type: "table", tableId: "lfi_plan" });
+  if (has("lfi_hlm")) detail.push({ type: "table", tableId: "lfi_hlm" });
   if (actionGroups.length) detail.push({ type: "heading", text: "Toutes les pistes d'action" }, { type: "actions", groups: actionGroups });
   if (has("lfi_lieux")) detail.push({ type: "table", tableId: "lfi_lieux" });
   if (has("lfi_hlm_tout")) detail.push({ type: "heading", text: "Logements sociaux" }, { type: "table", tableId: "lfi_hlm_tout" });
   if (has("lfi_residences")) detail.push({ type: "table", tableId: "lfi_residences" });
-  blocks.push({ type: "fieldPlaces" });
-  blocks.push({ type: "fieldNotes", part: "actions" });
+
+  /* ---------------------------------------------------------- opérationnel */
+  blocks.push({ type: "heading", text: "Opérationnel" });
+  if (access.length) blocks.push({ type: "paragraph", text: `${B("Accès")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
+  if (municipalLfi) blocks.push({ type: "paragraph", text: municipalLfi });
 
   out.section = { id: "LFI", letter: "", title: "Fiche d'action — proposition de ciblage", blocks };
   if (detail.length) out.extra = [...(out.extra ?? []), { id: "LFI_DETAIL", letter: "", title: "Détail de la fiche d'action (bureaux, quartiers, lieux)", blocks: detail }];

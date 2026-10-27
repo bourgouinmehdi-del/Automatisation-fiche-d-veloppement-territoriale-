@@ -273,6 +273,11 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
         ),
         new Paragraph({ spacing: { after: 120 }, children: [] }),
       ];
+    case "plan":
+      return b.items.flatMap((it) => [
+        new Paragraph({ spacing: { before: 120, after: 40 }, keepNext: true, children: [new TextRun({ text: it.label, font: FONT, size: 20, bold: true }), new TextRun({ text: ` : ${it.count}${it.quand ? ` (${it.quand})` : ""}`, font: FONT, size: 20, color: "52514E" })] }),
+        ...it.details.slice(0, 12).map((d) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: d, font: FONT, size: 18 })] })),
+      ]);
     case "presence": {
       const png = svgToPng(presenceSvg(b), 1400);
       const w = 600;
