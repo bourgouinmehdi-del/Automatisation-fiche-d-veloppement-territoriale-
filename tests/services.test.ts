@@ -23,7 +23,7 @@ describe("accès aux services", () => {
     const equip = communes.flatMap((c, i) => Array.from({ length: i === 0 ? 2 : 10 }, () => eq("D265", c.code, c.at[0], c.at[1])));
     const r = servicesAccess("07000", communes, equip)!;
     const med = r.rows.find((x) => x.label === "Médecin généraliste")!;
-    expect(med.txt).toBe("1,3 pour 10 000 habitants à moins de 5 km (habitant moyen du département : 6,7 ; communes de même taille : 6,7)");
+    expect(med.txt).toBe("1,3 pour 10 000 habitants à moins de 5 km (habitant moyen du département : 6,7)");
     expect(r.faibles.map((x) => x.label)).toContain("Médecin généraliste");
     expect(r.cats.find((x) => x.cat === "sante")!.niveau).toBe("moins");
   });
@@ -78,6 +78,32 @@ describe("référence : l'habitant moyen du département", () => {
     const r = servicesAccess("07000", [...petites, grande], equip)!;
     const pis = r.rows.find((x) => x.label === "Piscine")!;
     expect(pis.faible).toBe(true);
-    expect(pis.txtFaible).toMatch(/^le plus proche à 1\d km, contre sur place pour l'habitant moyen du département \(communes de même taille : 1\d km\)$/);
+    expect(pis.txtFaible).toMatch(/^le plus proche à 1\d km, contre sur place pour l'habitant moyen du département$/);
+  });
+});
+
+describe("référence nationale et indice", () => {
+  it("calcule la référence de l'habitant moyen en France et un indice par gamme", async () => {
+    const { nationalServiceRefs } = await import("@/lib/analysis/services-ref");
+    // 40 communes : 30 bien équipées (pharmacie sur place, 3 pour 10 000 hab.), 10 sans pharmacie.
+    const communes = Array.from({ length: 40 }, (_, i) => ({ code: `${10000 + i}`, lon: 1 + (i % 8) * 0.2, lat: 45 + Math.floor(i / 8) * 0.2, pop: 10000 }));
+    const byType = { D307: { lon: [] as number[], lat: [] as number[], commune: [] as string[] } };
+    communes.slice(0, 30).forEach((c) => {
+      for (let k = 0; k < 3; k++) {
+        byType.D307.lon.push(c.lon);
+        byType.D307.lat.push(c.lat);
+        byType.D307.commune.push(c.code);
+      }
+    });
+    const ref = nationalServiceRefs(communes, { byType });
+    expect(ref.Pharmacie.dist).toBe(0);
+    expect(ref.Pharmacie.offre).toBeCloseTo(3, 5);
+    // Une commune avec une pharmacie pour 10 000 habitants : en dessous de la France.
+    const local = Array.from({ length: 12 }, (_, i) => ({ code: `2${i}`, at: [2 + i * 0.2, 46] as [number, number], pop: 10000 }));
+    const equip = local.flatMap((c, i) => Array.from({ length: i === 0 ? 1 : 3 }, () => ({ type: "D307", nom: "", commune: c.code, lon: c.at[0], lat: c.at[1], qp: null, adresse: "" })));
+    const r = servicesAccess("20", local, equip, ref)!;
+    expect(r.rows.find((x) => x.label === "Pharmacie")!.txt).toBe("1,0 pour 10 000 habitants à moins de 5 km (France : 3,0 ; département : 3,0)");
+    expect(r.indice!.ref).toBe("France");
+    expect(r.indice!.global).toBeLessThan(50);
   });
 });

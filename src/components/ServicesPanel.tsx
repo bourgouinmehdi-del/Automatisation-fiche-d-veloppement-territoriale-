@@ -36,6 +36,16 @@ export default function ServicesPanel({ b }: { b: B }) {
           ))}
         </div>
       </div>
+      {b.indice && (
+        <div className="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+          <span>
+            Indice d'accès aux services :{" "}
+            <b className={b.indice.global < 85 ? "text-[var(--mark)]" : b.indice.global > 115 ? "text-[#1b7f55]" : ""}>{b.indice.global}</b>
+            <span className="text-[var(--ink-2)]"> ({b.indice.ref} = 100)</span>
+          </span>
+          <span className="text-xs text-[var(--ink-2)]">{b.indice.gammes.map((g) => `${g.label} : ${g.value}`).join(" ; ")}</span>
+        </div>
+      )}
       {mode === "faibles" ? (
         b.faibles.length || dessous.length ? (
           <div className="space-y-3 text-sm">

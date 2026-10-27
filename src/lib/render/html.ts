@@ -254,7 +254,8 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
         ? `<div class="sv-sub">${b.faibles.length ? "Un peu en dessous de l'habitant moyen du département" : "Pas de service très en retard, mais plusieurs un peu en dessous de l'habitant moyen du département"}</div><ul class="sv-l">${b.enDessous.map((f) => `<li><span class="sv-i">${ICONS[f.cat] ?? ""}</span><b>${esc(f.label)}</b> : ${esc(f.txt)}</li>`).join("")}</ul>`
         : "";
       const cats = `<div class="sv-sub">Par catégorie</div><table class="sv-t"><tbody>${b.cats.map((c) => `<tr><td><span class="sv-i">${ICONS[c.cat] ?? ""}</span><b>${esc(c.label)}</b></td><td class="sv-${c.niveau}">${niv[c.niveau]}</td><td class="sv-d">${c.details.map((d) => `${esc(d.label)} : ${esc(d.txt)}`).join(" ; ")}</td></tr>`).join("")}</tbody></table>`;
-      return `<figure class="services"><figcaption>${esc(b.title)}</figcaption>${faibles}${dessous}${cats}<div class="pr-n">${esc(b.note)}</div></figure>`;
+      const indice = b.indice ? `<div class="sv-ix">Indice d'accès aux services : <b class="${b.indice.global < 85 ? "sv-moins" : b.indice.global > 115 ? "sv-mieux" : ""}">${b.indice.global}</b> (${esc(b.indice.ref)} = 100). <span class="sv-d">${b.indice.gammes.map((g) => `${esc(g.label)} : ${g.value}`).join(" ; ")}</span></div>` : "";
+      return `<figure class="services"><figcaption>${esc(b.title)}</figcaption>${indice}${faibles}${dessous}${cats}<div class="pr-n">${esc(b.note)}</div></figure>`;
     }
     case "plan":
       return `<div class="plan">${b.items
@@ -358,6 +359,7 @@ h3.fh { font-size: 15pt; font-weight: 800; color: #4c0297; margin: 7mm 0 3mm; pa
 .glance { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin: 4mm 0 3mm; break-inside: avoid; }
 .gl { border: 0; border-left: 1mm solid #e9e3d3; padding: .5mm 0 .5mm 3mm; }
 .gl.up { border-left-color: #d1271c; } .gl.up .gl-v { color: #d1271c; } .gl.down { border-left-color: #85877f; }
+.sv-ix { font-size: 9.5pt; margin: 1mm 0 2mm; }
 .services { border: 1px solid #e7e6e2; border-radius: 2mm; padding: 3mm 4mm; }
 .sv-sub { font-weight: 700; font-size: 9pt; margin: 1.5mm 0 1mm; color: #4c0297; }
 .sv-l { margin: 0 0 2mm; padding: 0; list-style: none; font-size: 9pt; } .sv-l li { margin: .8mm 0; }

@@ -42,12 +42,13 @@ import {
   collectMunicipalesDepartement,
   MunicipalResult,
 } from "../collectors/municipales";
-import { BpeResult, BPE_VINTAGE, collectBpe } from "../collectors/bpe";
+import { BpeResult, BPE_VINTAGE, collectBpe, readBpeNational } from "../collectors/bpe";
+import { nationalServiceRefs, type ServicesRef } from "../analysis/services-ref";
 import { collectTimetables, StationTimetable } from "../collectors/gtfs";
 import { collectRoutes, Route } from "../collectors/routes";
 import { config } from "../config";
 import { Adresse, collectAdresses } from "../collectors/ban";
-import { rssMb } from "../runtime";
+import { cachedExtract, heavyLane, rssMb } from "../runtime";
 import { collectInsee, DATASETS, InseeResult } from "../collectors/insee-indicators";
 import { prefetchMelodi } from "../collectors/insee";
 import {
@@ -176,6 +177,8 @@ export interface Collected {
   fond?: FondOsm & { bbox: Bbox; source: SourceRef };
   /** Piscines et cinémas du département (OpenStreetMap), complément de la BPE. */
   equipOsm?: { list: EquipementOsm[]; source: SourceRef };
+  /** Accès aux services de l'habitant moyen en France (référence nationale, par service). */
+  servicesRef?: ServicesRef;
   /** Lieux pour un moment convivial (grands parcs, jardins à bière, grands bars). */
   convivialite?: { list: LieuConvivial[]; source: SourceRef };
   /** Hypermarchés et supermarchés des grands groupes desservis en transports en commun. */
@@ -1198,6 +1201,16 @@ export async function collect(
       },
       { theme: "equipements", label: "Base permanente des équipements" },
     );
+    // Référence nationale (habitant moyen en France) : calculée une fois pour toute la France, 30 jours.
+    await ctx.step("bpe", "services:reference-nationale", async (http) => {
+      c.servicesRef = await cachedExtract(`servicesref|${BPE_VINTAGE}`, 24 * 30, () =>
+        heavyLane.run(async () => {
+          const [fr, bpe] = await Promise.all([franceCentres(http), readBpeNational(http)]);
+          const communes = fr.communes.flatMap((x) => (x.centre ? [{ code: x.code, lon: x.centre.coordinates[0], lat: x.centre.coordinates[1], pop: x.population ?? 0 }] : []));
+          return nationalServiceRefs(communes, bpe);
+        }),
+      );
+    });
   };
   const run_gtfs = async () => {
     if (!enabled("gtfs") || !c.stations?.stations.length) return;

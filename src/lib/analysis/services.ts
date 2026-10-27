@@ -69,6 +69,39 @@ export const SERVICE_CATS: { id: ServiceCat; label: string; items: { label: stri
   },
 ];
 
+/**
+ * Gammes de services, d'après la fréquence du besoin (à la manière des gammes de la BPE de l'INSEE) :
+ * proximité (au quotidien), intermédiaire, supérieure (plus rares).
+ */
+export type Gamme = "proximite" | "intermediaire" | "superieure";
+export const GAMMES: Record<Gamme, { label: string; poids: number }> = {
+  proximite: { label: "proximité", poids: 0.5 },
+  intermediaire: { label: "intermédiaire", poids: 0.3 },
+  superieure: { label: "supérieure", poids: 0.2 },
+};
+const GAMME_OF: Record<string, Gamme> = {
+  "Médecin généraliste": "proximite",
+  Pharmacie: "proximite",
+  Infirmier: "proximite",
+  École: "proximite",
+  "Poste (bureau, relais ou agence)": "proximite",
+  "Supermarché ou hypermarché": "proximite",
+  Dentiste: "intermediaire",
+  Crèche: "intermediaire",
+  Collège: "intermediaire",
+  Banque: "intermediaire",
+  "Police ou gendarmerie": "intermediaire",
+  "France Services": "intermediaire",
+  Bibliothèque: "intermediaire",
+  Piscine: "intermediaire",
+  Urgences: "superieure",
+  Maternité: "superieure",
+  Lycée: "superieure",
+  "France Travail": "superieure",
+  Gare: "superieure",
+  Cinéma: "superieure",
+};
+
 /** Rayon de l'offre à portée (km). */
 export const OFFRE_KM = 5;
 /** En deçà, les distances ne sont pas distinguées (km). */
@@ -103,7 +136,8 @@ export interface ServicesResult {
   rows: ServiceRow[];
   faibles: ServiceRow[];
   cats: CatScore[];
-  pairs: number;
+  /** Indice d'accès (France = 100) : global et par gamme. */
+  indice: { global: number; ref: "France" | "département"; gammes: { id: Gamme; label: string; value: number }[] } | null;
 }
 
 type Pt = [number, number];
@@ -118,11 +152,9 @@ const per = (v: number) => fmtNumber(v, v < 10 ? 1 : 0);
 /**
  * `communes` : communes du département (code, centre, population). `equip` : équipements du département.
  */
-export function servicesAccess(code: string, communes: { code: string; at: Pt; pop: number }[], equip: BpeEquipement[]): ServicesResult | null {
+export function servicesAccess(code: string, communes: { code: string; at: Pt; pop: number }[], equip: BpeEquipement[], nat?: Record<string, { dist?: number; offre?: number }>): ServicesResult | null {
   const me = communes.find((x) => x.code === code);
   if (!me) return null;
-  let pairs = communes.filter((x) => x.code !== code && x.pop >= me.pop / 2 && x.pop <= me.pop * 2);
-  if (pairs.length < 10) pairs = communes.filter((x) => x.code !== code).sort((a, b) => Math.abs(a.pop - me.pop) - Math.abs(b.pop - me.pop)).slice(0, 15);
   // Équipement sans coordonnées : placé au centre de sa commune plutôt qu'ignoré.
   const centreOf = new Map(communes.map((x) => [x.code, x.at]));
   const byCode = new Map<string, { lon: number; lat: number; commune: string }[]>();
@@ -136,10 +168,6 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
   const voisins = (x: { code: string; at: Pt; pop: number }) => {
     if (!voisinsMemo.has(x.code)) voisinsMemo.set(x.code, communes.filter((y) => y.code === x.code || dkm(x.at, y.at) <= OFFRE_KM));
     return voisinsMemo.get(x.code)!;
-  };
-  const median = (v: number[]) => {
-    const s = v.filter(Number.isFinite).sort((a, b) => a - b);
-    return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN;
   };
   // Référence : l'habitant moyen du département (médiane pondérée par la population de toutes ses
   // communes). Comparer aux seules communes de même taille effacerait le retard commun des petites
@@ -168,12 +196,14 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
           return best;
         };
         const val = dist(me);
-        const med = median(pairs.map(dist));
-        const ref = medianePond(communes.map(dist));
+        const dep = medianePond(communes.map(dist));
+        const fr = nat?.[it.label]?.dist;
+        // Référence : la France (habitant moyen) ; le département en second repère.
+        const ref = fr != null && Number.isFinite(fr) ? fr : dep;
         if (!Number.isFinite(val) || !Number.isFinite(ref)) return null;
         const score = Math.log2((Math.max(val, DIST_MIN) + 0.5) / (Math.max(ref, DIST_MIN) + 0.5));
         const faible = score >= 0.6 && val - ref >= 1.5 && val >= 3;
-        const semblables = Number.isFinite(med) ? ` ; communes de même taille : ${km(med)}` : "";
+        const refTxt = ref === fr ? `France : ${km(ref)}${Number.isFinite(dep) ? ` ; département : ${km(dep)}` : ""}` : `habitant moyen du département : ${km(ref)}`;
         return {
           cat: cat.id,
           label: it.label,
@@ -183,8 +213,8 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
           surPlace: val === 0,
           score,
           faible,
-          txt: `${val === 0 ? "dans la commune" : `à ${km(val)}`} (habitant moyen du département : ${km(ref)}${semblables})`,
-          txtFaible: `le plus proche à ${km(val)}, contre ${km(ref)} pour l'habitant moyen du département${Number.isFinite(med) ? ` (communes de même taille : ${km(med)})` : ""}`,
+          txt: `${val === 0 ? "dans la commune" : `à ${km(val)}`} (${refTxt})`,
+          txtFaible: `le plus proche à ${km(val)}, contre ${km(ref)} pour l'habitant moyen ${ref === fr ? `en France${Number.isFinite(dep) ? ` (département : ${km(dep)})` : ""}` : "du département"}`,
         };
       };
       // Offre à portée : équipements de la commune et à moins de 5 km, pour 10 000 habitants à portée.
@@ -197,12 +227,13 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
           return pop > 0 ? (10000 * n) / pop : NaN;
         };
         const val = offre(me);
-        const med = median(pairs.map(offre));
-        const ref = medianePond(communes.map(offre));
+        const dep = medianePond(communes.map(offre));
+        const fr = nat?.[it.label]?.offre;
+        const ref = fr != null && Number.isFinite(fr) && fr > 0 ? fr : dep;
         if (!Number.isFinite(val) || !Number.isFinite(ref) || ref <= 0) return null;
         const e = Math.max(0.05 * ref, 0.1);
         const score = Math.log2((ref + e) / (val + e));
-        const semblables = Number.isFinite(med) ? ` ; communes de même taille : ${per(med)}` : "";
+        const refTxt = ref === fr ? `France : ${per(ref)}${Number.isFinite(dep) ? ` ; département : ${per(dep)}` : ""}` : `habitant moyen du département : ${per(ref)}`;
         return {
           cat: cat.id,
           label: it.label,
@@ -212,8 +243,8 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
           surPlace: here(code),
           score,
           faible: val <= seuilFaible * ref,
-          txt: `${per(val)} pour 10 000 habitants à moins de ${OFFRE_KM} km (habitant moyen du département : ${per(ref)}${semblables})`,
-          txtFaible: `${per(val)} pour 10 000 habitants à moins de ${OFFRE_KM} km, contre ${per(ref)} pour l'habitant moyen du département${Number.isFinite(med) ? ` (communes de même taille : ${per(med)})` : ""}`,
+          txt: `${per(val)} pour 10 000 habitants à moins de ${OFFRE_KM} km (${refTxt})`,
+          txtFaible: `${per(val)} pour 10 000 habitants à moins de ${OFFRE_KM} km, contre ${per(ref)} pour l'habitant moyen ${ref === fr ? `en France${Number.isFinite(dep) ? ` (département : ${per(dep)})` : ""}` : "du département"}`,
         };
       };
       let row: ServiceRow | null;
@@ -248,5 +279,17 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
     const niveau = g >= 0.2 || (pire >= moitie && pire > mieux) || (faible && g >= 0) ? "moins" : !faible && (g <= -0.2 || (mieux >= moitie && mieux > pire)) ? "mieux" : "comme";
     return { cat: c.id, label: c.label, niveau, items: rs.length } as CatScore;
   }).filter((x): x is CatScore => !!x);
-  return { rows, faibles, cats, pairs: pairs.length };
+  // Indice : pour chaque gamme, 100 × 2^(−écart moyen) ; global pondéré (proximité 50 %, intermédiaire 30 %,
+  // supérieure 20 %) : on a besoin d'un médecin ou d'une école bien plus souvent que d'une maternité.
+  const gammes = (Object.keys(GAMMES) as Gamme[])
+    .map((g) => {
+      const rs = rows.filter((r) => GAMME_OF[r.label] === g);
+      if (!rs.length) return null;
+      const m = rs.reduce((t, r) => t + r.score, 0) / rs.length;
+      return { id: g, label: GAMMES[g].label, value: Math.round(Math.max(0, Math.min(200, 100 * 2 ** -m))) };
+    })
+    .filter((x): x is { id: Gamme; label: string; value: number } => !!x);
+  const wTot = gammes.reduce((t, g) => t + GAMMES[g.id].poids, 0);
+  const indice = gammes.length ? { global: Math.round(gammes.reduce((t, g) => t + g.value * GAMMES[g.id].poids, 0) / wTot), ref: (nat && Object.keys(nat).length ? "France" : "département") as "France" | "département", gammes } : null;
+  return { rows, faibles, cats, indice };
 }
