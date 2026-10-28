@@ -74,7 +74,7 @@ export function buildPorte(c: Collected, ranked: BvRow[], labels: Map<string, st
     blocks.push({ type: "heading", text: `Porte-à-porte : ${title}` });
     blocks.push({
       type: "paragraph",
-      text: `**${fmtNumber(b.inscrits)} électeurs inscrits** pour ${fmtNumber(inside.length)} adresses dans ${fmtNumber(streets.length)} rues${place ? ` ; lieu de vote : ${place}` : ""}. Vote LFI aux européennes 2024 : ${pp(b.lfiPctExp)} des voix${b.lfi2PctExp != null ? ` (Mélenchon 2022 : ${pp(b.lfi2PctExp)})` : ""} ; **${fmtNumber(b.abstN)} inscrits n'ont pas voté** (${pp(b.abstPct)}).`,
+      text: `**${fmtNumber(b.inscrits)} électeurs inscrits** pour ${fmtNumber(inside.length)} adresses dans ${fmtNumber(streets.length)} rues${place ? ` ; lieu de vote : ${place}` : ""}. Vote LFI aux européennes 2024 : ${pp(b.lfiPctIns)} des inscrits${b.lfi2PctIns != null ? ` (Mélenchon 2022 : ${pp(b.lfi2PctIns)})` : ""} ; **${fmtNumber(b.abstN)} inscrits n'ont pas voté** (${pp(b.abstPct)}).`,
     });
     // Résidences HLM du bureau (RPLS) : souvent les immeubles où frapper en premier.
     const hlm = (c.rpls?.residences ?? [])

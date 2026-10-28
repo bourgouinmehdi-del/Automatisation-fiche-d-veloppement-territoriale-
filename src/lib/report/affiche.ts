@@ -313,11 +313,11 @@ export function communePoster(
             geometry: p.geometry,
             properties: {
               nom: `Bureau ${dv(bv)}${lieu ? ` — ${lieu}` : ""}`,
-              sub: `${fmtNumber(r.abstN)} inscrits n'ont pas voté${when} · LFI ${fmtNumber(Math.round(r.lfiPctExp))} % aux européennes`,
+              sub: `${fmtNumber(r.abstN)} inscrits n'ont pas voté${when} · LFI ${fmtNumber(Math.round(r.lfiPctIns))} % des inscrits aux européennes`,
               det: [
                 lieu ? `Lieu de vote : ${lieu}` : "",
                 `${fmtNumber(r.inscrits)} inscrits, dont ${fmtNumber(r.abstN)} n'ont pas voté${when} (${fmtNumber(Math.round(r.abstPct))} %)`,
-                `Vote LFI : ${fmtNumber(Math.round(r.lfiPctExp))} % aux européennes 2024${r.lfi2PctExp != null ? `, ${fmtNumber(Math.round(r.lfi2PctExp))} % pour J.-L. Mélenchon en 2022` : ""}`,
+                `Vote LFI : ${fmtNumber(Math.round(r.lfiPctIns))} % des inscrits aux européennes 2024${r.lfi2PctIns != null ? `, ${fmtNumber(Math.round(r.lfi2PctIns))} % pour J.-L. Mélenchon en 2022` : ""}`,
                 nHlm >= 20 ? `${fmtNumber(nHlm)} logements sociaux dans le bureau` : "",
               ].filter(Boolean),
               quand: o.quandPorte ?? WEEKEND.porte,
