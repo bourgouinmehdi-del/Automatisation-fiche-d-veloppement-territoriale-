@@ -10,6 +10,7 @@ import { isSmallSample } from "@/lib/analysis/stats";
 import { fmtDate, fmtValue, scoreColor, territoryName } from "@/lib/format";
 import { cellText, Citations, inlineParts, sourceLabel } from "@/lib/render/cite";
 import ChartView from "./ChartView";
+import { useVoteMode, VoteModeButtons, VoteModeProvider } from "./voteMode";
 import PresenceBars from "./PresenceBars";
 import ServicesPanel from "./ServicesPanel";
 import { useRole } from "./useRole";
@@ -326,11 +327,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         // Graphiques alternatifs (même groupe) : onglets, le graphique cité par le bloc ouvert par défaut.
         const group = c.group ? r.charts.filter((x) => x.group === c.group) : [];
         if (group.length > 1) return <ChartTabs key={key} charts={group} initial={c.id} cite={(s) => cit.cite(s)} />;
-        return (
-          <Figure key={key} title={c.title} src={c.sources.map((s) => cit.cite(s))} note={c.note}>
-            <ChartView chart={c} />
-          </Figure>
-        );
+        return <ChartFigure key={key} c={c} src={c.sources.map((s) => cit.cite(s))} />;
       }
       case "map": {
         const m = r.maps.find((x) => x.id === b.mapId);
@@ -480,6 +477,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
   );
 
   return (
+    <VoteModeProvider>
     <div className="mx-auto max-w-7xl px-4 py-6">
       <div className={`mb-6 flex flex-wrap items-end gap-4 ${hasFiche || hasCiblage ? "justify-end" : "justify-between"}`}>
         {/* Fiche ou ciblage : le nom figure déjà dans le bandeau coloré de la fiche. */}
@@ -679,6 +677,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         </aside>
       )}
     </div>
+    </VoteModeProvider>
   );
 }
 
@@ -719,22 +718,34 @@ function ChartTabs({ charts, initial, cite }: { charts: Report["charts"]; initia
           </button>
         ))}
       </div>
-      <Figure title={c.title} src={c.sources.map(cite)} note={c.note}>
-        <ChartView chart={c} />
-      </Figure>
+      <ChartFigure c={c} src={c.sources.map(cite)} />
     </div>
+  );
+}
+
+/** Graphique et sa note ; la note suit la lecture choisie (voix / inscrits). */
+function ChartFigure({ c, src }: { c: Report["charts"][number]; src: number[] }) {
+  const { mode } = useVoteMode();
+  const note = c.modes?.find((m) => m.id === mode)?.note ?? c.note;
+  return (
+    <Figure title={c.title} src={src} note={note}>
+      <ChartView chart={c} />
+    </Figure>
   );
 }
 
 function MapBlock({ maps, cite, exp }: { maps: Report["maps"]; cite: (s: Report["maps"][number]["layers"][number]["source"]) => number; exp: (f: string, extra?: string) => string }) {
   const [idx, setIdx] = useState(0);
   const m = maps[idx];
+  const { mode } = useVoteMode();
+  const md = m.modes?.find((x) => x.id === mode) ?? m.modes?.[0];
   const srcs = [...new Map(m.layers.map((l) => [l.source.id + l.source.url, l.source])).values()];
   return (
     <figure className="my-5">
       <figcaption className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm font-semibold">
-        <span>{m.title}</span>
+        <span>{md?.title ?? m.title}</span>
         <span className="no-print flex items-center gap-2 text-xs font-normal">
+          {m.modes && m.modes.length > 1 && <VoteModeButtons modes={m.modes} />}
           {maps.length > 1 && maps.length <= 3 ? (
             <span className="flex gap-1" role="group" aria-label="Carte affichée">
               {maps.map((x, i) => (
@@ -771,7 +782,7 @@ function MapBlock({ maps, cite, exp }: { maps: Report["maps"]; cite: (s: Report[
         // eslint-disable-next-line @next/next/no-img-element
         <img src={exp("map-svg", `?id=${m.id}&inline=1`)} alt={m.title} className="w-full rounded border border-[var(--line)] bg-[var(--surface)]" loading="lazy" />
       ) : (
-        <MapView key={m.id} map={m} />
+        <MapView key={m.id} map={m} mode={mode} />
       )}
       <div className="mt-1 text-[11px] text-[var(--ink-2)]">
         Sources : {[...new Set(srcs.map((s) => `[${cite(s)}]`))].join(" ")}.{m.poster ? "" : " Fond de carte © contributeurs OpenStreetMap"}{m.note ? ` — ${m.note}` : ""}

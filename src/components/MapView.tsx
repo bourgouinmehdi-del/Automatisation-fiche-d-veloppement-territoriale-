@@ -3,13 +3,13 @@
 import { useMemo } from "react";
 import L from "leaflet";
 import { CircleMarker, GeoJSON, LayersControl, LayerGroup, MapContainer, ScaleControl, TileLayer, Tooltip } from "react-leaflet";
-import type { MapLayer, MapSpec } from "@/lib/types";
+import type { MapLayer, MapLegend, MapSpec, VoteMode } from "@/lib/types";
 import { fmtValue } from "@/lib/format";
 
 const MISSING = "#e5e7eb";
 
-function colorFor(v: unknown, map: MapSpec) {
-  const classes = map.legend?.classes;
+function colorFor(v: unknown, legend: MapLegend | undefined) {
+  const classes = legend?.classes;
   if (typeof v !== "number" || !Number.isFinite(v) || !classes?.length) return MISSING;
   for (const c of classes) if (v <= c.max) return c.color;
   return classes[classes.length - 1].color;
@@ -18,12 +18,18 @@ function colorFor(v: unknown, map: MapSpec) {
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 /** Carte interactive : zoom, déplacement, couches activables, infobulles avec valeur et source. */
-export default function MapView({ map, height = 460 }: { map: MapSpec; height?: number }) {
+export default function MapView({ map: map0, height = 460, mode }: { map: MapSpec; height?: number; mode?: VoteMode }) {
+  // Lecture du vote (voix / inscrits) : légende et propriété colorée de la couche principale.
+  const md = map0.modes?.find((x) => x.id === mode) ?? map0.modes?.[0];
+  const map = useMemo<MapSpec>(
+    () => (md ? { ...map0, legend: md.legend, layers: map0.layers.map((l, i) => (i === 0 && l.valueProperty ? { ...l, valueProperty: md.valueProperty, label: md.layerLabel } : l)) } : map0),
+    [map0, md],
+  );
   const bounds = useMemo(() => (map.bbox ? L.latLngBounds([map.bbox[1], map.bbox[0]], [map.bbox[3], map.bbox[2]]) : undefined), [map.bbox]);
 
   const polygonLayer = (l: MapLayer) => (
     <GeoJSON
-      key={l.id}
+      key={`${l.id}-${l.valueProperty ?? ""}`}
       data={l.data}
       style={(f) => {
         const p = (f?.properties ?? {}) as Record<string, unknown>;
@@ -31,7 +37,7 @@ export default function MapView({ map, height = 460 }: { map: MapSpec; height?: 
         return {
           color: p.bv != null ? "#4b5563" : "#ffffff",
           weight: p.bv != null ? 1 : 0.6,
-          fillColor: l.valueProperty ? colorFor(p[l.valueProperty], map) : ((p.color as string) ?? l.color ?? "#cbd5e1"),
+          fillColor: l.valueProperty ? colorFor(p[l.valueProperty], map.legend) : ((p.color as string) ?? l.color ?? "#cbd5e1"),
           fillOpacity: 0.8,
         };
       }}

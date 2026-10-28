@@ -4,6 +4,7 @@ import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContai
 import { useState } from "react";
 import type { ChartSpec } from "@/lib/types";
 import { fmtNumber, fmtValue } from "@/lib/format";
+import { isVoteMode, useVoteMode, VoteModeButtons } from "./voteMode";
 
 /** Graphiques interactifs (survol, infobulles) ; palette catégorielle ordonnée. */
 export const SERIES = ["#4c0297", "#d1271c", "#9c6ee8", "#f9a89e", "#212320", "#8f120a", "#c9adff", "#85877f"];
@@ -82,7 +83,11 @@ export default function ChartView({ chart: c }: { chart: ChartSpec }) {
 
 /** Barres horizontales avec trait de référence ; boutons pour les lectures alternatives (« % inscrits », « % exprimés »). */
 function RefBar({ c }: { c: ChartSpec }) {
-  const [mode, setMode] = useState(0);
+  // Lectures « voix / inscrits » : choix partagé avec les cartes et les autres graphiques de la fiche.
+  const vm = useVoteMode();
+  const shared = !!c.modes?.length && c.modes.every((m) => isVoteMode(m.id));
+  const [local, setLocal] = useState(0);
+  const mode = shared ? Math.max(0, c.modes!.findIndex((m) => m.id === vm.mode)) : local;
   const series = c.modes?.[mode]?.series ?? c.series;
   const [val, ref] = series;
 
@@ -92,17 +97,21 @@ function RefBar({ c }: { c: ChartSpec }) {
     <div className="refbar">
       {c.modes && c.modes.length > 1 && (
         <div className="no-print mb-1 flex gap-1" role="group" aria-label="Lecture">
-          {c.modes.map((m, i) => (
-            <button
-              key={m.id}
-              type="button"
-              aria-pressed={i === mode}
-              onClick={() => setMode(i)}
-              className={`rounded-full border px-2.5 py-0.5 text-xs ${i === mode ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] text-[var(--ink-2)]"}`}
-            >
-              {m.label}
-            </button>
-          ))}
+          {shared ? (
+            <VoteModeButtons modes={c.modes} />
+          ) : (
+            c.modes.map((m, i) => (
+              <button
+                key={m.id}
+                type="button"
+                aria-pressed={i === mode}
+                onClick={() => setLocal(i)}
+                className={`rounded-full border px-2.5 py-0.5 text-xs ${i === mode ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] text-[var(--ink-2)]"}`}
+              >
+                {m.label}
+              </button>
+            ))
+          )}
         </div>
       )}
       {c.data
