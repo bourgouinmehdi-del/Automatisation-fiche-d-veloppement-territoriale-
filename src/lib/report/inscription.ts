@@ -35,8 +35,9 @@ export function buildInscription(c: Collected, ranked: BvRow[], dv: (bv: string)
   const out: InscriptionOutput = { indicators: [], tables: [], ficheText: null, bureaux: [], commune: null, departement: null };
   const a = c.adultes;
   if (!a?.rows.length || !inscritsCom) return out;
-  const code = c.commune.code;
-  const comRows = a.rows.filter((r) => r.com === code);
+  // Territoire de plusieurs communes : toutes ses communes.
+  const codes = new Set(c.query.scope === "custom" ? c.perimeter.communes.map((x) => x.code) : [c.commune.code]);
+  const comRows = a.rows.filter((r) => codes.has(r.com));
   const comFr = comRows.reduce((s, r) => s + r.adultesFr, 0);
   if (comFr < 50) return out;
   const depFr = a.rows.reduce((s, r) => s + r.adultesFr, 0);

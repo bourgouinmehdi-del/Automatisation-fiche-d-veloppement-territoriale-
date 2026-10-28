@@ -598,4 +598,20 @@ describe("chaîne de génération (API simulées)", () => {
     expect(html).toContain("Chiffres clés");
     expect(html).toContain("Autre");
   });
+
+  it("territoire personnalisé : votes, bureaux et parrains de toutes les communes", async () => {
+    const r = await build({ codeInsee: "60159", scope: "custom", customCommunes: ["60382"] });
+    const one = report.sections[0];
+    const fiche = r.sections[0];
+    const txt = JSON.stringify(fiche.blocks);
+    expect(txt).toMatch(/Territoire de 2 communes/);
+    // Bureaux de Margny-lès-Compiègne classés avec ceux de Compiègne.
+    const bureaux = r.tables.find((t) => t.id === "lfi_bureaux")!;
+    expect(bureaux.rows.some((x) => /de Margny-lès-Compiègne/.test(String(x.bv)))).toBe(true);
+    expect(bureaux.rows.some((x) => /de Compiègne/.test(String(x.bv)))).toBe(true);
+    // Électeurs inscrits : la somme des deux communes, plus que Compiègne seule.
+    const ins = (rep: typeof r) => Number(String(rep.tables.find((t) => t.id === "lfi_vote")?.rows[0]?.inscrits ?? "0").replace(/\D/g, ""));
+    expect(ins(r)).toBeGreaterThan(ins(report));
+    expect(JSON.stringify(one.blocks)).not.toMatch(/Territoire de 2 communes/);
+  }, 120000);
 });
