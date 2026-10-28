@@ -2,7 +2,7 @@ import { plmInfo } from "./plm";
 import type { TrackedHttp } from "./context";
 import { cachedExtract, heavyLane } from "../runtime";
 import { clean, findResource, num, tabular } from "./datagouv";
-import { filterCsvFile } from "./elections";
+import { filterCsvFile, normDep } from "./elections";
 
 /**
  * Contexte municipal : résultats des élections municipales 2026 (1er et 2nd
@@ -139,7 +139,8 @@ export function parseMunicipalRow(r: Record<string, unknown>, tour: 1 | 2): Muni
     if (voix == null) continue;
     const nom = field(blk, /^nom/i, /nuance|^nom (de (la )?)?liste/i) || field(blk, /^nom.*t[êe]te|t[êe]te de liste.*nom/i);
     const prenom = field(blk, /^pr[ée]nom/i) || field(blk, /pr[ée]nom.*t[êe]te|t[êe]te de liste.*pr[ée]nom/i);
-    const lib = field(blk, /^libell[ée] (de )?(la )?liste$/i) || field(blk, /^libell[ée].*(abr|liste)/i);
+    // 2020 : « Liste » et « Sièges / Elu » ; 2026 : « Libellé de liste », « Sièges au CM ».
+    const lib = field(blk, /^libell[ée] (de )?(la )?liste$/i) || field(blk, /^libell[ée].*(abr|liste)/i) || field(blk, /^liste$/i);
     if (!nom && !lib) continue;
     listes.push({
       tete: [prenom, nom].filter(Boolean).join(" "),
@@ -147,7 +148,7 @@ export function parseMunicipalRow(r: Record<string, unknown>, tour: 1 | 2): Muni
       libelle: lib,
       voix,
       pctExprimes: exp ? (100 * voix) / exp : 0,
-      sieges: num(field(blk, /si[èe]ges.*(cm|conseil municipal)|^si[èe]ges$/i)),
+      sieges: num(field(blk, /si[èe]ges.*(cm|conseil municipal)|^si[èe]ges$/i) || field(blk, /^si[èe]ges\s*\/\s*[ée]lu/i)),
       elu: /^(oui|elu|élu|1|true)$/i.test(field(blk, /^[ée]lu/i)),
     });
   }
@@ -279,4 +280,41 @@ export async function collectMunicipalesDepartement(http: TrackedHttp, dep: stri
     if (m) byCommune.set(code, { nuance: m.nuance, tete: m.tete, pct: m.pctExprimes });
   }
   return { byCommune, url, retrievedAt };
+}
+
+/**
+ * Municipales 2020, 1er tour (15 mars 2020), communes de 1 000 habitants et plus : fichier national du
+ * ministère de l'Intérieur (texte à tabulations, un bloc de colonnes par liste), lu en flux et filtré
+ * sur le département. Sert à comparer la présence et le score de LFI avec 2026.
+ */
+export const MUNICIPALES_2020 = { dataset: "elections-municipales-2020-resultats", resource: /1000.*(et.)?plus/i };
+
+/** Code INSEE d'une ligne des fichiers 2020 (« Code du département » + « Code de la commune » sur 3 chiffres). */
+export function code2020(r: Record<string, unknown>): string {
+  const keys = Object.keys(r);
+  const kd = keys.find((k) => /^code (du )?d[ée]partement$/i.test(k.trim()));
+  const kc = keys.find((k) => /^code (de la )?commune$/i.test(k.trim()));
+  if (!kc) return "";
+  const raw = String(r[kc] ?? "").trim();
+  if (/^\d[\dAB]\d{3}$/i.test(raw)) return raw.toUpperCase();
+  const d = kd ? normDep(r[kd]) : "";
+  return d ? d + raw.padStart(3, "0").slice(d.length === 3 ? -2 : -3) : raw;
+}
+
+export async function collectMunicipales2020(http: TrackedHttp, codeInsee: string, dep = codeInsee.slice(0, codeInsee.startsWith("97") ? 3 : 2)): Promise<{ round: MunicipalRound; url: string; retrievedAt: string }> {
+  const res = await findResource(http, MUNICIPALES_2020.dataset, MUNICIPALES_2020.resource);
+  if (!res?.url) throw new Error("Municipales 2020 : fichier des communes de 1 000 habitants et plus introuvable");
+  const url = res.url;
+  const { rows, retrievedAt } = await cachedExtract(`municipales2020|t1|${dep}`, 24 * 30, () =>
+    heavyLane.run(async () => {
+      http.notes.push("municipales 2020 : lecture du fichier national");
+      const f = await http.file(url, { timeoutMs: 600000, retries: 1 });
+      const x = await filterCsvFile(f.data, dep, "municipales 2020");
+      return { rows: expandListBlocks(x.rows, x.fields), retrievedAt: f.retrievedAt };
+    }),
+  );
+  const row = rows.find((r) => code2020(r) === codeInsee);
+  const round = row ? parseMunicipalRow(row, 1) : null;
+  if (!round?.listes.length) throw new Error("Pas de résultat municipal 2020 par liste pour la commune (moins de 1 000 habitants en 2020 ?)");
+  return { round, url, retrievedAt };
 }

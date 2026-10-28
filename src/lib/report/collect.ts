@@ -39,8 +39,10 @@ import { plmInfo } from "../collectors/plm";
 import { collectIris, collectQpv, Quartier } from "../collectors/quartiers";
 import {
   collectMunicipales,
+  collectMunicipales2020,
   collectMunicipalesDepartement,
   MunicipalResult,
+  MunicipalRound,
 } from "../collectors/municipales";
 import { BpeResult, BPE_VINTAGE, collectBpe, readBpeNational } from "../collectors/bpe";
 import { nationalServiceRefs, type ServicesRef } from "../analysis/services-ref";
@@ -197,6 +199,8 @@ export interface Collected {
   quartiers?: { qpv: Quartier[]; iris: Quartier[]; sources: SourceRef[] };
   /** Municipales 2026 (commune) et nuance de la majorité municipale (communes du département). */
   municipal?: MunicipalResult & { source: SourceRef };
+  /** Municipales 2020, 1er tour (comparaison avec 2026). */
+  municipal2020?: { round: MunicipalRound; source: SourceRef };
   municipalDep?: {
     byCommune: Map<string, { nuance: string; tete: string; pct: number }>;
     source: SourceRef;
@@ -1021,6 +1025,15 @@ export async function collect(
           };
         },
         { theme: "elections", label: "Municipales 2026 et maire" },
+      );
+      await ctx.step(
+        "municipales",
+        "municipales:2020",
+        async (http) => {
+          const m = await collectMunicipales2020(http, plmInfo(commune.code)?.parent ?? commune.code, commune.departement.code);
+          c.municipal2020 = { round: m.round, source: ctx.ref("municipales", m.url, m.retrievedAt, { name: "Élections municipales 2020, 1er tour (ministère de l'Intérieur)", vintage: "2020" }) };
+        },
+        { theme: "elections", label: "Municipales 2020 (comparaison)" },
       );
       if (territorial(query.scope))
         await ctx.step(

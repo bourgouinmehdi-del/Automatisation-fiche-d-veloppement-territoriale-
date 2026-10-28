@@ -111,11 +111,11 @@ export async function buildReport(
           else bl.splice(iAcc0, 1);
         }
       }
-      // Ordre : liste aux municipales, villes militantes (carte et tableau), puis comment rejoindre la commune.
-      const iMun = bl.findIndex((b) => b.type === "paragraph" && /^\*\*Municipales 2026\*\*/.test(b.text));
+      // Ordre : villes militantes (carte et tableau), puis comment rejoindre la commune.
+      // Juste sous le titre « Organiser la venue » (la liste aux municipales est dans le profil politique).
       const iAcc = bl.findIndex((b) => b.type === "paragraph" && /^\*\*Pour rejoindre la commune\*\*/.test(b.text));
       const iOp = bl.findIndex((b) => b.type === "heading" && b.text === "Organiser la venue");
-      const at = iMun >= 0 ? iMun + 1 : iOp >= 0 ? iOp + 1 : iAcc >= 0 ? iAcc : bl.length;
+      const at = iOp >= 0 ? iOp + 1 : iAcc >= 0 ? iAcc : bl.length;
       bl.splice(at, 0, ...acc.blocks);
     }
   }

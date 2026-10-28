@@ -2495,12 +2495,52 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
 
   // Profil politique : chiffres et graphiques seulement ; le texte (mairie, quartiers, parrainages) passe en annexe,
   // la lecture qualitative revient aux retours du terrain.
+  /* ---------------------------------------------------------- liste LFI aux municipales (2026, comparée à 2020) */
+  let municipalLfi = "";
+  {
+    const m = c.municipal;
+    const t1 = m?.rounds.find((r) => r.tour === 1);
+    const r20 = c.municipal2020?.round;
+    const top = (r: { listes: MunicipalList[] } | undefined, nu: string): MunicipalList | undefined => r?.listes.filter((l) => l.nuance === nu).sort((a, b) => b.pctExprimes - a.pctExprimes)[0];
+    const lfiL = top(t1, "LFI");
+    const ug = top(t1, "LUG");
+    const l20 = top(r20, "LFI");
+    const ug20 = top(r20, "LUG");
+    const ville = m?.ville ? ` (ville de ${m.ville})` : "";
+    const p0 = (v: number) => pct(v, 0);
+    // 2020 : même nuance LFI ; « même tête de liste » si elle n'a pas changé.
+    const txt20 = !r20
+      ? ""
+      : l20
+        ? lfiL
+          ? ` En 2020 : ${p0(l20.pctExprimes)}${lfiL.tete.trim() && l20.tete.trim().toLowerCase() === lfiL.tete.trim().toLowerCase() ? ", avec la même tête de liste" : ` (« ${l20.libelle || l20.tete} »)`}, soit ${(() => {
+              const d = Math.round(lfiL.pctExprimes) - Math.round(l20.pctExprimes);
+              return d > 0 ? `${d} point${d > 1 ? "s" : ""} de plus en 2026` : d < 0 ? `${-d} point${d < -1 ? "s" : ""} de moins en 2026` : "le même score";
+            })()}.`
+          : ` En 2020, il y avait une liste LFI (« ${l20.libelle || l20.tete} », ${p0(l20.pctExprimes)} au 1er tour).`
+        : lfiL
+          ? ` Pas de liste LFI en 2020${ug20 ? ` (union de la gauche « ${ug20.libelle} », ${p0(ug20.pctExprimes)})` : ""} : c'est une première.`
+          : ` Pas de liste LFI non plus en 2020${ug20 ? ` (union de la gauche « ${ug20.libelle} », ${p0(ug20.pctExprimes)})` : ""}.`;
+    if (m && t1?.listes.length) {
+      const t2 = m.rounds.find((r) => r.tour === 2);
+      const auT2 = lfiL && t2?.listes.some((l) => sameList(l, lfiL));
+      const full = lfiL;
+      municipalLfi = full
+        ? `${B("Municipales 2026")}${ville} : une liste LFI, « ${full.libelle} »${full.tete.trim() ? ` (tête de liste : ${full.tete})` : ""}, ${p0(full.pctExprimes)} au 1er tour${auT2 ? ", présente au 2nd tour" : ""}${full.elu ? " ; élus au conseil municipal" : ""}.${txt20}`
+        : ug
+          ? `${B("Municipales 2026")}${ville} : pas de liste LFI ; liste d'union de la gauche « ${ug.libelle} » (${p0(ug.pctExprimes)} au 1er tour).${txt20}`
+          : `${B("Municipales 2026")}${ville} : pas de liste LFI.${txt20}`;
+    } else if (r20) municipalLfi = `${B("Municipales 2020")} : ${l20 ? `une liste LFI, « ${l20.libelle || l20.tete} », ${p0(l20.pctExprimes)} au 1er tour` : "pas de liste LFI"}.`;
+  }
+
   blocks.push({ type: "heading", text: `Profil politique ${deLa}`, sub: "Comment on vote ici, et où dans la commune : pour repérer où le vote insoumis est fort et où des électeurs restent à convaincre d'aller voter." });
   {
     const lfiBv = ranked.map((b) => b.lfiPctExp).filter((v) => Number.isFinite(v));
     const intro = politiqueIntro(parcours, zonesInfo, { nom: plm ? undefined : commune.nom, bvRange: lfiBv.length >= 4 ? { min: Math.min(...lfiBv), max: Math.max(...lfiBv) } : null });
     if (intro) blocks.push({ type: "paragraph", text: intro });
   }
+  // Liste LFI aux municipales (2026, comparée à 2020) : avec les autres résultats, pas dans l'organisation.
+  if (municipalLfi) blocks.push({ type: "paragraph", text: municipalLfi });
   // Présence militante : après les résultats (du général au particulier).
   const presenceBlocks: Block[] = [];
   if (groupes.length)
@@ -2659,25 +2699,6 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const faitsTop = faits.sort((x, y) => y.poids - x.poids).slice(0, 3);
   const faitsTxt = faitsTop.map((f, i) => `${f.txt} (${f.dep}${i === 0 ? " dans le département" : ""})`).join(" ; ");
 
-  /* ---------------------------------------------------------- liste LFI aux municipales */
-  let municipalLfi = "";
-  {
-    const m = c.municipal;
-    const t1 = m?.rounds.find((r) => r.tour === 1);
-    if (m && t1?.listes.length) {
-      const lfiL = t1.listes.filter((l) => l.nuance === "LFI").sort((a, b) => b.pctExprimes - a.pctExprimes)[0];
-      const ug = t1.listes.filter((l) => l.nuance === "LUG").sort((a, b) => b.pctExprimes - a.pctExprimes)[0];
-      const t2 = m.rounds.find((r) => r.tour === 2);
-      const auT2 = lfiL && t2?.listes.some((l) => sameList(l, lfiL));
-      const ville = m.ville ? ` (ville de ${m.ville})` : "";
-      municipalLfi = lfiL
-        ? `${B("Municipales 2026")}${ville} : une liste LFI, « ${lfiL.libelle} »${lfiL.tete.trim() ? ` (tête de liste : ${lfiL.tete})` : ""}, ${pct(lfiL.pctExprimes, 0)} au 1er tour${auT2 ? ", présente au 2nd tour" : ""}${lfiL.elu ? " ; élus au conseil municipal" : ""}.`
-        : ug
-          ? `${B("Municipales 2026")}${ville} : pas de liste LFI ; liste d'union de la gauche « ${ug.libelle} » (${pct(ug.pctExprimes, 0)} au 1er tour).`
-          : `${B("Municipales 2026")}${ville} : pas de liste LFI.`;
-    }
-  }
-
   /* ---------------------------------------------------------- à quoi s'attendre à la porte */
   // Sur 100 adultes rencontrés au hasard : ordres de grandeur, comparés au département.
   {
@@ -2765,8 +2786,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (has("lfi_residences")) detail.push({ type: "table", tableId: "lfi_residences" });
 
   /* ---------------------------------------------------------- opérationnel */
-  blocks.push({ type: "heading", text: "Organiser la venue", sub: "Qui peut venir aider et en combien de temps, comment rejoindre la commune, et ce qu'a fait LFI aux municipales." });
-  if (municipalLfi) blocks.push({ type: "paragraph", text: municipalLfi });
+  blocks.push({ type: "heading", text: "Organiser la venue", sub: "Qui peut venir aider et en combien de temps, et comment rejoindre la commune." });
   if (access.length) blocks.push({ type: "paragraph", text: `${B("Pour rejoindre la commune")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
 
   out.section = { id: "LFI", letter: "", title: "Fiche d'action — proposition de ciblage", blocks };

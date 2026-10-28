@@ -178,6 +178,22 @@ export function mockExtra(url: URL): Response | null {
       ],
     });
   if (h === "static.data.gouv.fr" && p === "/qpv-2024-geojson.zip") return bin(qpvZip());
+  // Municipales 2020, 1er tour : fichier national du ministère (tabulations, un bloc de colonnes par liste,
+  // seul le premier bloc a des en-têtes).
+  if (h === "www.data.gouv.fr" && p === "/api/1/datasets/elections-municipales-2020-resultats/")
+    return json({ resources: [{ id: "mun2020-1000", title: "2020-05-18-resultats-communes-de-1000-et-plus.txt", format: "txt", url: "https://static.data.gouv.fr/mun2020-1000.txt" }] });
+  if (h === "static.data.gouv.fr" && p === "/mun2020-1000.txt") {
+    const head = ["Code du département", "Type de scrutin", "Libellé du département", "Code de la commune", "Libellé de la commune", "Inscrits", "Abstentions", "% Abs/Ins", "Votants", "% Vot/Ins", "Blancs", "% Blancs/Ins", "% Blancs/Vot", "Nuls", "% Nuls/Ins", "% Nuls/Vot", "Exprimés", "% Exp/Ins", "% Exp/Vot", "N°Panneau", "Code Nuance", "Sexe", "Nom", "Prénom", "Liste", "Sièges / Elu", "Sièges Secteur", "Sièges CC", "Voix", "% Voix/Ins", "% Voix/Exp"];
+    const bloc = (n: number, nu: string, nom: string, prenom: string, liste: string, sieges: number, voix: number) => [n, nu, "M", nom, prenom, liste, sieges, 0, 0, voix, "0,0", "0,0"];
+    const row = (dep: string, com: string, nom: string, exp: number, blocs: (string | number)[][]) =>
+      [dep, "LI", "Oise", com, nom, 25000, 14000, "56,0", 11000, "44,0", 600, "", "", 400, "", "", exp, "", "", ...blocs.flat()].join("\t");
+    const lines = [
+      head.join("\t"),
+      row("60", "159", "Compiègne", 10000, [bloc(1, "LDVD", "DURAND", "Alice", "Ensemble pour la ville", 35, 6000), bloc(2, "LFI", "LEROY", "Paul", "Compiègne insoumise", 4, 600), bloc(3, "LUG", "MARTIN", "Bruno", "La gauche unie", 6, 3400)]),
+      row("60", "382", "Margny-lès-Compiègne", 3000, [bloc(1, "LDVD", "ROUX", "Marc", "Margny d'abord", 23, 2000), bloc(2, "LDVG", "BLANC", "Lise", "Margny à gauche", 4, 1000)]),
+    ];
+    return new Response(lines.join("\n"), { status: 200 });
+  }
   // Municipales, 1er tour : comme en octobre 2026, la ressource n'est plus servie par l'API
   // tabulaire (HTTP 410) ; le fichier CSV national reste téléchargeable.
   if (h === "www.data.gouv.fr" && p === "/api/1/datasets/elections-municipales-2026-resultats-du-premier-tour/")
