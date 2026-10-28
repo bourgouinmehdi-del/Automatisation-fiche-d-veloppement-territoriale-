@@ -263,7 +263,8 @@ export type Block =
   /** Encadré (avertissement, implantation militante, accessibilité…). */
   | { type: "callout"; text: string; title?: string; tone?: "warning" | "info" | "accent" }
   /** Intertitre à l'intérieur d'une partie. */
-  | { type: "heading"; text: string }
+  /** `sub` : une phrase sous le titre, qui dit à quoi sert la rubrique. */
+  | { type: "heading"; text: string; sub?: string }
   /** Chiffres clés rédigés (valeur + comparaison). */
   | { type: "glance"; items: { label: string; value: string; detail?: string; tone?: "up" | "down" | "neutral" }[] }
   /** Présence militante LFI : barres (parrains, groupes d'action, actions) et moyenne nationale. */

@@ -6,13 +6,11 @@ export default function Methodologie() {
       <h1 className="mb-4 text-2xl font-bold text-[var(--accent-strong)]">Méthodologie et sources</h1>
       <h2 className="mb-2 mt-6 text-lg font-semibold">Principes</h2>
       <ul className="list-disc space-y-1 pl-5">
-        <li>Toutes les valeurs proviennent de sources publiques identifiées ; chaque indicateur conserve sa source, son URL, sa date de récupération, son millésime, son échelle, son unité, sa méthode et ses limites.</li>
-        <li>Les calculs (ratios, évolutions, écarts, valeurs atypiques) sont réalisés par du code déterministe et testé. Aucune valeur n&apos;est estimée ni imputée : une donnée absente est affichée « n.d. » et listée parmi les données manquantes.</li>
-        <li>Écart significatif à une référence : au moins 2 points et 10 % en relatif pour un taux ; 10 % en relatif pour les autres grandeurs.</li>
-        <li>Valeur atypique : score z robuste (médiane et écart absolu médian) d&apos;au moins 2 parmi des communes comparables (même région, population à ±30 %, densité comprise entre la moitié et le double).</li>
-        <li>Les énoncés sont typés : constat, atout, point de vigilance, hypothèse (à vérifier), piste d&apos;action, élément à vérifier.</li>
-        <li>La rédaction repose sur des gabarits ; un modèle de langage peut, en option, reformuler les paragraphes, sous contrôle automatique interdisant tout ajout de chiffre.</li>
-        <li>Les résultats électoraux sont exploités à l&apos;échelle de la commune et du bureau de vote uniquement (agrégats officiels) ; aucune donnée individuelle ni aucune variable d&apos;origine ou de nationalité n&apos;est utilisée. Les priorités de terrain par bureau de vote reposent sur une règle publique : moyenne des scores z de la part LFI des exprimés et du taux d&apos;abstention.</li>
+        <li>Tous les chiffres viennent de sources publiques (INSEE, ministère de l&apos;Intérieur, SNCF…) ou des données internes du mouvement. Pour chacun, la fiche garde la source, la date de téléchargement et l&apos;année des données : on peut toujours vérifier d&apos;où il vient (numéros entre crochets, bibliographie en fin de fiche).</li>
+        <li>Les calculs (taux, évolutions, comparaisons) sont faits par le programme, toujours de la même façon. Rien n&apos;est inventé ni estimé à la main : une donnée absente est notée « n.d. » et signalée.</li>
+        <li>Une commune n&apos;est dite « au-dessus » ou « en dessous » d&apos;une autre que si l&apos;écart est net : au moins 2 points et 10 % pour un taux, 10 % pour les autres chiffres.</li>
+        <li>Les textes de la fiche sont écrits à partir de phrases types, remplies avec les chiffres calculés. Une intelligence artificielle peut, si on l&apos;active, reformuler ces phrases pour les rendre plus fluides ; un contrôle automatique vérifie alors qu&apos;elle n&apos;a ajouté ni modifié aucun chiffre.</li>
+        <li>Les résultats électoraux sont utilisés à l&apos;échelle de la commune et du bureau de vote (résultats officiels) ; aucune donnée sur une personne n&apos;est utilisée. Les bureaux prioritaires sont ceux où l&apos;on vote déjà le plus pour la France insoumise et où le plus d&apos;inscrits ne votent pas.</li>
       </ul>
       <h2 className="mb-2 mt-6 text-lg font-semibold">Sources</h2>
       <ul className="space-y-3">

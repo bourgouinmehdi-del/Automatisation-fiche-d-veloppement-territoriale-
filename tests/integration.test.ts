@@ -177,7 +177,10 @@ describe("chaîne de génération (API simulées)", () => {
     expect(headings).toEqual(["Profil sociodémographique de la commune", "Profil politique de la commune", "Que faire ?", "Opérationnel", ...headings.slice(4)]);
     // Que faire ? : une ligne par type d'action, le nombre de lieux, la liste dépliable.
     const planB = fiche.blocks.find((b) => b.type === "plan") as Extract<(typeof fiche.blocks)[number], { type: "plan" }>;
-    expect(planB.items[0]).toMatchObject({ label: "Porte-à-porte (bureaux prioritaires)", count: "2 bureaux" });
+    // Les adresses (logements sociaux) d'abord, les bureaux prioritaires ensuite.
+    expect(planB.items[0].label).toBe("Porte-à-porte (logements sociaux)");
+    expect(planB.items[1]).toMatchObject({ label: "Porte-à-porte (bureaux prioritaires)", count: "2 bureaux" });
+    expect(planB.items.every((i) => !i.quand)).toBe(true);
     expect(planB.items.some((i) => i.label === "Porte-à-porte (logements sociaux)" && i.details.length > 0)).toBe(true);
     // Accès aux services : pas de pharmacie dans la commune, commissariat loin, mais comme les communes semblables.
     const sv = fiche.blocks.find((b) => b.type === "services") as Extract<(typeof fiche.blocks)[number], { type: "services" }>;
@@ -256,9 +259,9 @@ describe("chaîne de génération (API simulées)", () => {
     expect(fiche.blocks.some((b) => b.type === "paragraph" && /dirigée par/.test(b.text))).toBe(false);
     const annexe = report.sections.find((x) => x.id === "LFI_DETAIL")!;
     expect(annexe.blocks.some((b) => b.type === "paragraph" && /dirigée par Alice DURAND/.test(b.text) && /gauche battue/.test(b.text))).toBe(true);
-    // BPE : désert médical (2 médecins pour ~41 000 habitants, département bien mieux doté).
-    const socio = fiche.blocks.find((b) => b.type === "list" && b.items.some((i) => /Désert médical/.test(i.text))) as Extract<(typeof fiche.blocks)[number], { type: "list" }>;
-    expect(socio.items.some((i) => /Désert médical/.test(i.text) && /France Services/.test(i.text))).toBe(true);
+    // BPE : les médecins et services publics sont dans l'encart « Accès aux services », plus dans une phrase à part.
+    expect(fiche.blocks.some((b) => b.type === "list" && b.items.some((i) => /Désert médical/.test(i.text)))).toBe(false);
+    expect(fiche.blocks.some((b) => b.type === "services")).toBe(true);
     // Horaires GTFS : pointe du soir et temps vers Paris ; temps routiers.
     const actions = report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
     const gare = actions.groups.find((g) => g.title === "Gare")!;
@@ -440,7 +443,7 @@ describe("chaîne de génération (API simulées)", () => {
     // Nom de la rue ciblée écrit le long de la voie.
     expect(mapSvg(m)).toContain("Rue des Roses</text>");
     const fiche = report.sections[0];
-    expect(fiche.blocks.some((b) => b.type === "paragraph" && /en commençant par les logements sociaux de la rue des Roses \(500 logements\)/.test(b.text))).toBe(true);
+    expect(fiche.blocks.some((b) => b.type === "paragraph" && /Priorité\*\* : porte-à-porte dans les logements sociaux de la rue des Roses \(500 logements\).*, puis dans /.test(b.text))).toBe(true);
     const porte = report.sections.find((s) => s.id === "PORTE")!;
     expect(porte.blocks.some((b) => b.type === "paragraph" && /Résidences HLM du bureau/.test(b.text))).toBe(true);
   });

@@ -209,7 +209,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
     }
     case "heading":
       if (THEME.yonne) return [new Paragraph({ spacing: { before: 280, after: 100 }, keepNext: true, children: [new TextRun({ text: b.text, font: FONT, size: 28, color: THEME.color })] })];
-      return [new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun({ text: b.text, font: FONT })] })];
+      return [new Paragraph({ heading: HeadingLevel.HEADING_2, keepNext: true, children: [new TextRun({ text: b.text, font: FONT })] }), ...(b.sub ? [new Paragraph({ spacing: { after: 120 }, keepNext: true, children: [new TextRun({ text: b.sub, font: FONT, size: 18, italics: true, color: "6B6A66" })] })] : [])];
     case "targets":
       return b.items.flatMap((t, k) => {
         const tb = r.tables.find((x) => x.id === t.tableId);
@@ -275,18 +275,16 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
         new Paragraph({ spacing: { after: 120 }, children: [] }),
       ];
     case "services": {
-      const niv: Record<string, string> = { mieux: "mieux desservie", comme: "dans la moyenne", moins: "moins bien desservie" };
       return [
         caption(b.title),
         ...(b.indice
           ? [
               new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: `Accès aux services, comparé ${b.indice.ref === "France" ? "à l'habitant moyen en France" : "à l'habitant moyen du département"} : `, font: FONT, size: 19 }), new TextRun({ text: niveauAcces(b.indice.global).txt.toLowerCase(), font: FONT, size: 19, bold: true, color: niveauAcces(b.indice.global).ink.replace("#", "") })] }),
-              ...b.indice.gammes.map((g) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 20 }, children: [new TextRun({ text: `${g.label}${g.exemples ? ` (${g.exemples})` : ""} : `, font: FONT, size: 18 }), new TextRun({ text: niveauAcces(g.value).txt.toLowerCase(), font: FONT, size: 18, bold: true, color: niveauAcces(g.value).ink.replace("#", "") })] })),
+              ...b.indice.gammes.map((g) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 20 }, children: [new TextRun({ text: `${g.label} : `, font: FONT, size: 18 }), new TextRun({ text: niveauAcces(g.value).txt.toLowerCase(), font: FONT, size: 18, bold: true, color: niveauAcces(g.value).ink.replace("#", "") }), new TextRun({ text: ` (${(b.cats.find((c) => c.cat === g.cat)?.details ?? []).map((d) => `${d.label} : ${d.txt}`).join(" ; ")})`, font: FONT, size: 16, color: "52514E" })] })),
             ]
           : []),
         ...b.faibles.map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : ${f.txt}`, font: FONT, size: 19 })] })),
         ...(b.enDessous ?? []).map((f) => new Paragraph({ bullet: { level: 0 }, spacing: { after: 30 }, children: [new TextRun({ text: f.label, font: FONT, size: 19, bold: true }), new TextRun({ text: ` : un peu en dessous, ${f.txt}`, font: FONT, size: 19 })] })),
-        ...b.cats.map((c) => new Paragraph({ spacing: { after: 30 }, children: [new TextRun({ text: `${c.label} : `, font: FONT, size: 19, bold: true }), new TextRun({ text: niv[c.niveau], font: FONT, size: 19, color: c.niveau === "moins" ? "D1271C" : "52514E" })] })),
         new Paragraph({ spacing: { after: 160 }, children: [new TextRun({ text: b.note, font: FONT, size: 16, color: "52514E" })] }),
       ];
     }

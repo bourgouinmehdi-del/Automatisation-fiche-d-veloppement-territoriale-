@@ -520,6 +520,11 @@ export function buildCiblage(c: Collected): CiblageOutput {
       text: `Le ciblage présenté ci-dessous a été réalisé à partir de la seule exploitation de données statistiques et électorales publiques, par des personnes qui ne vivent pas forcément ${circo ? "dans cette circonscription" : interco ? "dans cette intercommunalité" : "dans ce département"}. ${B(`Les informations qui y sont suggérées doivent être confrontées avec la connaissance du terrain des militant·es ${circo ? "de la circonscription" : interco ? "de l'intercommunalité" : deDep(dep.nom)}.`)}`,
     },
     { type: "list", title: "Territoires proposés pour un ciblage militant", items: chosen.map((u, k) => ({ text: `${B(`${k + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) },
+    // Les critères dits en clair, dès le début (retour d'Édouard : « sur quels critères repose la proposition ? »).
+    {
+      type: "paragraph" as const,
+      text: `${B("Comment ces territoires sont choisis")} : ${circo ? "toutes les communes de la circonscription" : "les villes de 2 500 habitants et plus et les groupements de petites communes d'une même intercommunalité"} sont classées sur quatre critères. Le vote LFI comparé aux communes de même taille (${Math.round(w.o * 100)} %) ; l'abstention aux législatives 2024 comparée au département (${Math.round(w.a * 100)} %) : des électeurs à aller chercher ; ${w.r ? `les parrains au regard des voix LFI (${Math.round(w.r * 100)} %) : des soutiens déjà présents ; ` : ""}le nombre de voix LFI (${Math.round(w.v * 100)} %). Sont pénalisés les territoires déjà bien couverts (groupe d'action de 20 membres ou plus, ou groupe au chef-lieu) et les communes collées aux plus grandes villes. Deux propositions au plus par intercommunalité, pour couvrir tout le département. Le classement complet est en fin de partie.`,
+    },
     // Les grandes villes en tête du classement mais écartées : dit dès le début, pas seulement sous le tableau.
     ...(() => {
       const hors = ranked.slice(0, ranked.indexOf(chosen[chosen.length - 1]) + 1).filter((u) => u.kind === "commune" && bigCities.includes(u.codes[0]));

@@ -16,8 +16,8 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&
 
 // Couches regroupées en interrupteurs (dans l'ordre d'affichage).
 const TOGGLES: { key: string; label: string; layers: string[]; on: boolean }[] = [
-  { key: "prio", label: "Bureaux prioritaires", layers: ["bv_prio"], on: true },
   { key: "hlm", label: "Logements sociaux", layers: ["hlm", "hlm_autres"], on: true },
+  { key: "prio", label: "Bureaux prioritaires", layers: ["bv_prio"], on: true },
   { key: "res", label: "Résidences Crous, foyers", layers: ["residences"], on: true },
   { key: "tract", label: "Tractage", layers: ["tractage", "ecoles"], on: true },
   { key: "conv", label: "Moment convivial", layers: ["convivial"], on: true },
@@ -140,7 +140,7 @@ export default function ActionMap({ map, height = 520 }: { map: MapSpec; height?
           <ScaleControl imperial={false} />
           {poly("limite", { color: "#212320", weight: 2, dashArray: "6 4", fill: false })}
           {poly("bv_ctx", { color: "#8a8170", weight: 1, dashArray: "3 3", fill: false }, (p) => esc(p.nom))}
-          {poly("bv_prio", { color: "#c98a00", weight: 2.5, fillColor: "#f3b51b", fillOpacity: 0.22 }, (p) => `<b>${esc(p.nom)}</b><br>${esc(p.sub)}`)}
+          {poly("bv_prio", { color: "#c98a00", weight: 1.5, dashArray: "4 3", fillColor: "#f3b51b", fillOpacity: 0.1 }, (p) => `<b>${esc(p.nom)}</b><br>${esc(p.sub)}`)}
           {poly("qpv", { color: "#4c0297", weight: 2, dashArray: "6 3", fill: false }, (p) => `Quartier prioritaire : <b>${esc(p.nom)}</b>${p.sub ? `<br>${esc(p.sub)}` : ""}`)}
           {hlmDots && visible("hlm_autres")
             ? hlmDots.data.features.map((f, i) => {
