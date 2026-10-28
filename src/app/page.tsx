@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useRole } from "@/components/useRole";
 
 interface Candidate {
-  via?: "insee" | "postal";
+  via?: "insee" | "postal" | "departement";
+  prefecture?: string;
   code: string;
   nom: string;
   codesPostaux: string[];
@@ -28,7 +29,7 @@ const SCOPES = [
   { id: "commune", label: "Commune", field: "Code postal, code INSEE ou nom de la commune", go: "Générer la fiche" },
   { id: "epci", label: "Intercommunalité", field: "Une commune de l'intercommunalité", go: "Générer le ciblage de l'intercommunalité" },
   { id: "circonscription", label: "Circonscription", field: "Une commune de la circonscription", go: "Générer le ciblage de la circonscription" },
-  { id: "departement", label: "Département", field: "Une commune du département", go: "Générer le ciblage du département" },
+  { id: "departement", label: "Département", field: "Numéro ou nom du département (ou une de ses communes)", go: "Générer le ciblage du département" },
   { id: "custom", label: "Territoire personnalisé", field: "Commune principale du territoire", go: "Générer la fiche" },
 ] as const;
 
@@ -66,23 +67,26 @@ export default function Home() {
 
   useEffect(() => {
     const query = q.trim();
-    if (query.length < 2 || (/^\d+$/.test(query) && query.length < 5)) {
+    // Département : « 29 », « 2A » ou « 971 » suffisent.
+    const depCode = scope === "departement" && /^(\d{2,3}|2[ab])$/i.test(query);
+    if (query.length < 2 || (/^\d+$/.test(query) && query.length < 5 && !depCode)) {
       setCands([]);
       setSelected(null);
       return;
     }
     const t = setTimeout(async () => {
-      const r = await fetch(`/api/communes?q=${encodeURIComponent(query)}`);
+      const r = await fetch(`/api/communes?q=${encodeURIComponent(query)}${scope === "departement" ? "&dep=1" : ""}`);
       const d = await r.json().catch(() => ({ error: `Erreur serveur (HTTP ${r.status})` }));
       setError(r.ok ? null : d.error ?? `Erreur serveur (HTTP ${r.status})`);
       const list: Candidate[] = d.communes ?? [];
       setCands(list);
       // Une seule commune pour ce code postal : sélection directe (la commune de même code INSEE reste proposée).
       const postal = list.filter((c) => c.via === "postal");
-      setSelected(list.length === 1 ? list[0].code : postal.length === 1 ? postal[0].code : null);
+      const deps = list.filter((c) => c.via === "departement");
+      setSelected(list.length === 1 ? list[0].code : postal.length === 1 ? postal[0].code : deps.length === 1 ? deps[0].code : null);
     }, 200);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, scope]);
 
   // Circonscriptions couvrant la commune choisie (périmètre « circonscription »).
   useEffect(() => {
@@ -155,7 +159,7 @@ export default function Home() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && selected && generate()}
-          placeholder="ex. 60200, 60159 ou Compiègne"
+          placeholder={scope === "departement" ? "ex. 29, Finistère ou Brest" : "ex. 60200, 60159 ou Compiègne"}
           className="field px-3 py-2 text-lg"
         />
 
@@ -170,8 +174,12 @@ export default function Home() {
                   <input type="radio" name="commune" checked={selected === c.code} onChange={() => setSelected(c.code)} />
                   <span className="font-semibold">{c.nom}</span>
                   <span className="text-[var(--ink-2)]">
+                    {c.via === "departement" ? `département ${c.departement}, préfecture : ${c.prefecture}` : (
+                      <>
                     {c.via === "insee" ? "code INSEE " + c.code + ", " : ""}
                     {c.departementNom} ({c.departement}){c.via === "insee" ? "" : `, INSEE ${c.code}`}, {c.population != null ? `${c.population.toLocaleString("fr-FR")} hab.` : "population n.d."}
+                      </>
+                    )}
                   </span>
                 </label>
               ))}
@@ -180,8 +188,16 @@ export default function Home() {
         )}
         {cands.length === 1 && (
           <p className="mt-3 text-sm">
-            <span className="font-semibold">{cands[0].nom}</span> — {cands[0].departementNom} ({cands[0].departement}), code INSEE {cands[0].code},{" "}
-            {cands[0].population?.toLocaleString("fr-FR")} habitants
+            {cands[0].via === "departement" ? (
+              <>
+                <span className="font-semibold">{cands[0].nom}</span> ({cands[0].departement}) : ciblage de tout le département
+              </>
+            ) : (
+              <>
+                <span className="font-semibold">{cands[0].nom}</span> — {cands[0].departementNom} ({cands[0].departement}), code INSEE {cands[0].code},{" "}
+                {cands[0].population?.toLocaleString("fr-FR")} habitants
+              </>
+            )}
           </p>
         )}
         {q.trim().length >= 5 && cands.length === 0 && !error && <p className="mt-3 text-sm msg-err">Aucune commune trouvée.</p>}

@@ -104,8 +104,10 @@ export interface CommuneCandidate {
   departementNom: string;
   population: number | null;
   type: string;
-  /** Correspondance trouvée par code INSEE ou par code postal (recherche sur 5 caractères). */
-  via?: "insee" | "postal";
+  /** Correspondance trouvée par code INSEE, code postal, ou département (sa préfecture). */
+  via?: "insee" | "postal" | "departement";
+  /** Recherche par département : nom de la préfecture (la commune réellement choisie). */
+  prefecture?: string;
 }
 
 const norm = (s: string) =>
@@ -132,6 +134,22 @@ function toCandidate(c: RawCommune): CommuneCandidate {
 }
 
 /** Recherche par code postal (5 chiffres) ou par nom de commune. */
+/**
+ * Départements par numéro (« 29 », « 2A », « 971 ») ou par nom (« Finistère ») : renvoie leur préfecture,
+ * qui sert de commune d'entrée au ciblage départemental.
+ */
+export function searchDepartements(q: string): CommuneCandidate[] {
+  const r = referentiel();
+  const query = q.trim();
+  const nq = norm(query);
+  if (!nq) return [];
+  const hits = [...r.departements.values()].filter((d) => d.code.toLowerCase() === query.toLowerCase() || (nq.length >= 3 && norm(d.nom).startsWith(nq)) || (nq.length >= 4 && norm(d.nom).includes(nq)));
+  return hits.flatMap((d) => {
+    const cl = d.chefLieu ? r.byCode.get(d.chefLieu) : undefined;
+    return cl ? [{ ...toCandidate(cl), via: "departement" as const, nom: d.nom, prefecture: cl.nom }] : [];
+  });
+}
+
 export function searchCommunes(q: string, limit = 30): CommuneCandidate[] {
   const r = referentiel();
   const query = q.trim();

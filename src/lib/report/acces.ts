@@ -34,6 +34,8 @@ const BIG_HUB_PARRAINS = 2000;
 const BIG_HUB_MAX_KM = 130;
 /** Communes voisines avec un groupe d'action actif, quelle que soit leur taille. */
 const LOCAL_GA_KM = 25;
+/** … et au moins 25 parrains : un groupe déclaré actif dans une commune presque sans soutiens ne fera pas venir de monde. */
+const LOCAL_MIN_PARRAINS = 25;
 const parrainsTxt = (n: number) => `${fmtNumber(Math.round(n))} parrain${Math.round(n) > 1 ? "s" : ""}`;
 
 interface Lieu {
@@ -93,7 +95,7 @@ export async function ciblageAcces(
     .map((x) => ({ ...x, km: Math.min(...tgt.map((t) => turf.distance([x.l.lon, x.l.lat], [t.at.lon, t.at.lat]))) }))
     .filter((x) => {
       const ville = x.b.ga >= HUB_MIN_GA || x.b.parrains >= HUB_MIN_PARRAINS;
-      return (ville && (x.km <= HUB_MAX_KM || (x.b.parrains >= BIG_HUB_PARRAINS && x.km <= BIG_HUB_MAX_KM))) || x.km <= LOCAL_GA_KM;
+      return (ville && (x.km <= HUB_MAX_KM || (x.b.parrains >= BIG_HUB_PARRAINS && x.km <= BIG_HUB_MAX_KM))) || (x.km <= LOCAL_GA_KM && x.b.parrains >= LOCAL_MIN_PARRAINS);
     });
   const max = opts.fiche ? HUB_MAX_FICHE : HUB_MAX;
   // Moitié : les communes les plus proches (souvent un seul groupe) ; puis les villes militantes les plus
@@ -366,7 +368,7 @@ export async function ciblageAcces(
         tc: tc.get(`${h.l.code}|${t.at.code}`) ? `${fmtDuration(tc.get(`${h.l.code}|${t.at.code}`)!.minutes)} (${tc.get(`${h.l.code}|${t.at.code}`)!.ligne})` : "—",
       })),
       sources: sourcesF,
-      note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; les plus proches d'abord, puis les plus grandes. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF) ; pour un train direct, nombre de trains directs dans la journée, aller et retour ; avec correspondance, ${RAIL_CHANGE_MIN} min au moins dans une même gare, et changement de gare dans une même ville estimé (15 min plus 4 min par km).${tc.size ? ` Métro, RER, tram : trajet le plus rapide, correspondances comprises, depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités ou du réseau urbain) ; ${TC_BOARD_MIN} min comptées à chaque montée (attente) et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""}${gareProche.get(t.at.code) && rowsF.some(({ h }) => trainTxt(h.l.code, t.at.code)) ? ` Pas de gare dans la commune : gare la plus proche, ${gareProche.get(t.at.code)}.` : ""} « — » : pas de trajet trouvé.`,
+      note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif et ${LOCAL_MIN_PARRAINS} parrains au moins, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; les plus proches d'abord, puis les plus grandes. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF) ; pour un train direct, nombre de trains directs dans la journée, aller et retour ; avec correspondance, ${RAIL_CHANGE_MIN} min au moins dans une même gare, et changement de gare dans une même ville estimé (15 min plus 4 min par km).${tc.size ? ` Métro, RER, tram : trajet le plus rapide, correspondances comprises, depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités ou du réseau urbain) ; ${TC_BOARD_MIN} min comptées à chaque montée (attente) et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""}${gareProche.get(t.at.code) && rowsF.some(({ h }) => trainTxt(h.l.code, t.at.code)) ? ` Pas de gare dans la commune : gare la plus proche, ${gareProche.get(t.at.code)}.` : ""} « — » : pas de trajet trouvé.`,
     };
     const mapF = mapOf({
       id: "commune_acces_carte",
@@ -421,7 +423,7 @@ export async function ciblageAcces(
     rows,
     highlight: ranked.length ? [ranked[0].i] : [],
     sources,
-    note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; ${hubs.length} retenues, les plus proches puis les plus grandes. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF), direct ou avec correspondance (${RAIL_CHANGE_MIN} min au moins dans une même gare).${tc.size ? ` Métro, RER, tram : correspondances comprises, ${TC_BOARD_MIN} min comptées à chaque montée et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""} « — » : pas de calcul possible.`,
+    note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif et ${LOCAL_MIN_PARRAINS} parrains au moins, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; ${hubs.length} retenues, les plus proches puis les plus grandes. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF), direct ou avec correspondance (${RAIL_CHANGE_MIN} min au moins dans une même gare).${tc.size ? ` Métro, RER, tram : correspondances comprises, ${TC_BOARD_MIN} min comptées à chaque montée et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""} « — » : pas de calcul possible.`,
   };
 
   const map = mapOf({

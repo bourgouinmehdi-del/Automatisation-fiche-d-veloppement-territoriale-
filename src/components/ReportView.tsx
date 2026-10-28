@@ -35,6 +35,15 @@ function Rich({ text }: { text: string }) {
   );
 }
 
+/** Ancre d'une rubrique (« Que faire ? » → « r-que-faire »). */
+const headingId = (t: string) =>
+  `r-${t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}`;
+
 export default function ReportView({ report: r, locator, freshness, catalog }: { report: Report; locator: string | null; freshness: string; catalog: Record<string, SourceInfo> }) {
   const role = useRole();
   const [showSources, setShowSources] = useState(false);
@@ -101,9 +110,10 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
       }
       case "heading":
         return (
-          <h3 key={key} className="fiche-h">
-            {b.text}
-          </h3>
+          <div key={key} id={headingId(b.text)} className="scroll-mt-20">
+            <h3 className="fiche-h">{b.text}</h3>
+            {b.sub && <p className="-mt-1 mb-3 text-sm italic text-[var(--ink-2)]">{b.sub}</p>}
+          </div>
         );
       case "callout":
         return (
@@ -553,6 +563,20 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
                     </>
                   )}
                 </a>
+                {/* Sommaire de la fiche : un lien par rubrique. */}
+                {s.id === "LFI" && (
+                  <ol className="mb-1 ml-4 space-y-0.5 border-l border-[var(--line)] pl-2 text-xs">
+                    {s.blocks
+                      .filter((x): x is Extract<Block, { type: "heading" }> => x.type === "heading")
+                      .map((h) => (
+                        <li key={h.text}>
+                          <a href={`#${headingId(h.text)}`} className="block py-0.5 text-[var(--ink-2)] hover:text-[var(--accent)]">
+                            {h.text}
+                          </a>
+                        </li>
+                      ))}
+                  </ol>
+                )}
               </li>
             ))}
             {(hasFiche || hasCiblage) && (

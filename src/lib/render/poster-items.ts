@@ -42,10 +42,17 @@ export interface PosterItem {
   at: [number, number];
 }
 
-/** Numérotation des lieux : ordre des couches, puis des entités (une seule fonction pour tous les rendus). */
+/** Numérotation des lieux : par type (adresses d'abord), puis des entités (une seule fonction pour tous les rendus). */
 export function posterItems(map: MapSpec): PosterItem[] {
   const out: PosterItem[] = [];
-  for (const l of map.layers.filter((x) => x.visible && x.labelMode === "number" && x.labelProperty)) {
+  // Les adresses d'abord (logements sociaux, résidences), les bureaux de vote ensuite : c'est l'échelle du porte-à-porte.
+  const RANG: Record<string, number> = { hlm: 0, residences: 1, bv_prio: 2 };
+  const layers = map.layers
+    .map((l, i) => ({ l, i }))
+    .filter(({ l }) => l.visible && l.labelMode === "number" && l.labelProperty)
+    .sort((a, b) => (RANG[a.l.id] ?? 3) - (RANG[b.l.id] ?? 3) || a.i - b.i)
+    .map(({ l }) => l);
+  for (const l of layers) {
     const color = l.labelColor ?? "#4c0297";
     const shape = l.kind === "points" ? (l.style?.symbol ?? "circle") : "circle";
     for (const f of l.data.features) {

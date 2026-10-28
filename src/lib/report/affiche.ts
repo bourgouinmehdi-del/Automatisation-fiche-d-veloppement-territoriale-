@@ -52,7 +52,7 @@ export const WEEKEND = {
   station: "Samedi 10 h – 13 h ou 16 h – 19 h ; dimanche 10 h – 12 h",
   marche: "Matinée du marché, samedi ou dimanche (jour à confirmer en mairie)",
   poste: "Samedi 9 h – 12 h, si le bureau est ouvert",
-  supermarche: "Samedi 10 h – 12 h ou dimanche matin, avec l'accord du magasin",
+  supermarche: "Samedi 10 h – 12 h ou dimanche matin",
 };
 
 /**
@@ -326,7 +326,8 @@ export function communePoster(
           };
         }),
       ),
-      style: { fill: "none", stroke: POSTER.jauneTexte, strokeWidth: 1.8 },
+      // En retrait par rapport aux adresses : contour fin et pointillé.
+      style: { fill: "none", stroke: POSTER.jauneTexte, strokeWidth: 1.1, dash: "4 3" },
       labelMode: "number",
       labelProperty: "nom",
       sublabelProperty: "sub",

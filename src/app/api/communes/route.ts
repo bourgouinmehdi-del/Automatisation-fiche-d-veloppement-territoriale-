@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { epciMembers, intercoOf, searchCommunes } from "@/lib/collectors/admin";
+import { epciMembers, intercoOf, searchCommunes, searchDepartements } from "@/lib/collectors/admin";
 
 export const runtime = "nodejs";
 
@@ -10,7 +10,9 @@ export async function GET(req: Request) {
   const epci = url.searchParams.get("epci");
   if (epci) return NextResponse.json({ communes: epciMembers(epci) });
   try {
-    const communes = searchCommunes(q).map((c) => {
+    // Ciblage d'un département : on peut taper son numéro ou son nom (préfecture choisie d'office).
+    const deps = url.searchParams.get("dep") ? searchDepartements(q) : [];
+    const communes = [...deps, ...searchCommunes(q).filter((c) => !deps.some((d) => d.code === c.code))].map((c) => {
       const i = intercoOf(c.code);
       return { ...c, interco: i ? { nom: i.nom, communes: i.membres.length } : null };
     });

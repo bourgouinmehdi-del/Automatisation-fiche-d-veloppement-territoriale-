@@ -598,7 +598,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       bpeCount("A122") ? "une agence France Travail" : "pas d'agence France Travail",
       bpeCount("A206") ? "un bureau de poste" : bpeCount("A207") + bpeCount("A208") ? "un relais ou une agence postale (pas de bureau de poste)" : "aucun point postal",
     ];
-    socio.push({ text: `${head}${urg ? ", des urgences sur place" : ""} ; ${pub.join(", ")}.`, evidence: [evidenceId(i1), evidenceId(i2)] });
+    // Avec l'encart « Accès aux services » (même source, plus complet), la phrase ferait doublon.
+    if (!c.bpe.departement?.length) socio.push({ text: `${head}${urg ? ", des urgences sur place" : ""} ; ${pub.join(", ")}.`, evidence: [evidenceId(i1), evidenceId(i2)] });
   }
   const med = c.bpe ? undefined : get("osm_medecin", geos.commune);
   const fs = get("osm_france_services", geos.commune);
@@ -1969,12 +1970,22 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // Services publics fermés le week-end, sauf la poste le samedi matin.
   // Moment convivial de fin de journée ou pique-nique : grands parcs, jardins à bière, bars d'au moins 60 places
   // (OpenStreetMap), ceux des bureaux prioritaires d'abord.
+  // Moment convivial : parc (2 ha ou plus, public, gratuit) le plus proche de la zone d'action (centre des
+  // bureaux prioritaires), par tranches de 500 m ; à distance égale, le plus grand. Les bars en dernier.
+  const zone = (() => {
+    const fs = (c.bvGeo?.features ?? []).filter((f) => prioSet.has(String(f.properties?.bv)));
+    try {
+      return fs.length ? (turf.centroid(turf.featureCollection(fs as GeoJSON.Feature<GeoJSON.Polygon>[])).geometry.coordinates as [number, number]) : null;
+    } catch {
+      return null;
+    }
+  })();
   const conv = (c.convivialite?.list ?? [])
     .map((x) => {
       const nb = nearestBv(x.lon, x.lat);
-      return { ...x, bv: nb ? `BV ${dv(nb.bv)}` : "", prioritaire: nb && prioSet.has(nb.bv) ? "oui" : "" };
+      return { ...x, bv: nb ? `BV ${dv(nb.bv)}` : "", prioritaire: nb && prioSet.has(nb.bv) ? "oui" : "", km: zone ? turf.distance(zone, [x.lon, x.lat]) : 0 };
     })
-    .sort((a, b) => Number(a.kind === "bar") - Number(b.kind === "bar") || Number(!!b.prioritaire) - Number(!!a.prioritaire) || (b.ha ?? 0) - (a.ha ?? 0) || (b.capacite ?? 0) - (a.capacite ?? 0));
+    .sort((a, b) => Number(a.kind === "bar") - Number(b.kind === "bar") || Math.floor(a.km / 0.5) - Math.floor(b.km / 0.5) || (b.ha ?? 0) - (a.ha ?? 0) || (b.capacite ?? 0) - (a.capacite ?? 0));
   const convTxt = (x: (typeof conv)[number]) => (x.kind === "parc" ? `parc d'environ ${fmtNumber(x.ha ?? 0)} ha` : x.capacite ? `${fmtNumber(x.capacite)} places` : "jardin à bière");
   if (conv.length) actionGroups.push({ title: "Moment convivial", hint: "fin de journée, pique-nique", items: conv.slice(0, 3).map((x) => `${B(x.nom)} (${convTxt(x)}${x.bv ? `, ${x.bv}` : ""}).`) });
   const implant: string[] = [];
@@ -2143,10 +2154,12 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (/^[aeiouyéèh]/i.test(v)) return `de l'${low}`;
     return `${/^(rue|place|résidence|cité|route|sente|villa)\b/i.test(v) ? "de la" : "du"} ${low}`;
   };
-  const hlmMsg = hlmTop.length ? `, en commençant par les logements sociaux ${joinFr(hlmTop.map((r) => `${deVoie(r.voie)} (${fmtNumber(r.logements)} logements)`))}` : "";
+  // Les adresses d'abord (logements sociaux), puis le reste des bureaux prioritaires.
+  const hlmMsg = hlmTop.length ? `porte-à-porte dans les logements sociaux ${joinFr(hlmTop.map((r) => `${deVoie(r.voie)} (${fmtNumber(r.logements)} logements)`))}` : "";
+  const porteTxt = hlmMsg ? `${hlmMsg}${porteMsg ? `, puis ${porteMsg.replace(/^porte-à-porte /, "")}` : ""}` : porteMsg;
   const planIntro =
-    porteMsg || resMsg || lieuxMsg.length
-      ? `${B("Priorité")} : ${porteMsg || resMsg ? `${porteMsg || "porte-à-porte"}${hlmMsg}${porteMsg ? resMsg : resMsg.replace(/^, /, " ")}${lieuxMsg.length ? `, complété par des tractages ${joinFr(lieuxMsg)}` : ""}` : `tractages ${joinFr(lieuxMsg)}`}.`
+    porteTxt || resMsg || lieuxMsg.length
+      ? `${B("Priorité")} : ${porteTxt || resMsg ? `${porteTxt || "porte-à-porte"}${porteTxt ? resMsg : resMsg.replace(/^, /, " ")}${lieuxMsg.length ? `, complété par des tractages ${joinFr(lieuxMsg)}` : ""}` : `tractages ${joinFr(lieuxMsg)}`}.`
       : "";
 
   // Carte « affiche » : porte-à-porte et tractage sur fond de plan.
@@ -2353,6 +2366,15 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     tone: "warning",
     text: `Le ciblage présenté ci-dessous s'appuie uniquement sur l'exploitation de données statistiques et électorales publiques agrégées (commune, bureau de vote), par des personnes qui ne vivent pas forcément ${commune.nom ? aNom(commune.nom) : "sur place"}. ${B("Les informations suggérées doivent être confrontées à la connaissance du terrain des militantes et militants locaux.")}`,
   });
+  // Territoire de plusieurs communes : dire ce que la fiche détaille (retour d'Édouard).
+  if (c.query.scope === "custom" && c.perimeter.communes.length > 1) {
+    const autres = c.perimeter.communes.filter((x) => x.code !== commune.code).map((x) => x.nom);
+    blocks.push({
+      type: "callout",
+      tone: "accent",
+      text: `${B(`Territoire de ${c.perimeter.communes.length} communes`)} : ${commune.nom} et ${joinFr(autres.slice(0, 6))}${autres.length > 6 ? ` et ${autres.length - 6} autres` : ""}. Cette fiche d'action porte sur ${commune.nom}, la commune principale (chiffres, bureaux de vote, adresses, lieux) ; les autres communes figurent dans le diagnostic complet (partie A). Pour agir dans une autre commune, générer sa fiche.`,
+    });
+  }
   if (glance.length >= 3) blocks.push({ type: "glance", items: glance });
   if (synth.length) blocks.push({ type: "list", items: synth });
   blocks.push({
@@ -2363,7 +2385,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
 
   // « de la commune » (« de l'arrondissement » à Paris, Lyon, Marseille, voir plmWording) ; groupement : « du territoire ».
   const deLa = c.query.scope === "custom" ? "du territoire" : "de la commune";
-  blocks.push({ type: "heading", text: `Profil sociodémographique ${deLa}` });
+  blocks.push({ type: "heading", text: `Profil sociodémographique ${deLa}`, sub: "Qui habite ici (revenus, âge, logement, services) : pour savoir à qui l'on parle et quels sujets porter à la porte." });
   if (socioIntro.length) blocks.push({ type: "paragraph", text: socioIntro.join(" ") });
   if (has("lfi_socio")) blocks.push({ type: "table", tableId: "lfi_socio" });
   // Quartier qui concentre la pauvreté : en tête des phrases qualitatives (3 au plus).
@@ -2412,7 +2434,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
 
   // Profil politique : chiffres et graphiques seulement ; le texte (mairie, quartiers, parrainages) passe en annexe,
   // la lecture qualitative revient aux retours du terrain.
-  blocks.push({ type: "heading", text: `Profil politique ${deLa}` });
+  blocks.push({ type: "heading", text: `Profil politique ${deLa}`, sub: "Comment on vote ici, et où dans la commune : pour repérer où le vote insoumis est fort et où des électeurs restent à convaincre d'aller voter." });
   {
     const lfiBv = ranked.map((b) => b.lfiPctExp).filter((v) => Number.isFinite(v));
     const intro = politiqueIntro(parcours, zonesInfo, { nom: plm ? undefined : commune.nom, bvRange: lfiBv.length >= 4 ? { min: Math.min(...lfiBv), max: Math.max(...lfiBv) } : null });
@@ -2633,37 +2655,35 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   }
 
   /* ---------------------------------------------------------- que faire ? */
-  blocks.push({ type: "heading", text: "Que faire ?" });
+  blocks.push({ type: "heading", text: "Que faire ?", sub: "Où agir le week-end : adresses pour le porte-à-porte, bureaux de vote prioritaires, lieux de passage pour tracter." });
   if (planIntro) blocks.push({ type: "paragraph", text: planIntro });
   {
     // Plan d'action : une ligne par type d'action, le nombre de lieux, la liste dépliable.
     const items: Extract<Block, { type: "plan" }>["items"] = [];
     const n = (k: number, un: string, plusieurs: string) => `${fmtNumber(k)} ${k > 1 ? plusieurs : un}`;
-    if (prio.length)
-      items.push({
-        label: "Porte-à-porte (bureaux prioritaires)",
-        count: n(prio.length, "bureau", "bureaux"),
-        quand: WEEKEND.porte,
-        details: prio.map((p) => `Bureau ${dv(p.bv)}${labels.has(p.bv) ? ` (${labels.get(p.bv)})` : ""} : ${fmtNumber(p.abstN)} inscrits n'ont pas voté, vote LFI à ${pp(p.lfiPctExp)}`),
-      });
+    // Les adresses (logements sociaux) d'abord : c'est l'échelle du porte-à-porte ; les bureaux en second.
     if (ruesRank.length)
       items.push({
         label: "Porte-à-porte (logements sociaux)",
         count: `${n(ruesRank.length, "rue", "rues")}, ${fmtNumber(ruesRank.reduce((t, r) => t + r.logements, 0))} logements`,
-        quand: WEEKEND.porte,
         details: ruesRank.slice(0, 15).map((r) => `${r.voie}${r.nums.length ? ` (${numsLabel(r.nums)})` : ""} : ${fmtNumber(r.logements)} logements${r.bv ? `, bureau ${dv(r.bv)}${prioBvSet.has(r.bv) ? " (prioritaire)" : ""}` : ""}`),
+      });
+    if (prio.length)
+      items.push({
+        label: "Porte-à-porte (bureaux prioritaires)",
+        count: n(prio.length, "bureau", "bureaux"),
+        details: prio.map((p) => `Bureau ${dv(p.bv)}${labels.has(p.bv) ? ` (${labels.get(p.bv)})` : ""} : ${fmtNumber(p.abstN)} inscrits n'ont pas voté, vote LFI à ${pp(p.lfiPctExp)}`),
       });
     if (resPorte.length)
       items.push({
         label: "Porte-à-porte (résidences étudiantes et foyers)",
         count: n(resPorte.length, "résidence", "résidences"),
-        quand: WEEKEND.crous,
         details: resPorte.map((r) => `${r.nom} (${resType(r)})`),
       });
     if (markets.length) items.push({ label: "Tractage (marchés)", count: n(markets.length, "marché", "marchés"), details: markets.map((m) => `${m.nom} : ${weekendHours(m.infos) || "jour du week-end à confirmer"}`) });
     if (gares.length || stationsTc.length)
-      items.push({ label: "Tractage (gares, métro, RER, tram)", count: n(gares.length + stationsTc.length, "lieu", "lieux"), quand: WEEKEND.station, details: [...gares.map((g) => `${gareNom(g.nom)} : ${g.infos}`), ...stationsTc.map((x) => x.nom)] });
-    if (sup.length) items.push({ label: "Tractage (grandes surfaces)", count: n(sup.length, "magasin", "magasins"), quand: WEEKEND.supermarche, details: sup.map((v) => `${v.nom} : ${v.infos}`) });
+      items.push({ label: "Tractage (gares, métro, RER, tram)", count: n(gares.length + stationsTc.length, "lieu", "lieux"), details: [...gares.map((g) => `${gareNom(g.nom)} : ${g.infos}`), ...stationsTc.map((x) => x.nom)] });
+    if (sup.length) items.push({ label: "Tractage (grandes surfaces)", count: n(sup.length, "magasin", "magasins"), details: sup.map((v) => `${v.nom} : ${v.infos}`) });
     if (conv.length) items.push({ label: "Moment convivial", count: n(Math.min(conv.length, 5), "lieu", "lieux"), details: conv.slice(0, 5).map((x) => `${x.nom} (${convTxt(x)})`) });
     if (items.length) blocks.push({ type: "plan", items });
     else blocks.push({ type: "note", text: "Aucun lieu d'action identifié automatiquement (marchés, gares, commerces, établissements) : à compléter avec les militants locaux." });
@@ -2684,7 +2704,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (has("lfi_residences")) detail.push({ type: "table", tableId: "lfi_residences" });
 
   /* ---------------------------------------------------------- opérationnel */
-  blocks.push({ type: "heading", text: "Opérationnel" });
+  blocks.push({ type: "heading", text: "Opérationnel", sub: "Pour organiser la venue : liste aux municipales et temps de trajet depuis les groupes d'action proches." });
   if (access.length) blocks.push({ type: "paragraph", text: `${B("Accès")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
   if (municipalLfi) blocks.push({ type: "paragraph", text: municipalLfi });
 

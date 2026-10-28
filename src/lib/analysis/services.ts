@@ -291,7 +291,14 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
     const rs = rows.filter((r) => r.cat === c.id);
     if (!rs.length) return null;
     const m = rs.reduce((t, r) => t + r.score, 0) / rs.length;
-    return { id: c.id, label: c.label, exemples: c.exemples, value: Math.round(Math.max(0, Math.min(200, 100 * 2 ** -m))) };
+    // Le niveau affiché suit la règle des catégories (moyenne, majorité, point faible) : la pastille et
+    // le détail disent la même chose (« moins bien desservie » = pastille orange ou rouge).
+    const niveau = cats.find((k) => k.cat === c.id)?.niveau;
+    let v = Math.round(Math.max(0, Math.min(200, 100 * 2 ** -m)));
+    if (niveau === "moins") v = Math.min(v, 89);
+    else if (niveau === "mieux") v = Math.max(v, 111);
+    else v = Math.max(90, Math.min(110, v));
+    return { id: c.id, label: c.label, exemples: c.exemples, value: v };
   }).filter((x): x is { id: ServiceCat; label: string; exemples: string; value: number } => !!x);
   const indice = themes.length ? { global: Math.round(themes.reduce((t, g) => t + g.value, 0) / themes.length), ref: (nat && Object.keys(nat).length ? "France" : "département") as "France" | "département", gammes: themes } : null;
   return { rows, faibles, cats, indice };
