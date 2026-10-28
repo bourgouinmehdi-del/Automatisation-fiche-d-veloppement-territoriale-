@@ -211,12 +211,12 @@ export const SOURCES: Record<string, SourceInfo> = {
   },
   municipales: {
     id: "municipales",
-    name: "Élections municipales 2026 et Répertoire national des élus",
+    name: "Élections municipales 2026 et 2020, Répertoire national des élus",
     producer: "Ministère de l'Intérieur (data.gouv.fr)",
     homepage: "https://www.data.gouv.fr/datasets/elections-municipales-2026-resultats-du-premier-tour",
     license: "Licence Ouverte 2.0",
     access: "API tabulaire de data.gouv.fr (résultats par commune, maires).",
-    limits: "Communes de moins de 1 000 habitants : candidatures individuelles, pas de listes ni de nuances. Nuances attribuées par les préfectures.",
+    limits: "Communes de moins de 1 000 habitants : candidatures individuelles, pas de listes ni de nuances. Nuances attribuées par les préfectures. 2020 : 1er tour seulement (fichier national des communes de 1 000 habitants et plus), pour comparer avec 2026 ; une liste soutenue par LFI mais classée « union de la gauche » ou « divers gauche » n'est pas comptée comme liste LFI.",
   },
   bpe: {
     id: "bpe",

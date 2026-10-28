@@ -225,8 +225,8 @@ describe("chaîne de génération (API simulées)", () => {
     const iMapBv = fiche.blocks.findIndex((b) => b.type === "map" && b.mapId === "lfi_map_bv");
     const iPres = fiche.blocks.findIndex((b) => b.type === "presence");
     expect(iP < iVote && iVote < iMapBv && iMapBv < iPres && iPres < iO).toBe(true);
-    // Seul texte : l'introduction (quelques phrases tirées des tableaux).
-    const txt = fiche.blocks.slice(iP + 1, iVote).filter((b) => b.type === "paragraph" || b.type === "findings");
+    // Seuls textes : l'introduction (quelques phrases tirées des tableaux) et la ligne sur les municipales.
+    const txt = fiche.blocks.slice(iP + 1, iVote).filter((b) => (b.type === "paragraph" && !/^\*\*Municipales/.test(b.text)) || b.type === "findings");
     expect(txt.length).toBeLessThanOrEqual(1);
     expect(fiche.blocks[iP + 1].type).toBe("paragraph");
     // Gras rendu en HTML, retiré du CSV.
@@ -251,6 +251,15 @@ describe("chaîne de génération (API simulées)", () => {
     expect(report.tables.find((t) => t.id === "lfi_politique")!.rows.some((r) => /QPV quartier Fictif Nord|QPV Quartier Fictif Nord/.test(String(r.territoire)))).toBe(true);
     expect(report.findings.some((f) => /concentre la pauvreté/.test(f.text))).toBe(true);
     expect(report.maps.find((m) => m.id === "lfi_map_bv")!.layers.some((l) => l.id === "qpv")).toBe(true);
+    // Municipales 2026, comparées à 2020 (fichier national du ministère), dans le profil politique.
+    {
+      const bl = report.sections[0].blocks;
+      const iM = bl.findIndex((b) => b.type === "paragraph" && /^\*\*Municipales 2026\*\*/.test(b.text));
+      const m = bl[iM] as { text: string };
+      expect(m.text).toMatch(/En 2020, il y avait une liste LFI \(« Compiègne insoumise », 6\s%\s?au 1er tour\)/);
+      expect(iM).toBeGreaterThan(bl.findIndex((b) => b.type === "heading" && /^Profil politique/.test(b.text)));
+      expect(iM).toBeLessThan(bl.findIndex((b) => b.type === "heading" && b.text === "Organiser la venue"));
+    }
     // Municipales 2026 et maire.
     const muni = report.tables.find((t) => t.id === "lfi_municipales")!;
     expect(muni.rows).toHaveLength(3);
