@@ -127,7 +127,7 @@ function RefBar({ c }: { c: ChartSpec }) {
                 />
                 {typeof rv === "number" && <span className="refbar-ref" style={{ left: `${(rv / max) * 100}%` }} />}
               </span>
-              <span className="refbar-value">{fmtNumber(v, 1)}</span>
+              <span className="refbar-value">{fmtNumber(v, 1)}{c.unit === "%" ? " %" : ""}</span>
             </div>
           );
         })}

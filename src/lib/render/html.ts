@@ -106,9 +106,14 @@ function posterListHtml(m: MapSpec): string {
   return `<section class="oa"><h4 class="oa-t">Où agir</h4>${groups
     .map(
       (g) =>
-        `<div class="oa-g"><div class="oa-gt">${esc(g.action !== g.group ? `${g.action} — ${g.group}` : g.group)}</div><ol>${g.items
-          .map((it) => `<li>${badge(it)}<div><b>${esc(it.nom)}</b>${(it.det.length ? it.det : [it.sub]).filter(Boolean).map((d) => `<div>${esc(d)}</div>`).join("")}${it.quand ? `<div class="oa-q">Quand : ${esc(it.quand)}</div>` : ""}</div></li>`)
-          .join("")}</ol></div>`,
+      {
+        // Même créneau pour tout le groupe (porte-à-porte) : une seule mention, pas une par ligne.
+        const q1 = g.items[0].quand;
+        const same = g.items.length > 1 && !!q1 && g.items.every((it) => it.quand === q1);
+        return `<div class="oa-g"><div class="oa-gt">${esc(g.action !== g.group ? `${g.action} — ${g.group}` : g.group)}</div>${same ? `<div class="oa-q">Quand : ${esc(q1)}</div>` : ""}<ol>${g.items
+          .map((it) => `<li>${badge(it)}<div><b>${esc(it.nom)}</b>${(it.det.length ? it.det : [it.sub]).filter(Boolean).map((d) => `<div>${esc(d)}</div>`).join("")}${it.quand && !same ? `<div class="oa-q">Quand : ${esc(it.quand)}</div>` : ""}</div></li>`)
+          .join("")}</ol></div>`;
+      },
     )
     .join("")}</section>`;
 }
@@ -271,7 +276,7 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       return `<figure class="presence"><figcaption>${esc(b.title)}</figcaption>${b.rows
         .map((row) => {
           const s = presenceScale(row);
-          return `<div class="pr-row"><div class="pr-l"><b>${esc(row.label)}</b>${row.sub ? `<span>${esc(row.sub)}</span>` : ""}</div><div class="pr-bar"><i style="width:${(100 * s.fill).toFixed(1)}%"></i><em style="left:${(100 * s.tick).toFixed(1)}%"></em></div><div class="pr-v"><b>${esc(presenceValue(row, "nombre"))}</b><span>${esc(presenceValue(row, "ratio"))} ${esc(row.rUnit)}</span><span>${esc(presenceRef(row, "ratio"))}</span></div></div>`;
+          return `<div class="pr-row"><div class="pr-l"><b>${esc(row.label)}</b>${row.sub ? `<span>${esc(row.sub)}</span>` : ""}</div><div class="pr-bar"><i style="width:${(100 * s.fill).toFixed(1)}%"></i><em style="left:${(100 * s.tick).toFixed(1)}%"></em></div><div class="pr-v"><b>${esc(presenceValue(row, "nombre"))}</b><span>${esc(presenceRef(row, "nombre"))}</span></div></div>`;
         })
         .join("")}${b.note ? `<div class="pr-n">${esc(b.note)}</div>` : ""}</figure>`;
     case "actions":

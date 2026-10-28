@@ -234,7 +234,7 @@ function refbarSvg(c: ChartSpec, width: number): string {
       const x = m.l + (rv / maxV) * W;
       s += `<line x1="${x}" x2="${x}" y1="${cy - bh / 2 - 3}" y2="${cy + bh / 2 + 3}" stroke="${PALETTE.text}" stroke-width="2"><title>${esc(ref.label)} : ${esc(fmtValue(rv, c.unit))}</title></line>`;
     }
-    s += `<text x="${width}" y="${cy + 4}" text-anchor="end" font-size="12" font-weight="700" fill="${PALETTE.text}" ${FONT}>${esc(fmtNumber(v, 1))}</text>`;
+    s += `<text x="${width}" y="${cy + 4}" text-anchor="end" font-size="12" font-weight="700" fill="${PALETTE.text}" ${FONT}>${esc(fmtNumber(v, 1))}${c.unit === "%" ? " %" : ""}</text>`;
   });
   return s + "</svg>";
 }

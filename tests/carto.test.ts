@@ -24,6 +24,6 @@ describe("cartes « affiche »", () => {
     const [w, s, e, n] = fitAspect([2.8, 49.4, 2.81, 49.5]);
     const k = 1 / Math.cos((((s + n) / 2) * Math.PI) / 180);
     expect(((n - s) * k) / (e - w)).toBeCloseTo(1.25, 2);
-    expect(perDay(2300000).replace(/\s/g, " ")).toBe("~6 300 voyageurs/jour");
+    expect(perDay(2300000).replace(/\s/g, " ")).toBe("~6 300 voyageurs par jour de semaine");
   });
 });
