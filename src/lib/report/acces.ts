@@ -384,10 +384,12 @@ export async function ciblageAcces(
     });
     const first = rowsF.find((x) => x.car != null);
     const blocksF: Block[] = [
-      { type: "heading", text: "Venir depuis les villes militantes proches" },
-      ...(first
-        ? [{ type: "paragraph" as const, text: `**La plus proche : ${first.h.l.nom}**, à ${fmtDuration(first.car!)} en voiture${Number.isFinite(trainMin(first.h.l.code, t.at.code)) ? ` (${fmtDuration(trainMin(first.h.l.code, t.at.code))} en train${first.tr && first.tr.minutes === trainMin(first.h.l.code, t.at.code) ? " direct" : ""})` : tc.get(`${first.h.l.code}|${t.at.code}`) ? ` (${fmtDuration(tc.get(`${first.h.l.code}|${t.at.code}`)!.minutes)} en ${tc.get(`${first.h.l.code}|${t.at.code}`)!.ligne})` : ""}.` }]
-        : []),
+      {
+        type: "paragraph",
+        text: first
+          ? `**Qui peut venir aider** : la ville militante la plus proche est **${first.h.l.nom}**, à ${fmtDuration(first.car!)} en voiture${Number.isFinite(trainMin(first.h.l.code, t.at.code)) ? ` (${fmtDuration(trainMin(first.h.l.code, t.at.code))} en train${first.tr && first.tr.minutes === trainMin(first.h.l.code, t.at.code) ? " direct" : ""})` : tc.get(`${first.h.l.code}|${t.at.code}`) ? ` (${fmtDuration(tc.get(`${first.h.l.code}|${t.at.code}`)!.minutes)} en ${tc.get(`${first.h.l.code}|${t.at.code}`)!.ligne})` : ""}.${rowsF.length > 1 ? " La carte et le tableau donnent les temps de trajet depuis les autres villes où LFI a des militants." : ""}`
+          : "**Qui peut venir aider** : villes où LFI a des militants, avec les temps de trajet.",
+      },
       { type: "map", mapId: mapF.id },
       { type: "table", tableId: tableF.id },
     ];

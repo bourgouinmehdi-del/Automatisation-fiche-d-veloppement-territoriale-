@@ -2239,8 +2239,6 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   }
   if (trainParis != null || rParis) access.push(`Paris à ${[trainParis != null ? `${fmtDuration(trainParis)} en train direct` : "", rParis ? `${fmtDuration(rParis.minutes)} en voiture` : ""].filter(Boolean).join(", ")}`);
   else if (c.parisKm != null && c.parisKm <= 250) access.push(`Paris à ${fmtValue(c.parisKm, "km")}`);
-  const cy = get("km_amenagements_cyclables", geos.commune);
-  if (cy && cy.value! >= 1) access.push(`${fmtValue(cy.value, "km")} d'aménagements cyclables`);
 
   /* ================================================================ en bref */
   const pop = popI;
@@ -2743,9 +2741,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (has("lfi_residences")) detail.push({ type: "table", tableId: "lfi_residences" });
 
   /* ---------------------------------------------------------- opérationnel */
-  blocks.push({ type: "heading", text: "Opérationnel", sub: "Pour organiser la venue : liste aux municipales et temps de trajet depuis les groupes d'action proches." });
-  if (access.length) blocks.push({ type: "paragraph", text: `${B("Accès")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
+  blocks.push({ type: "heading", text: "Organiser la venue", sub: "Qui peut venir aider et en combien de temps, comment rejoindre la commune, et ce qu'a fait LFI aux municipales." });
   if (municipalLfi) blocks.push({ type: "paragraph", text: municipalLfi });
+  if (access.length) blocks.push({ type: "paragraph", text: `${B("Pour rejoindre la commune")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
 
   out.section = { id: "LFI", letter: "", title: "Fiche d'action — proposition de ciblage", blocks };
   if (detail.length) out.extra = [...(out.extra ?? []), { id: "LFI_DETAIL", letter: "", title: "Détail de la fiche d'action (bureaux, quartiers, lieux)", blocks: detail }];
