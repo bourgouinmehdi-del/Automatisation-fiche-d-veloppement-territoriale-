@@ -174,7 +174,7 @@ describe("chaîne de génération (API simulées)", () => {
     expect(fiche.blocks[0]).toMatchObject({ type: "callout", tone: "warning" });
     for (const t of ["glance", "heading", "map", "table"]) expect(types).toContain(t);
     const headings = fiche.blocks.filter((b) => b.type === "heading").map((b) => (b as { text: string }).text);
-    expect(headings).toEqual(["Profil sociodémographique de la commune", "Profil politique de la commune", "Que faire ?", "Opérationnel", ...headings.slice(4)]);
+    expect(headings).toEqual(["Profil sociodémographique de la commune", "Profil politique de la commune", "Que faire ?", "Organiser la venue", ...headings.slice(4)]);
     // Que faire ? : une ligne par type d'action, le nombre de lieux, la liste dépliable.
     const planB = fiche.blocks.find((b) => b.type === "plan") as Extract<(typeof fiche.blocks)[number], { type: "plan" }>;
     // Les adresses (logements sociaux) d'abord, les bureaux prioritaires ensuite.
@@ -294,10 +294,10 @@ describe("chaîne de génération (API simulées)", () => {
     expect(accT?.rows[0]).toMatchObject({ ville: "Choisy-au-Bac" });
     expect(String(accT?.rows[0].voiture)).toMatch(/min|h/);
     const lfiB = report.sections.find((x) => x.id === "LFI")!.blocks;
-    expect(lfiB.some((b) => b.type === "heading" && b.text === "Venir depuis les villes militantes proches")).toBe(true);
+    expect(lfiB.some((b) => b.type === "paragraph" && /^\*\*Qui peut venir aider\*\*/.test(b.text))).toBe(true);
     expect(lfiB.some((b) => b.type === "map" && b.mapId === "commune_acces_carte")).toBe(true);
-    // Dans la partie « Opérationnel ».
-    expect(lfiB.findIndex((b) => b.type === "heading" && b.text === "Venir depuis les villes militantes proches")).toBeGreaterThan(lfiB.findIndex((b) => b.type === "heading" && b.text === "Opérationnel"));
+    // Dans la partie « Organiser la venue ».
+    expect(lfiB.findIndex((b) => b.type === "paragraph" && /^\*\*Qui peut venir aider\*\*/.test(b.text))).toBeGreaterThan(lfiB.findIndex((b) => b.type === "heading" && b.text === "Organiser la venue"));
     // Résidence aux coordonnées hors de la commune : écartée.
     expect(JSON.stringify(report.tables.filter((t) => /hlm/.test(t.id)))).not.toMatch(/Lointains/);
     // Effectifs estimés pour les bureaux prioritaires.
@@ -324,7 +324,7 @@ describe("chaîne de génération (API simulées)", () => {
       expect(String(r.action)).not.toMatch(/Sortie/);
       expect(String(r.quand)).not.toMatch(/semaine/i);
     }
-    const access = fiche.blocks.find((b) => b.type === "paragraph" && /Accès/.test(b.text)) as { text: string };
+    const access = fiche.blocks.find((b) => b.type === "paragraph" && /Pour rejoindre la commune/.test(b.text)) as { text: string };
     expect(access.text).toMatch(/en voiture/);
     // Groupe d'action importé depuis l'export Action Populaire (code postal + ville).
     expect(fiche.blocks.some((b) => b.type === "callout" && /Groupe d'action fictif/.test(b.text))).toBe(true);
