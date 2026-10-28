@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import Papa from "papaparse";
 import { config } from "../config";
-import { searchCommunes } from "./admin";
+import { referentiel, searchCommunes } from "./admin";
 import { detectDelimiter, findCol } from "./elections";
 
 /**
@@ -185,6 +185,41 @@ export function parseBilan(rows: Record<string, string>[]) {
   return out;
 }
 
+/**
+ * Groupes d'action du bilan, communes estimées : le bilan recopie le nombre de groupes d'un code postal
+ * sur chaque commune de ce code postal (par exemple toutes les communes du 07100 autour d'Annonay).
+ * On ne garde le nombre que pour la commune la plus grande (en inscrits) du code postal,
+ * celle où se trouvent en général les groupes ; les autres passent à 0. Communes non estimées : inchangées.
+ */
+export function dedupeBilanGa(b: Map<string, Bilan>): Map<string, Bilan> {
+  let ref: ReturnType<typeof referentiel>;
+  try {
+    ref = referentiel();
+  } catch {
+    return b;
+  }
+  const byCp = new Map<string, string[]>();
+  for (const [code, x] of b) {
+    if (!x.estime || x.ga <= 0) continue;
+    for (const cp of ref.byCode.get(code)?.codesPostaux ?? []) {
+      if (!byCp.has(cp)) byCp.set(cp, []);
+      byCp.get(cp)!.push(code);
+    }
+  }
+  const out = new Map(b);
+  for (const [code, x] of b) {
+    if (!x.estime || x.ga <= 0) continue;
+    const sib = [...new Set((ref.byCode.get(code)?.codesPostaux ?? []).flatMap((cp) => byCp.get(cp) ?? []))].filter((k) => k !== code);
+    // Plus grand voisin du même code postal avec au moins autant de groupes : les groupes sont les siens.
+    const owner = sib.find((k) => {
+      const y = b.get(k)!;
+      return y.ga >= x.ga && (y.inscrits > x.inscrits || (y.inscrits === x.inscrits && k < code));
+    });
+    if (owner) out.set(code, { ...x, ga: 0 });
+  }
+  return out;
+}
+
 /** Classeur ou CSV du bilan → CSV compact enregistré dans data/interne/bilan.csv. */
 export function bilanToCsv(rows: Record<string, string>[]) {
   const b = parseBilan(rows);
@@ -218,9 +253,9 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
       if (code && x.inscrits) b.set(code, x);
     }
     if (b.size) {
-      out.bilan = b;
+      out.bilan = dedupeBilanGa(b);
       const t = { actions: 0, ga: 0, parrains: 0, inscrits: 0 };
-      for (const x of b.values()) {
+      for (const x of out.bilan.values()) {
         t.actions += x.actions;
         t.ga += x.ga;
         t.parrains += x.parrains;
@@ -231,7 +266,7 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
       // n'est pas comparable d'une taille de commune à l'autre.
       out.bilanTranches = BILAN_TRANCHES.map(([min, max]) => {
         const z = { min, max, communes: 0, actions: 0, ga: 0, parrains: 0, inscrits: 0 };
-        for (const x of b.values())
+        for (const x of out.bilan!.values())
           if (x.inscrits >= min && x.inscrits < max) {
             z.communes++;
             z.actions += x.actions;

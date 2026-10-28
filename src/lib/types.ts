@@ -224,7 +224,15 @@ export interface MapSpec {
    * étiquettes avec traits de rappel, légende encadrée, échelle et source.
    */
   poster?: { kicker: string; title: string; source: string; footnote?: string; scaleBar?: boolean };
+  /**
+   * Lectures du vote (part des voix, part des inscrits) : bouton du site, partagé avec les graphiques.
+   * La première est celle des exports ; chacune désigne la propriété de la couche principale à colorer.
+   */
+  modes?: { id: VoteMode; label: string; title: string; valueProperty: string; layerLabel: string; legend: MapLegend }[];
 }
+
+/** Lecture du vote : part des voix (exprimés) ou part des inscrits. */
+export type VoteMode = "exp" | "ins";
 
 /* --------------------------------------------------------------- analyses */
 
