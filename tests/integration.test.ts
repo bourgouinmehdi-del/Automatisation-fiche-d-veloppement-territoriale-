@@ -407,9 +407,9 @@ describe("chaîne de génération (API simulées)", () => {
     expect(ch.data.map((d) => d.label)).toEqual(["PCF", "LFI", "LÉ", "PS / PP", "Ensemble", "LR", "RN", "Reconquête", "Autres", "Abstention"]);
     expect(ch.data.find((d) => d.label === "LFI")).toMatchObject({ color: "#E8434B", ref: 9.89 });
     expect(ch.data.find((d) => d.label === "Abstention")).toMatchObject({ refIns: 48.51, value: null });
-    // Deux lectures : part des inscrits (par défaut, exports) et part des voix ; trait en tirets avant l'abstention.
-    expect(ch.modes?.map((m) => m.label)).toEqual(["Part des inscrits", "Part des voix"]);
-    expect(ch.series[0].key).toBe("ins");
+    // Deux lectures : part des voix (par défaut, exports, comme le reste de la fiche) et part des inscrits ; trait en tirets avant l'abstention.
+    expect(ch.modes?.map((m) => m.label)).toEqual(["Part des voix", "Part des inscrits"]);
+    expect(ch.series[0].key).toBe("value");
     expect(ch.sepKey).toBe("Abstention");
     const fiche = report.sections[0];
     const iPol = fiche.blocks.findIndex((b) => b.type === "heading" && b.text === "Profil politique de la commune");
@@ -487,7 +487,7 @@ describe("chaîne de génération (API simulées)", () => {
     expect(report.maps.find((m) => m.id === "lfi_map_bv_participation")?.group).toBe("lfi_bv");
     expect(report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.some((b) => b.type === "map" && b.mapId === "lfi_map_bv_p22")).toBe(true);
     // Échelle fixe : mêmes bornes dans toutes les communes.
-    expect(report.maps.find((m) => m.id === "lfi_map_bv")!.legend!.classes!.map((c) => c.label)).toEqual(["moins de 4 %", "4 à 6 %", "6 à 9 %", "9 à 14 %", "14 à 20 %", "20 à 26 %", "26 % et plus"]);
+    expect(report.maps.find((m) => m.id === "lfi_map_bv")!.legend!.classes!.map((c) => c.label)).toEqual(["moins de 7 %", "7 à 10 %", "10 à 14 %", "14 à 20 %", "20 à 28 %", "28 à 36 %", "36 % et plus"]);
     expect(report.charts.find((c) => c.id === "lfi_chart_bureaux")!.series.map((x) => x.key)).toContain("mel");
     const actions = report.sections.find((x) => x.id === "LFI_DETAIL")!.blocks.find((b) => b.type === "actions") as Extract<(typeof fiche.blocks)[number], { type: "actions" }>;
     expect(actions.groups[0].items[0]).toMatch(/Mélenchon/);

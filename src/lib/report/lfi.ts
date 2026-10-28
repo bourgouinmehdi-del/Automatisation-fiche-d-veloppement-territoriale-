@@ -149,19 +149,16 @@ export function voteChart(eid: string, a: VoteAgg, source: SourceRef, note?: str
     group: "lfi_votes",
     tab: cfg.tab,
     xKey: "label",
-    // Part des inscrits par défaut (même base que l'abstention) ; la part des voix est un bouton du site.
-    series: a.inscrits ? [
-      { key: "ins", label: "Commune" },
-      { key: "refIns", label: "Niveau national" },
-    ] : [
+    // Part des voix par défaut, comme le reste de la fiche ; la lecture « % inscrits » (avec l'abstention) est un bouton du site.
+    series: [
       { key: "value", label: "Commune" },
       { key: "ref", label: "Niveau national" },
     ],
     ...(a.inscrits
       ? {
           modes: [
-            { id: "ins", label: "Part des inscrits", series: [{ key: "ins", label: "Commune" }, { key: "refIns", label: "Niveau national" }], note: `Part des électeurs inscrits (abstention comprise) ; trait : niveau national (France entière).${note ? ` ${note}` : ""}` },
             { id: "exp", label: "Part des voix", series: [{ key: "value", label: "Commune" }, { key: "ref", label: "Niveau national" }], note: `Part des voix (hors blancs et nuls) ; trait : niveau national (France entière).${note ? ` ${note}` : ""}` },
+            { id: "ins", label: "Part des inscrits", series: [{ key: "ins", label: "Commune" }, { key: "refIns", label: "Niveau national" }], note: `Part des électeurs inscrits (abstention comprise) ; trait : niveau national (France entière).${note ? ` ${note}` : ""}` },
           ],
           sepKey: "Abstention",
         }
@@ -175,7 +172,7 @@ export function voteChart(eid: string, a: VoteAgg, source: SourceRef, note?: str
       ...(abst != null ? [{ label: "Abstention", value: null, ref: null, ins: abst, refIns: ABST_NAT[eid] ?? null, color: ABST_COLOR }] : []),
     ],
     sources: [source, { id: "elections_nat", name: `Ministère de l'Intérieur, résultats nationaux — ${cfg.title}`, url: NAT_URL[eid], retrievedAt: VOTE_CHARTS_DATE }],
-    note: a.inscrits ? `En part des électeurs inscrits, abstention comprise (sur le site, un bouton donne la part des voix, hors blancs et nuls). Trait : niveau national (France entière).${note ? ` ${note}` : ""}` : `Part des voix (hors blancs et nuls) ; trait : niveau national (France entière).${note ? ` ${note}` : ""}`,
+    note: a.inscrits ? `Part des voix (hors blancs et nuls), comme dans le reste de la fiche ; sur le site, un bouton donne la part des électeurs inscrits, abstention comprise. Trait : niveau national (France entière).${note ? ` ${note}` : ""}` : `Part des voix (hors blancs et nuls) ; trait : niveau national (France entière).${note ? ` ${note}` : ""}`,
   };
 }
 const VOTE_CHARTS_DATE = "2024-06-10";
@@ -408,10 +405,10 @@ function gaucheHorsLfi(a: ElectionResult): number | null {
  * moyenne paraissait excellent). Mêmes bornes partout, autour du niveau national.
  */
 export const BV_SCALES: Record<string, number[]> = {
-  /** Vote LFI aux européennes 2024, en part des inscrits (national : environ 5 %) ; 20 et 26 % pour distinguer les bureaux des villes fortes. */
-  lfi: [4, 6, 9, 14, 20, 26],
-  /** Vote Mélenchon, présidentielle 2022, en part des inscrits (national : environ 16 %). */
-  mel: [10, 14, 18, 24, 30, 36],
+  /** Vote LFI aux européennes 2024, en part des voix comme partout dans la fiche (national : 9,9 %) ; 28 et 36 % pour distinguer les bureaux des villes fortes. */
+  lfi: [7, 10, 14, 20, 28, 36],
+  /** Vote Mélenchon, présidentielle 2022, en part des voix (national : 22 %). */
+  mel: [14, 19, 25, 33, 41, 50],
   /** Participation aux européennes 2024 (nationale : 51,5 %). */
   partEu: [40, 47, 54, 60],
   /** Participation aux législatives 2024, 1er tour (nationale : 66,7 %). */
@@ -1442,17 +1439,17 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const pts = c.bvGeo?.points ?? [];
     if (!geo.length && pts.length) {
       const byBv = new Map(ranked.map((b) => [b.bv, b]));
-      const lg = fixedLegend("Vote LFI (part des inscrits)", BV_SCALES.lfi);
+      const lg = fixedLegend("Vote LFI (part des voix)", BV_SCALES.lfi);
       const colorOf = (v: number | null) => (v == null ? MISSING_COLOR : (lg.classes!.find((k) => v <= k.max) ?? lg.classes![lg.classes!.length - 1])?.color ?? MISSING_COLOR);
       const features = pts.map((f) => {
         const b = byBv.get(String(f.properties?.bv));
-        return { ...f, properties: { ...f.properties, name: `Bureau ${dv(String(f.properties?.bv))} — ${f.properties?.label} : LFI ${b ? pp(b.lfiPctIns) : "n.d."} des inscrits (${b ? pp(b.lfiPctExp) : "n.d."} des voix), ${b ? pp(b.abstPct) : "n.d."} n'ont pas voté`, color: colorOf(b ? b.lfiPctIns : null) } };
+        return { ...f, properties: { ...f.properties, name: `Bureau ${dv(String(f.properties?.bv))} — ${f.properties?.label} : LFI ${b ? pp(b.lfiPctExp) : "n.d."} des voix (${b ? pp(b.lfiPctIns) : "n.d."} des inscrits), ${b ? pp(b.abstPct) : "n.d."} n'ont pas voté`, color: colorOf(b ? b.lfiPctExp : null) } };
       });
       const contour = commune.contour ? [{ type: "Feature" as const, geometry: commune.contour, properties: { nom: commune.nom } }] : [];
       const all = turf.featureCollection([...features, ...contour] as GeoJSON.Feature[]);
       out.maps.push({
         id: "lfi_map_bv",
-        title: `Lieux de vote selon le vote LFI (${bvRef.election.label}, part des inscrits)`,
+        title: `Lieux de vote selon le vote LFI (${bvRef.election.label}, part des voix)`,
         theme: "strategie",
         bbox: turf.bbox(turf.buffer(all, 0.3, { units: "kilometers" })!) as [number, number, number, number],
         layers: [
@@ -1486,11 +1483,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         id: "lfi_map_bv",
         group: "lfi_bv",
         period: "Vote LFI",
-        title: `Vote LFI par bureau de vote (${bvRef.election.label}, part des inscrits)`,
+        title: `Vote LFI par bureau de vote (${bvRef.election.label}, part des voix)`,
         theme: "strategie",
         bbox,
-        layers: [{ id: "bv", label: "Vote LFI (part des inscrits)", kind: "polygons", data: fc((b) => b.lfiPctIns), valueProperty: "valeur", visible: true, source: src }, ...qpvLayers],
-        legend: fixedLegend("Vote LFI (part des inscrits)", BV_SCALES.lfi),
+        layers: [{ id: "bv", label: "Vote LFI (part des voix)", kind: "polygons", data: fc((b) => b.lfiPctExp), valueProperty: "valeur", visible: true, source: src }, ...qpvLayers],
+        legend: fixedLegend("Vote LFI (part des voix)", BV_SCALES.lfi),
         note: [approx, qpvLayers.length ? "Trait noir : quartiers prioritaires de la politique de la ville." : ""].filter(Boolean).join(" "),
       });
       out.maps.push({
@@ -1512,11 +1509,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
           id: "lfi_map_bv_p22",
           group: "lfi_bv_p22",
           period: "Vote Mélenchon",
-          title: "Vote Mélenchon par bureau de vote (présidentielle 2022, 1er tour, part des inscrits)",
+          title: "Vote Mélenchon par bureau de vote (présidentielle 2022, 1er tour, part des voix)",
           theme: "strategie",
           bbox,
-          layers: [{ id: "bv", label: "Vote Mélenchon (part des inscrits)", kind: "polygons", data: fc((b) => b.lfi2PctIns ?? null), valueProperty: "valeur", visible: true, source: bvSecond.source }, ...qpvLayers],
-          legend: fixedLegend("Vote Mélenchon (part des inscrits)", BV_SCALES.mel),
+          layers: [{ id: "bv", label: "Vote Mélenchon (part des voix)", kind: "polygons", data: fc((b) => b.lfi2PctExp ?? null), valueProperty: "valeur", visible: true, source: bvSecond.source }, ...qpvLayers],
+          legend: fixedLegend("Vote Mélenchon (part des voix)", BV_SCALES.mel),
           note: note22,
         });
         out.maps.push({
@@ -1976,7 +1973,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         const ns = nearSchools(p.bv);
         const where = adr ? `lieu de vote : ${adr}` : ns.length ? `repères : ${ns.join(", ")}` : "";
         const q = quartierOf(p.bv);
-        return `${B(`BV ${dv(p.bv)}${labels.has(p.bv) ? ` — ${p.label}` : ""}`)}${q ? ` (${qName(q)})` : ""} : LFI ${pct(p.lfiPctIns)} des inscrits aux européennes${p.lfi2PctIns != null ? `, Mélenchon ${pct(p.lfi2PctIns)} en 2022` : ""} ; abstention ${pct(p.abstPct, 0)} (${fmtNumber(p.abstN)} abstentionnistes)${where ? ` ; ${where}` : ""}.`;
+        return `${B(`BV ${dv(p.bv)}${labels.has(p.bv) ? ` — ${p.label}` : ""}`)}${q ? ` (${qName(q)})` : ""} : LFI ${pct(p.lfiPctExp)} des voix aux européennes${p.lfi2PctExp != null ? `, Mélenchon ${pct(p.lfi2PctExp)} en 2022` : ""} ; abstention ${pct(p.abstPct, 0)} (${fmtNumber(p.abstN)} abstentionnistes)${where ? ` ; ${where}` : ""}.`;
       }),
     });
     const reservoir = ranked.filter((b) => b.type === "reservoir_abstention" || b.type === "bastion_a_mobiliser").filter((b) => !prioSet.has(b.bv)).slice(0, 3);
