@@ -350,7 +350,8 @@ describe("chaîne de génération (API simulées)", () => {
     expect(ids).toEqual(expect.arrayContaining(["voisins", "commune", "voies", "fer", "limite", "bv_prio", "qpv", "residences", "tractage"]));
     expect(m.layers.find((l) => l.id === "residences")!.data.features[0].properties).toMatchObject({ nom: "Roberval" });
     expect(m.layers.find((l) => l.id === "residences")!.data.features[0].properties?.sub).toMatch(/^Résidence du Crous · 385 logements/);
-    expect(m.layers.find((l) => l.id === "tractage")!.data.features.some((f) => /voyageurs\/jour/.test(f.properties?.sub))).toBe(true);
+    // Fréquentation de semaine : pas affichée pour une action du week-end.
+    expect(m.layers.find((l) => l.id === "tractage")!.data.features.some((f) => /départs et retours de week-end/i.test(f.properties?.sub) && !/voyageurs/.test(f.properties?.sub))).toBe(true);
     const { mapSvg } = await import("@/lib/render/svg");
     const svg = mapSvg(m);
     for (const t of ["COMPIÈGNE", "Propositions de ciblage : porte-à-porte et tractage", "Roberval", "#F91616", "Tractage : marché, gare", "OÙ AGIR", "Limite communale"]) expect(svg).toContain(t);
@@ -406,8 +407,8 @@ describe("chaîne de génération (API simulées)", () => {
     expect(ch.data.map((d) => d.label)).toEqual(["PCF", "LFI", "LÉ", "PS / PP", "Ensemble", "LR", "RN", "Reconquête", "Autres", "Abstention"]);
     expect(ch.data.find((d) => d.label === "LFI")).toMatchObject({ color: "#E8434B", ref: 9.89 });
     expect(ch.data.find((d) => d.label === "Abstention")).toMatchObject({ refIns: 48.51, value: null });
-    // Deux lectures : « % inscrits » (par défaut, exports) et « % exprimés » ; trait en tirets avant l'abstention.
-    expect(ch.modes?.map((m) => m.label)).toEqual(["% inscrits", "% exprimés"]);
+    // Deux lectures : part des inscrits (par défaut, exports) et part des voix ; trait en tirets avant l'abstention.
+    expect(ch.modes?.map((m) => m.label)).toEqual(["Part des inscrits", "Part des voix"]);
     expect(ch.series[0].key).toBe("ins");
     expect(ch.sepKey).toBe("Abstention");
     const fiche = report.sections[0];

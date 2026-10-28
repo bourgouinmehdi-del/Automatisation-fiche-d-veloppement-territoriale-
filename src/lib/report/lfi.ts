@@ -149,6 +149,7 @@ export function voteChart(eid: string, a: VoteAgg, source: SourceRef, note?: str
     group: "lfi_votes",
     tab: cfg.tab,
     xKey: "label",
+    // Part des inscrits par défaut (même base que l'abstention) ; la part des voix est un bouton du site.
     series: a.inscrits ? [
       { key: "ins", label: "Commune" },
       { key: "refIns", label: "Niveau national" },
@@ -159,8 +160,8 @@ export function voteChart(eid: string, a: VoteAgg, source: SourceRef, note?: str
     ...(a.inscrits
       ? {
           modes: [
-            { id: "ins", label: "% inscrits", series: [{ key: "ins", label: "Commune" }, { key: "refIns", label: "Niveau national" }], note: `Part des électeurs inscrits (abstention comprise) ; trait : niveau national (France entière).${note ? ` ${note}` : ""}` },
-            { id: "exp", label: "% exprimés", series: [{ key: "value", label: "Commune" }, { key: "ref", label: "Niveau national" }], note: `Part des voix (hors blancs et nuls) ; trait : niveau national (France entière).${note ? ` ${note}` : ""}` },
+            { id: "ins", label: "Part des inscrits", series: [{ key: "ins", label: "Commune" }, { key: "refIns", label: "Niveau national" }], note: `Part des électeurs inscrits (abstention comprise) ; trait : niveau national (France entière).${note ? ` ${note}` : ""}` },
+            { id: "exp", label: "Part des voix", series: [{ key: "value", label: "Commune" }, { key: "ref", label: "Niveau national" }], note: `Part des voix (hors blancs et nuls) ; trait : niveau national (France entière).${note ? ` ${note}` : ""}` },
           ],
           sepKey: "Abstention",
         }
@@ -603,7 +604,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       evidence: evOf(conc),
     });
   const car = cmp("part_menages_sans_voiture");
-  if (car?.dir === "superieur") socio.push({ text: `${B(cap(oneInV(car.a.value!, "foyer", "n'a pas de voiture", "n'ont pas de voiture")))} (département : ${pp(car.b.value)}) : on les rencontre à pied, près des arrêts de bus et des commerces de proximité.`, evidence: evOf(car.a, car.b) });
+  if (car?.dir === "superieur") socio.push({ text: `${B(cap(oneInV(car.a.value!, "foyer", "n'a pas de voiture", "n'ont pas de voiture")))} (département : ${pp(car.b.value)}).`, evidence: evOf(car.a, car.b) });
 
   // Services : Base permanente des équipements (INSEE) si disponible, sinon OpenStreetMap.
   const popDep = c.populations.find((p) => p.geo.level === "departement")?.value ?? null;
@@ -1231,7 +1232,20 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
           ],
           highlight: prioRows.map((_, i) => i),
           sources: [bvRef.source, ...(bvSecond ? [bvSecond.source] : [])],
-          note: "Bureaux retenus : là où l'on vote déjà pour nous et où beaucoup d'inscrits ne votent pas. Vote : part des voix ; classement de tous les bureaux en annexe.",
+          note: (() => {
+            // Bureau retenu malgré un vote LFI 2024 sous la moyenne : dire pourquoi, sinon la règle paraît contredite.
+            const lc = cl24?.pctExprimes ?? null;
+            const mc = cm22?.pctExprimes ?? null;
+            const ac = (prioRows[0].abstSrc === "LG24T1" ? cL : c24) ?? null;
+            const apc = ac ? abstention(ac).pct : null;
+            const why = prioRows
+              .filter((b) => lc != null && b.lfiPctExp < lc)
+              .map((b) => {
+                const pour = [mc != null && b.lfi2PctExp != null && b.lfi2PctExp > mc ? "son vote Mélenchon en 2022" : "", apc != null && b.abstPct > apc ? "son abstention" : ""].filter(Boolean);
+                return `bureau ${dv(b.bv)} : vote LFI 2024 sous la moyenne de la commune, retenu ${pour.length ? `pour ${joinFr(pour)}` : "pour son nombre d'abstentionnistes"}`;
+              });
+            return `Bureaux retenus en combinant le vote LFI (européennes 2024${second ? " et présidentielle 2022" : ""}) et la part d'inscrits qui ne votent pas${why.length ? ` ; ${why.join(" ; ")}` : ""}. Vote : part des voix ; classement de tous les bureaux en annexe.`;
+          })(),
         });
     }
     const bvGeoRef = (bv: string): GeoRef => ({ level: "bureau_vote", code: `${commune.code}-${bv}`, name: `${commune.nom} — BV ${bv}` });
@@ -1722,7 +1736,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     ids.hyp.push(
       addF({
         kind: "hypothese",
-        text: `${B(`Logements sociaux hors des bureaux prioritaires`)} : ${hlmHors.map((x) => `bureau ${dv(x.bv)}${labels.has(x.bv) ? ` (${labels.get(x.bv)})` : ""}, ${fmtNumber(x.n)} logements, vote LFI à ${pp(x.r!.lfiPctExp)}, ${pp(x.r!.abstPct)} d'abstention`).join(" ; ")}. Y a-t-il des contacts sur place pour ${hlmHors.length > 1 ? "les " : "l'"}ajouter au convoi ?`,
+        text: `${B(`Logements sociaux hors des bureaux prioritaires`)} : ${hlmHors.map((x) => `bureau ${dv(x.bv)}${labels.has(x.bv) ? ` (${labels.get(x.bv)})` : ""}, ${fmtNumber(x.n)} logements, vote LFI à ${pp(x.r!.lfiPctExp)}, ${pp(x.r!.abstPct)} d'abstention`).join(" ; ")}. À ajouter au porte-à-porte si des militants ou des sympathisants y habitent ?`,
         evidence: ev.map(evidenceId),
         weight: 75,
       }),
@@ -2068,7 +2082,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     plan.push({
       action: "Tractage à la gare",
       ou: gareNom(g.nom),
-      infos: /voyageurs/.test(g.infos) ? `${cap(g.infos)} en moyenne : départs et retours de week-end, étudiants` : "Départs et retours de week-end, étudiants",
+      infos: "Départs et retours de week-end, étudiants",
       quand: WEEKEND.gare,
       bv: g.bv,
     });
@@ -2317,7 +2331,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       const where = named(m.nom) ? m.nom : `le marché${lieuBv(m)}`;
       return h ? `${where} (${h})` : named(m.nom) ? `${where} (jour du week-end à confirmer)` : "";
     }),
-    ...gares.slice(0, 1).map((g) => `${gareNom(g.nom)}${/voyageurs/.test(g.infos) ? ` (${g.infos})` : ""}, le samedi matin ou le dimanche soir`),
+    ...gares.slice(0, 1).map((g) => `${gareNom(g.nom)}, le samedi matin`),
     ...stationsTc.slice(0, 1).map((st) => `la sortie du ${st.nom.replace(/^Métro/, "métro").replace(/^Tram/, "tram")}, le samedi`),
     ...sup.slice(0, 1).map((v) => `${v.nom.replace(/ \((.+)\)$/, ", $1")} (${/hyper/.test(v.infos) ? "hypermarché" : "supermarché"}), le samedi`),
   ].filter(Boolean);
@@ -2510,7 +2524,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         row("Groupes d'action actifs", "5 actions ou plus", bilan.ga, F.ga, 10000, "pour 10 000 inscrits"),
         row("Actions", "en 2026", bilan.actions, F.actions, 100, "pour 100 inscrits"),
       ],
-      note: `Trait rouge : moyenne des communes de même taille (${tranche.max === Infinity ? `plus de ${fmtNumber(tranche.min)}` : `${fmtNumber(tranche.min)} à ${fmtNumber(tranche.max)}`} inscrits, ${fmtNumber(tranche.communes)} communes)${bilan.estime ? ". Petite commune : parrains et actions estimés" : ""}. Bilan LFI par commune, ${fmtNumber(bilan.inscrits)} inscrits (européennes 2024).`,
+      note: `Trait rouge et « moyenne à taille égale » : ce qu'aurait une commune du même nombre d'inscrits au rythme moyen des communes de même taille (${tranche.max === Infinity ? `plus de ${fmtNumber(tranche.min)}` : `${fmtNumber(tranche.min)} à ${fmtNumber(tranche.max)}`} inscrits, ${fmtNumber(tranche.communes)} communes)${bilan.estime ? `. Parrains et actions ${deNom(commune.nom)} estimés par le bilan LFI (chiffres arrondis)` : ""}. Bilan LFI par commune, ${fmtNumber(bilan.inscrits)} inscrits (européennes 2024).`,
     });
   }
   // (Sans données internes : rien dans la fiche, qui s'adresse aux élus ; le signalement figure dans le journal de collecte.)

@@ -31,7 +31,7 @@ const ROAD: Record<number, [number, string]> = {
 export function perDay(voyageursAn: number): string {
   const d = voyageursAn / 365;
   const mag = Math.pow(10, Math.max(0, Math.floor(Math.log10(d)) - 1));
-  return `~${fmtNumber(Math.round(d / mag) * mag)} voyageurs/jour`;
+  return `~${fmtNumber(Math.round(d / mag) * mag)} voyageurs par jour de semaine`;
 }
 
 /** « Gare d'Ivry-sur-Seine », « Gare de Compiègne », « Gare de Paris Austerlitz ». */
@@ -48,7 +48,7 @@ export const WEEKEND = {
   porte: "Samedi 10 h – 12 h 30 ou 17 h – 19 h ; dimanche 10 h 30 – 12 h 30",
   foyer: "Samedi ou dimanche, 17 h – 19 h",
   crous: "Dimanche 18 h – 20 h (retour des étudiants) ou samedi 11 h – 13 h, hors vacances universitaires",
-  gare: "Samedi 9 h – 12 h ; dimanche 17 h – 20 h (retours de week-end)",
+  gare: "Samedi 9 h – 12 h",
   station: "Samedi 10 h – 13 h ou 16 h – 19 h ; dimanche 10 h – 12 h",
   marche: "Matinée du marché, samedi ou dimanche (jour à confirmer en mairie)",
   poste: "Samedi 9 h – 12 h, si le bureau est ouvert",
@@ -408,7 +408,7 @@ export function communePoster(
       const h = /à (compléter|vérifier)/.test(m.infos) || !m.infos ? "" : weekendHours(m.infos) || m.infos;
       return { nom, sub: h ? `Marché · ${h}` : "Marché · jour du week-end à confirmer en mairie", det: ["Lieu de passage régulier des habitants", h ? `Horaires (OpenStreetMap, à confirmer) : ${h}` : "Jours et horaires à confirmer en mairie"], quand: m.quand ?? (h ? cap(h) : WEEKEND.marche), lon: m.lon!, lat: m.lat! };
     }),
-    ...gares.map((g) => ({ nom: gareNom(g.nom), sub: g.voyageurs ? `${perDay(g.voyageurs)} · départs et retours de week-end` : "Départs et retours de week-end", det: [g.voyageurs ? `${perDay(g.voyageurs)} (moyenne de la semaine)` : "", "Départs et retours de week-end, étudiants"].filter(Boolean), quand: g.quand ?? WEEKEND.gare, lon: g.lon!, lat: g.lat! })),
+    ...gares.map((g) => ({ nom: gareNom(g.nom), sub: "Départs et retours de week-end", det: ["Départs et retours de week-end, étudiants"], quand: g.quand ?? WEEKEND.gare, lon: g.lon!, lat: g.lat! })),
     ...pts(o.stations ?? []).slice(0, 2).map((st) => ({ nom: st.nom, sub: `${/^Tram/.test(st.nom) ? "Tram" : /^RER/.test(st.nom) ? "RER" : "Métro"} · passage toute la journée`, det: [cap(st.infos), "Sortie de station : habitants qui font leurs courses, sortent ou rentrent"], quand: st.quand ?? WEEKEND.station, lon: st.lon!, lat: st.lat! })),
     ...pts(o.supermarches ?? []).slice(0, 2).map((v) => {
       const hyper = /hyper/.test(v.infos);

@@ -52,7 +52,7 @@ export function presenceSvg(b: PresenceBlock, width = 760) {
 <rect x="${bx}" y="${y + 10}" width="${Math.max(2, s.fill * bw)}" height="14" rx="3" fill="#4c0297"/>
 <rect x="${bx + s.tick * bw - 1.5}" y="${y + 5}" width="3" height="24" fill="#d1271c"/>
 <text x="${bx + bw + 14}" y="${y + 18}" ${F} font-size="16" font-weight="800" fill="#4c0297">${esc(presenceValue(r, "nombre"))}</text>
-<text x="${bx + bw + 14}" y="${y + 35}" ${F} font-size="11.5" fill="#52514e">${esc(`${presenceValue(r, "ratio")} ${r.rUnit} (${presenceRef(r, "ratio")})`)}</text>`;
+<text x="${bx + bw + 14}" y="${y + 35}" ${F} font-size="11.5" fill="#52514e">${esc(presenceRef(r, "nombre"))}</text>`;
     })
     .join("\n");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${h}" viewBox="0 0 ${width} ${h}"><rect width="100%" height="100%" fill="#fff"/>${rows}</svg>`;
