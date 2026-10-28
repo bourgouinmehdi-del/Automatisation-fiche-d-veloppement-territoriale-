@@ -435,14 +435,46 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const { commune, geos } = c;
   // Paris, Lyon, Marseille : bureaux numérotés « 1325 » dans les fichiers, « 25 » dans l'arrondissement.
   const plm = plmInfo(commune.code);
-  const dv = (bv: string) => (plm && /^\d{3,4}$/.test(bv) && Math.floor(Number(bv) / 100) === plm.arr ? String(Number(bv) % 100) : bv);
+  // Territoire de plusieurs communes : bureaux des autres communes notés « code|numéro » → « 2 de Brasparts ».
+  const multi = c.query.scope === "custom" && c.perimeter.communes.length > 1;
+  const codesTerr = new Set(c.perimeter.communes.map((x) => x.code));
+  const dv = (bv: string) => {
+    if (bv.includes("|")) {
+      const [code, n] = bv.split("|");
+      return `${n.replace(/^0+(?=\d)/, "")} de ${referentiel().byCode.get(code)?.nom ?? code}`;
+    }
+    if (multi) return `${bv.replace(/^0+(?=\d)/, "")} de ${commune.nom}`;
+    return plm && /^\d{3,4}$/.test(bv) && Math.floor(Number(bv) / 100) === plm.arr ? String(Number(bv) % 100) : bv;
+  };
   let fid = 1000;
   const addF = (f: Omit<Finding, "id" | "theme">) => {
     const id = `L${++fid}`;
     out.findings.push({ ...f, id, theme: "strategie" });
     return id;
   };
-  const get = (id: string, g: GeoRef | null | undefined) => (g ? indicators.find((i) => i.id === id && i.geo.level === g.level && i.geo.code === g.code && i.value != null) : undefined);
+  const get0 = (id: string, g: GeoRef | null | undefined) => (g ? indicators.find((i) => i.id === id && i.geo.level === g.level && i.geo.code === g.code && i.value != null) : undefined);
+  // Territoire de plusieurs communes : la « commune » est le territoire. Effectifs additionnés, taux et revenus
+  // en moyenne pondérée par la population des communes (approximation pour les médianes de revenu).
+  const popTerr = new Map(c.perimeter.communes.map((x) => [x.code, x.population ?? 0]));
+  const aggMemo = new Map<string, Indicator | undefined>();
+  const agg = (id: string): Indicator | undefined => {
+    if (aggMemo.has(id)) return aggMemo.get(id);
+    const xs = c.perimeterInsee.flatMap((p) => {
+      const i = p.result.indicators.find((x) => x.id === id && x.value != null && x.geo.level === "commune");
+      return i ? [{ i, w: popTerr.get(p.code) ?? 0 }] : [];
+    });
+    let r: Indicator | undefined;
+    if (xs.length >= 2 && xs.some((x) => x.w > 0)) {
+      const additif = xs[0].i.unit === "habitants" || xs[0].i.unit === "nombre";
+      const wTot = xs.reduce((t, x) => t + x.w, 0);
+      const value = additif ? xs.reduce((t, x) => t + x.i.value!, 0) : xs.reduce((t, x) => t + x.i.value! * x.w, 0) / wTot;
+      const base = get0(id, geos.commune) ?? xs[0].i;
+      r = { ...base, value, geo: { ...geos.commune }, method: `${base.method ?? ""} Territoire de ${xs.length} communes : ${additif ? "somme" : "moyenne pondérée par la population"}.`.trim() };
+    }
+    aggMemo.set(id, r);
+    return r;
+  };
+  const get = (id: string, g: GeoRef | null | undefined) => (multi && g && g.level === "commune" && g.code === geos.commune.code ? (agg(id) ?? get0(id, g)) : get0(id, g));
   const depName = geos.departement.name;
 
   /* ================================================================ 1. socio */
@@ -514,10 +546,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (cols.length) {
     out.tables.push({
       id: "lfi_socio",
-      title: "Ce qui distingue la commune",
+      title: multi ? "Ce qui distingue le territoire" : "Ce qui distingue la commune",
       theme: "strategie",
       columns: [{ key: "territoire", label: "", wide: true }, ...cols.map((x) => ({ key: x.id, label: x.d.label, align: "right" as const }))],
-      rows: socioRefGeos.map((g) => ({ territoire: g.level === "france" ? "France" : g.name, ...Object.fromEntries(cols.map((x) => [x.id, fmtCell(x.id, g)])) })),
+      rows: socioRefGeos.map((g) => ({ territoire: g.level === "france" ? "France" : multi && g === geos.commune ? c.perimeter.label : g.name, ...Object.fromEntries(cols.map((x) => [x.id, fmtCell(x.id, g)])) })),
       highlight: [0],
       sources: [...new Map(cols.map((x) => [x.a.source.dataset ?? x.a.source.id, x.a.source])).values()],
       note: `Seuls figurent les chiffres où la commune se distingue nettement du département${cols.length > kept.length ? " (et, pour repère, la pauvreté, le revenu, le chômage et le logement social)" : ""}. Revenu médian : la moitié des habitants gagne plus, l'autre moitié moins (par personne, après impôts et aides). Tous les chiffres : diagnostic complet, partie B.`,
@@ -533,11 +565,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const socioIntro: string[] = [];
   if (popI)
     socioIntro.push(
-      `${commune.nom} compte environ ${fmtNumber(Math.round(popI.value! / 100) * 100)} habitants${evolI ? (evolI.value! <= -0.5 ? ", une population en baisse" : evolI.value! >= 0.5 ? ", une population en hausse" : "") : ""}.`,
+      `${multi ? `Le territoire (${c.perimeter.label})` : commune.nom} compte environ ${fmtNumber(Math.round(popI.value! / 100) * 100)} habitants${evolI ? (evolI.value! <= -0.5 ? ", une population en baisse" : evolI.value! >= 0.5 ? ", une population en hausse" : "") : ""}.`,
     );
   if (adjs.length || avecs.length)
     socioIntro.push(
-      `${adjs.length ? `C'est une commune ${B(joinFr(adjs))} que la moyenne du département (${depName})` : `Par rapport au département (${depName}), la commune compte`}${avecs.length ? `${adjs.length ? ", avec " : " "}${B(joinFr(avecs))}` : ""}.`,
+      `${adjs.length ? `C'est ${multi ? "un territoire" : "une commune"} ${B(joinFr(adjs))} que la moyenne du département (${depName})` : `Par rapport au département (${depName}), ${multi ? "le territoire" : "la commune"} compte`}${avecs.length ? `${adjs.length ? ", avec " : " "}${B(joinFr(avecs))}` : ""}.`,
     );
   else if (socioCmp.length) socioIntro.push(`Son profil social est proche de la moyenne du département (${depName}) : les écarts portent sur les quartiers plus que sur la commune dans son ensemble.`);
 
@@ -633,11 +665,18 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const com = (e?: { results: ElectionResult[] }) => e?.results.find((r) => r.level === "commune");
   const depR = (e?: { results: ElectionResult[] }) => e?.results.find((r) => r.level === "departement");
   const pops = new Map(referentiel().communes.filter((x) => x.departement === commune.departement.code && x.type === "commune-actuelle").map((x) => [x.code, x.population ?? null]));
-  const parrains = c.interne.parrains.get(commune.code) ?? null;
+  // Territoire de plusieurs communes : parrains et bilan additionnés.
+  const parrains = multi ? [...codesTerr].reduce<number | null>((t, k) => (c.interne.parrains.has(k) ? (t ?? 0) + c.interne.parrains.get(k)! : t), null) : (c.interne.parrains.get(commune.code) ?? null);
   const depParrains = [...c.interne.parrains.entries()].filter(([k]) => k.startsWith(commune.departement.code)).reduce((s, [, v]) => s + v, 0);
   const elecSources: SourceRef[] = c.elections.map((e) => e.source);
   // Bilan militant (actions, groupes d'action actifs, parrains) ; Paris, Lyon, Marseille : chiffres de la ville entière.
-  const bilan = c.interne.bilan?.get(commune.code) ?? (plm ? c.interne.bilan?.get(plm.parent) : undefined);
+  const bilanUn = (k: string) => c.interne.bilan?.get(k);
+  const bilan = multi
+    ? (() => {
+        const xs = [...codesTerr].map(bilanUn).filter((x): x is NonNullable<typeof x> => !!x);
+        return xs.length ? { actions: xs.reduce((t, x) => t + x.actions, 0), ga: xs.reduce((t, x) => t + x.ga, 0), parrains: xs.reduce((t, x) => t + x.parrains, 0), inscrits: xs.reduce((t, x) => t + x.inscrits, 0), estime: xs.some((x) => x.estime) } : undefined;
+      })()
+    : (bilanUn(commune.code) ?? (plm ? c.interne.bilan?.get(plm.parent) : undefined));
 
   const bvRef = c.bureaux.find((b) => b.election.id === "EU24") ?? c.bureaux.find((b) => b.election.id === "PR22T1");
   const bvSecond = c.bureaux.find((b) => b.election.id === "PR22T1" && b !== bvRef);
@@ -770,7 +809,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       abst24: a24 ? cnt(a24.n, a24.pct) : "",
       abstL: "",
     });
-    const rows: Row[] = [{ ...line(commune.nom, c24?.inscrits ?? c22?.inscrits ?? null, c22 ? score("PR22T1", c22, "lfi") : null, c24 ? score("EU24", c24, "lfi") : null, parrains, c22 ? abstention(c22) : null, c24 ? abstention(c24) : null), abstL: cL ? cnt(abstention(cL).n, abstention(cL).pct) : "" }];
+    const rows: Row[] = [{ ...line(multi ? c.perimeter.label : commune.nom, c24?.inscrits ?? c22?.inscrits ?? null, c22 ? score("PR22T1", c22, "lfi") : null, c24 ? score("EU24", c24, "lfi") : null, parrains, c22 ? abstention(c22) : null, c24 ? abstention(c24) : null), abstL: cL ? cnt(abstention(cL).n, abstention(cL).pct) : "" }];
     // Bureaux regroupés (comme « BV 3 et 7 (la Madeleine) » dans les fiches de référence) :
     // bureaux prioritaires, et bureaux de chaque quartier prioritaire.
     const aggOf = (res: BureauResult[] | undefined, bvs: string[]) => {
@@ -852,7 +891,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
           parrains: par != null ? fmtNumber(par) : "",
         };
       };
-      const vRows = [vRow(commune.nom, c24, c22, parrains, cL)];
+      const vRows = [vRow(multi ? c.perimeter.label : commune.nom, c24, c22, parrains, cL)];
       // Zones électorales : bureaux voisins qui votent de la même façon (au lieu d'une seule ligne
       // regroupant les bureaux prioritaires, dispersés dans la commune).
       const r24 = c.bureaux.find((b) => b.election.id === "EU24")?.results ?? [];
@@ -2372,7 +2411,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     blocks.push({
       type: "callout",
       tone: "accent",
-      text: `${B(`Territoire de ${c.perimeter.communes.length} communes`)} : ${commune.nom} et ${joinFr(autres.slice(0, 6))}${autres.length > 6 ? ` et ${autres.length - 6} autres` : ""}. Cette fiche d'action porte sur ${commune.nom}, la commune principale (chiffres, bureaux de vote, adresses, lieux) ; les autres communes figurent dans le diagnostic complet (partie A). Pour agir dans une autre commune, générer sa fiche.`,
+      text: `${B(`Territoire de ${c.perimeter.communes.length} communes`)} : ${commune.nom} et ${joinFr(autres.slice(0, 6))}${autres.length > 6 ? ` et ${autres.length - 6} autres` : ""}. Chiffres (population, revenus, votes, parrains), bureaux de vote prioritaires, adresses et logements sociaux portent sur tout le territoire ; les lieux de tractage (marchés, gares, grandes surfaces), le moment convivial et l'accès aux services sont ceux de ${commune.nom}, la commune principale.`,
     });
   }
   if (glance.length >= 3) blocks.push({ type: "glance", items: glance });
@@ -2621,7 +2660,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // Sur 100 adultes rencontrés au hasard : ordres de grandeur, comparés au département.
   {
     const adRows = c.adultes?.rows ?? [];
-    const adC = adRows.filter((r) => r.com === commune.code);
+    const adC = adRows.filter((r) => (multi ? codesTerr.has(r.com) : r.com === commune.code));
     const sum = (rows: typeof adRows, k: "adultes" | "adultesFr") => rows.reduce((s2, r) => s2 + r[k], 0);
     const aC = sum(adC, "adultes");
     const aD = sum(adRows, "adultes");

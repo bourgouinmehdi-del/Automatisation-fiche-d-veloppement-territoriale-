@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import FranceMap from "@/components/FranceMap";
 import { useRole } from "@/components/useRole";
 
 interface Candidate {
@@ -26,11 +27,11 @@ interface Listed {
 }
 
 const SCOPES = [
-  { id: "commune", label: "Commune", field: "Code postal, code INSEE ou nom de la commune", go: "Générer la fiche" },
-  { id: "epci", label: "Intercommunalité", field: "Une commune de l'intercommunalité", go: "Générer le ciblage de l'intercommunalité" },
-  { id: "circonscription", label: "Circonscription", field: "Une commune de la circonscription", go: "Générer le ciblage de la circonscription" },
-  { id: "departement", label: "Département", field: "Numéro ou nom du département (ou une de ses communes)", go: "Générer le ciblage du département" },
-  { id: "custom", label: "Territoire personnalisé", field: "Commune principale du territoire", go: "Générer la fiche" },
+  { id: "commune", label: "Commune", field: "Code postal, code INSEE ou nom de la commune", go: "Générer la fiche", desc: "Fiche d'action d'une commune : bureaux de vote prioritaires, adresses pour le porte-à-porte, lieux de tractage." },
+  { id: "epci", label: "Intercommunalité", field: "Une commune de l'intercommunalité", go: "Générer le ciblage de l'intercommunalité", desc: "Classe les communes d'une intercommunalité et propose où aller en priorité." },
+  { id: "circonscription", label: "Circonscription", field: "Une commune de la circonscription", go: "Générer le ciblage de la circonscription", desc: "Classe les communes d'une circonscription législative et propose où aller en priorité." },
+  { id: "departement", label: "Département", field: "Numéro ou nom du département (ou une de ses communes)", go: "Générer le ciblage du département", desc: "Classe les villes et bourgs du département et propose jusqu'à cinq territoires à cibler." },
+  { id: "custom", label: "Territoire personnalisé", field: "Commune principale du territoire", go: "Générer la fiche", desc: "Fiche d'action pour plusieurs communes voisines choisies à la main (votes, bureaux et adresses de toutes les communes)." },
 ] as const;
 
 interface CircoChoice {
@@ -149,6 +150,9 @@ export default function Home() {
             </button>
           ))}
         </div>
+        <p className="-mt-2 mb-4 text-sm text-[var(--ink-2)]">{cfg.desc}</p>
+        <div className="grid gap-6 md:grid-cols-[1fr_15rem]">
+        <div className="min-w-0">
         <label htmlFor="q" className="mb-1 block text-sm font-semibold">
           {cfg.field}
         </label>
@@ -259,6 +263,18 @@ export default function Home() {
         <button className="btn btn-primary mt-5 w-full justify-center py-3 text-base" disabled={!selected || busy || (scope === "circonscription" && !circo) || (scope === "epci" && !cands.find((c) => c.code === selected)?.interco)} onClick={generate}>
           {busy ? "Lancement…" : cfg.go}
         </button>
+        </div>
+        {/* Carte : choisir un département (ciblage) ; le département de la commune choisie est mis en évidence. */}
+        <div className="order-first md:order-none">
+          <FranceMap
+            selected={cands.find((x) => x.code === selected)?.departement ?? null}
+            onPick={(code) => {
+              setScope("departement");
+              setQ(code);
+            }}
+          />
+        </div>
+        </div>
         {error && <p className="mt-2 text-sm msg-err">{error}</p>}
       </div>
       )}

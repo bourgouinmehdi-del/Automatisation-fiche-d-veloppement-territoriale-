@@ -351,12 +351,15 @@ export async function collect(
       .filter((c): c is CommuneInfo => !!c)
       .map((c) => ({ code: c.code, nom: c.nom, population: c.population }));
     perimeter = {
-      label: `Territoire personnalisé (${list.length} communes)`,
+      label: list.length <= 3 ? list.map((x) => x.nom).join(list.length === 2 ? " et " : ", ").replace(/, ([^,]+)$/, " et $1") : `${list[0].nom} et ${list.length - 1} autres communes`,
       communes: list,
     };
   }
 
-  const extraDeps = territorial(query.scope)
+  // Territoire personnalisé : toutes ses communes comptent (votes, bureaux, adresses, logements sociaux), 15 au plus.
+  const autres = query.scope === "custom" ? perimeter.communes.filter((m) => m.code !== commune.code).slice(0, 15) : [];
+  const depOf = (code: string) => communeFromReferentiel(code)?.departement.code ?? commune.departement.code;
+  const extraDeps = territorial(query.scope) || autres.length
     ? [...new Set(perimeter.communes.map((m) => communeFromReferentiel(m.code)?.departement.code).filter((d): d is string => !!d && d !== commune.departement.code))]
     : [];
   const sum = (arr: { population: number | null }[]) =>
@@ -579,7 +582,7 @@ export async function collect(
             const r =
               m.code === commune.code
                 ? c.insee.find((x) => x.geo.code === m.code)?.result
-                : await collectInsee(ctx, http, "COM", m.code, g, {
+                : await collectInsee(ctx, http, "COM", m.code, g, query.scope === "custom" && perimeterList.length <= 16 ? {} : {
                     datasets: ["DS_FILOSOFI_CC", "DS_RP_LOGEMENT_PRINC"],
                   });
             if (r)
@@ -913,6 +916,18 @@ export async function collect(
         const horsCommune = residences.length - kept.length;
         if (horsCommune) http.notes.push(`${horsCommune} résidence${horsCommune > 1 ? "s" : ""} écartée${horsCommune > 1 ? "s" : ""} : coordonnées hors de la commune dans le répertoire`);
         const ensembles = r.ensembles.filter((x) => inCommune(x.lon, x.lat)).map((x) => ({ ...x, nom: pf(x.nom) }));
+        // Autres communes du territoire : leurs résidences s'ajoutent.
+        for (const m of autres) {
+          try {
+            const o = await collectRpls(http, m.code, {});
+            const pm = (t: string) => prettyFr(t, m.nom);
+            kept.push(...o.residences.map((x) => ({ ...x, nom: bare(x.nom) === bare(m.nom) ? pm(fixAdr(x.adresse)) : pm(x.nom), adresse: pm(fixAdr(x.adresse)), ...(x.voie ? { voie: pm(x.voie) } : {}), ...(x.nums ? { nums: x.nums.map((n) => numVoie(n)) } : {}) })));
+            ensembles.push(...o.ensembles.map((x) => ({ ...x, nom: pm(x.nom) })));
+            r.total += o.total;
+          } catch {
+            http.notes.push(`Logements sociaux de ${m.nom} indisponibles`);
+          }
+        }
         if (r.total) c.rpls = { ...r, residences: kept, ensembles, source: ctx.ref("rpls", r.url, r.retrievedAt, { vintage: r.millesime ?? undefined }) };
         else http.notes.push("Aucun logement social recensé dans la commune");
       },
@@ -1124,6 +1139,15 @@ export async function collect(
               commune.code,
               commune.departement.code,
             );
+            // Autres communes du territoire : bureaux notés « code|numéro ».
+            for (const m of autres) {
+              try {
+                const x = await collectBureaux(http, e, m.code, depOf(m.code));
+                r.push(...x.map((b) => ({ ...b, bv: `${m.code}|${b.bv}` })));
+              } catch {
+                http.notes.push(`Bureaux de vote de ${m.nom} indisponibles (${e.label})`);
+              }
+            }
             return {
               election: e,
               results: r,
@@ -1150,7 +1174,15 @@ export async function collect(
       "adresses",
       async (http) => {
         const a = await collectAdresses(http, commune.code, commune.departement.code);
-        c.adresses = { list: a.adresses, source: ctx.ref("ban", a.url, a.retrievedAt) };
+        const list = [...a.adresses];
+        for (const m of autres) {
+          try {
+            list.push(...(await collectAdresses(http, m.code, depOf(m.code))).adresses);
+          } catch {
+            http.notes.push(`Adresses de ${m.nom} indisponibles`);
+          }
+        }
+        c.adresses = { list, source: ctx.ref("ban", a.url, a.retrievedAt) };
       },
       { theme: "strategie", label: "Adresses par bureau de vote (porte-à-porte)" },
     );
@@ -1166,6 +1198,15 @@ export async function collect(
           throw new Error(
             "Aucune géographie des bureaux de vote disponible (fournir data/interne/bv-<code>.geojson)",
           );
+        // Autres communes du territoire : contours et lieux de vote ajoutés, bureaux notés « code|numéro ».
+        for (const m of autres) {
+          const o = await collectBureauxGeo(http, m.code).catch(() => null);
+          if (!o) continue;
+          const k = (bv: unknown) => `${m.code}|${String(bv)}`;
+          g.features.push(...o.features.map((f) => ({ ...f, properties: { ...f.properties, bv: k(f.properties?.bv) } })));
+          g.points.push(...o.points.map((f) => ({ ...f, properties: { ...f.properties, bv: k(f.properties?.bv) } })));
+          for (const [bv, lab] of o.labels) g.labels.set(k(bv), lab);
+        }
         c.bvGeo = {
           ...g,
           source: {
@@ -1468,6 +1509,22 @@ export async function collect(
       }
     } catch (e) {
       c.warnings.push(`Demandeurs d'emploi : lecture impossible (${(e as Error).message}).`);
+    }
+  }
+
+  // Territoire personnalisé : résultats électoraux « de la commune » = somme des communes du territoire.
+  if (autres.length) {
+    const codes = new Set(perimeter.communes.map((m) => m.code));
+    for (const e of c.elections) {
+      const com = e.results.find((r) => r.level === "commune");
+      const dep = e.results.find((r) => r.level === "departement");
+      const parts = (dep?.byCommune ?? []).filter((x) => codes.has(x.code));
+      if (!com || parts.length < 2) continue;
+      const cand = new Map<string, number>();
+      for (const p of parts) for (const k of p.candidates) cand.set(k.label, (cand.get(k.label) ?? 0) + k.voix);
+      const inscrits = parts.reduce((t, p) => t + p.inscrits, 0);
+      const votants = parts.reduce((t, p) => t + p.votants, 0);
+      Object.assign(com, { inscrits, votants, abstentions: inscrits - votants, exprimes: parts.reduce((t, p) => t + p.exprimes, 0), blancs: null, nuls: null, candidates: [...cand].map(([label, voix]) => ({ label, voix })) });
     }
   }
 
