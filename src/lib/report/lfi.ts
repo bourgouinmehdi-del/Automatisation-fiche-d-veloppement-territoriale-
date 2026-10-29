@@ -2292,10 +2292,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       tone: "socio",
     });
   {
-    // Deux chiffres parlants pour tout militant : pauvreté (à défaut revenu médian) et chômage, toujours les
-    // mêmes d'une fiche à l'autre (logement social, voiture… restent dans le tableau « Ce qui distingue »).
+    // Deux chiffres parlants pour tout militant : pauvreté (à défaut revenu médian) et logement social, toujours les
+    // mêmes d'une fiche à l'autre (chômage, voiture… restent dans le tableau « Ce qui distingue »).
     const pick = (...ids: string[]) => ids.map((id) => socioCmp.find((y) => y.d.id === id)).find(Boolean);
-    const top = [pick("taux_pauvrete", "revenu_median"), pick("taux_chomage_rp")].filter((x): x is (typeof socioCmp)[number] => !!x);
+    const top = [pick("taux_pauvrete", "revenu_median"), pick("part_locataires_hlm")].filter((x): x is (typeof socioCmp)[number] => !!x);
     const LAB: Record<string, string> = { taux_pauvrete: "Vivent sous le seuil de pauvreté", revenu_median: "Revenu médian par mois", taux_chomage_rp: "Taux de chômage", part_locataires_hlm: "Foyers en logement social (HLM)", part_menages_sans_voiture: "Foyers sans voiture" };
     for (const x of top) glance.push({ label: LAB[x.d.id] ?? x.d.label, value: fmtCell(x.id, geos.commune), detail: `département : ${fmtCell(x.id, geos.departement)}`, tone: "socio" });
   }
