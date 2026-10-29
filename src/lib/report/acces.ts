@@ -52,6 +52,33 @@ export interface AccesTarget {
 
 type GeoCommune = { code: string; nom: string; centre?: { coordinates: [number, number] }; population?: number };
 
+/**
+ * Deux villes militantes à moins de 6 km : même agglomération (Lagord et Périgny pour La Rochelle).
+ * Pas en Île-de-France, où chaque ville de banlieue a ses propres groupes et ses propres transports.
+ */
+const AGGLO_KM = 6;
+
+/**
+ * Choix des villes militantes (max places) :
+ * 1. une seule par agglomération (hors Île-de-France) : la commune qui a le plus de parrains, les voisines à moins de 6 km
+ *    sont écartées (elles prendraient des places pour un même point de départ) ;
+ * 2. la moitié des places aux plus proches des territoires ;
+ * 3. puis les villes militantes (2 groupes ou 200 parrains) les plus proches ;
+ * 4. la dernière à la grande ville (2 000 parrains et plus) la plus proche — Bordeaux plutôt que Nantes
+ *    pour la Charente-Maritime —, à défaut à la ville qui a le plus de parrains.
+ */
+export function chooseHubs<T extends { l: { code: string; lon: number; lat: number }; b: { ga: number; parrains: number }; km: number }>(all: T[], max: number): T[] {
+  const idf = (code: string) => IDF.has(code.slice(0, 2));
+  const cands = all.filter((x) => idf(x.l.code) || !all.some((y) => y !== x && !idf(y.l.code) && (y.b.parrains > x.b.parrains || (y.b.parrains === x.b.parrains && y.l.code < x.l.code)) && turf.distance([x.l.lon, x.l.lat], [y.l.lon, y.l.lat]) < AGGLO_KM));
+  const estVille = (x: T) => x.b.ga >= HUB_MIN_GA || x.b.parrains >= HUB_MIN_PARRAINS;
+  const nearest = [...cands].sort((a, b) => a.km - b.km).slice(0, Math.ceil(max / 2));
+  const reste = cands.filter((x) => !nearest.includes(x) && estVille(x));
+  const grandes = reste.filter((x) => x.b.parrains >= BIG_HUB_PARRAINS).sort((a, b) => a.km - b.km);
+  const grande = grandes[0] ?? [...reste].sort((a, b) => b.b.parrains - a.b.parrains)[0];
+  const villes = reste.filter((x) => x !== grande).sort((a, b) => a.km - b.km).slice(0, Math.max(0, max - nearest.length - 1));
+  return [...nearest, ...villes, ...(grande && nearest.length + villes.length < max ? [grande] : [])];
+}
+
 export async function ciblageAcces(
   c: Collected,
   targets: AccesTarget[],
@@ -98,14 +125,7 @@ export async function ciblageAcces(
       return (ville && (x.km <= HUB_MAX_KM || (x.b.parrains >= BIG_HUB_PARRAINS && x.km <= BIG_HUB_MAX_KM))) || (x.km <= LOCAL_GA_KM && x.b.parrains >= LOCAL_MIN_PARRAINS);
     });
   const max = opts.fiche ? HUB_MAX_FICHE : HUB_MAX;
-  // Moitié : les communes les plus proches (souvent un seul groupe) ; puis les villes militantes les plus
-  // proches (Figeac avant Toulouse) ; la dernière place à la plus grande ville à portée (Toulouse, Paris).
-  const estVille = (x: (typeof cands)[number]) => x.b.ga >= HUB_MIN_GA || x.b.parrains >= HUB_MIN_PARRAINS;
-  const nearest = [...cands].sort((a, b) => a.km - b.km).slice(0, Math.ceil(max / 2));
-  const reste = cands.filter((x) => !nearest.includes(x) && estVille(x));
-  const grande = [...reste].sort((a, b) => b.b.parrains - a.b.parrains)[0];
-  const villes = reste.filter((x) => x !== grande).sort((a, b) => a.km - b.km).slice(0, Math.max(0, max - nearest.length - 1));
-  const hubs = [...nearest, ...villes, ...(grande && nearest.length + villes.length < max ? [grande] : [])];
+  const hubs = chooseHubs(cands, max);
   if (!hubs.length) return null;
 
   // 3. Voiture : une matrice OSRM (villes militantes → territoires).
@@ -368,7 +388,7 @@ export async function ciblageAcces(
         tc: tc.get(`${h.l.code}|${t.at.code}`) ? `${fmtDuration(tc.get(`${h.l.code}|${t.at.code}`)!.minutes)} (${tc.get(`${h.l.code}|${t.at.code}`)!.ligne})` : "—",
       })),
       sources: sourcesF,
-      note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif et ${LOCAL_MIN_PARRAINS} parrains au moins, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; les plus proches d'abord, puis les plus grandes. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF) ; pour un train direct, nombre de trains directs dans la journée, aller et retour ; avec correspondance, ${RAIL_CHANGE_MIN} min au moins dans une même gare, et changement de gare dans une même ville estimé (15 min plus 4 min par km).${tc.size ? ` Métro, RER, tram : trajet le plus rapide, correspondances comprises, depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités ou du réseau urbain) ; ${TC_BOARD_MIN} min comptées à chaque montée (attente) et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""}${gareProche.get(t.at.code) && rowsF.some(({ h }) => trainTxt(h.l.code, t.at.code)) ? ` Pas de gare dans la commune : gare la plus proche, ${gareProche.get(t.at.code)}.` : ""} « — » : pas de trajet trouvé.`,
+      note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif et ${LOCAL_MIN_PARRAINS} parrains au moins, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; une seule par agglomération (moins de 6 km, hors Île-de-France), les plus proches d'abord, puis la grande ville la plus proche. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF) ; pour un train direct, nombre de trains directs dans la journée, aller et retour ; avec correspondance, ${RAIL_CHANGE_MIN} min au moins dans une même gare, et changement de gare dans une même ville estimé (15 min plus 4 min par km).${tc.size ? ` Métro, RER, tram : trajet le plus rapide, correspondances comprises, depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités ou du réseau urbain) ; ${TC_BOARD_MIN} min comptées à chaque montée (attente) et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""}${gareProche.get(t.at.code) && rowsF.some(({ h }) => trainTxt(h.l.code, t.at.code)) ? ` Pas de gare dans la commune : gare la plus proche, ${gareProche.get(t.at.code)}.` : ""} « — » : pas de trajet trouvé.`,
     };
     const mapF = mapOf({
       id: "commune_acces_carte",
@@ -425,7 +445,7 @@ export async function ciblageAcces(
     rows,
     highlight: ranked.length ? [ranked[0].i] : [],
     sources,
-    note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif et ${LOCAL_MIN_PARRAINS} parrains au moins, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; ${hubs.length} retenues, les plus proches puis les plus grandes. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF), direct ou avec correspondance (${RAIL_CHANGE_MIN} min au moins dans une même gare).${tc.size ? ` Métro, RER, tram : correspondances comprises, ${TC_BOARD_MIN} min comptées à chaque montée et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""} « — » : pas de calcul possible.`,
+    note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif et ${LOCAL_MIN_PARRAINS} parrains au moins, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; ${hubs.length} retenues, une par agglomération (moins de 6 km, hors Île-de-France) : les plus proches, puis la grande ville la plus proche. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF), direct ou avec correspondance (${RAIL_CHANGE_MIN} min au moins dans une même gare).${tc.size ? ` Métro, RER, tram : correspondances comprises, ${TC_BOARD_MIN} min comptées à chaque montée et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""} « — » : pas de calcul possible.`,
   };
 
   const map = mapOf({
