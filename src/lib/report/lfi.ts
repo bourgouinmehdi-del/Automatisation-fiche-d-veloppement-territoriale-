@@ -2292,16 +2292,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       tone: "socio",
     });
   {
-    // Pauvreté et revenu disent la même chose : un seul des deux.
-    // Les deux plus marquants ; complétés par les indicateurs de base si la commune se distingue peu.
-    const top: typeof socioCmp = [];
-    for (const x of [...sameMsg, ...socioCmp.filter((y) => y.d.core)]) {
-      if (top.length >= 2 || top.includes(x)) continue;
-      const pov = (y: (typeof socioCmp)[number]) => y.d.id === "taux_pauvrete" || y.d.id === "revenu_median";
-      if (pov(x) && top.some(pov)) continue;
-      top.push(x);
-    }
-    const LAB: Record<string, string> = { taux_pauvrete: "Vivent sous le seuil de pauvreté", revenu_median: "Revenu médian par mois", taux_chomage_rp: "Chômage", part_locataires_hlm: "Foyers en logement social (HLM)", part_menages_sans_voiture: "Foyers sans voiture" };
+    // Deux chiffres parlants pour tout militant : pauvreté (à défaut revenu médian) et logement social, toujours les
+    // mêmes d'une fiche à l'autre (chômage, voiture… restent dans le tableau « Ce qui distingue »).
+    const pick = (...ids: string[]) => ids.map((id) => socioCmp.find((y) => y.d.id === id)).find(Boolean);
+    const top = [pick("taux_pauvrete", "revenu_median"), pick("part_locataires_hlm")].filter((x): x is (typeof socioCmp)[number] => !!x);
+    const LAB: Record<string, string> = { taux_pauvrete: "Vivent sous le seuil de pauvreté", revenu_median: "Revenu médian par mois", taux_chomage_rp: "Taux de chômage", part_locataires_hlm: "Foyers en logement social (HLM)", part_menages_sans_voiture: "Foyers sans voiture" };
     for (const x of top) glance.push({ label: LAB[x.d.id] ?? x.d.label, value: fmtCell(x.id, geos.commune), detail: `département : ${fmtCell(x.id, geos.departement)}`, tone: "socio" });
   }
   const l24 = c24 ? score("EU24", c24, "lfi") : null;
