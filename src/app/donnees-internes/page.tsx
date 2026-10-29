@@ -23,6 +23,12 @@ const KINDS: { id: string; title: string; help: string; xlsx?: boolean }[] = [
   },
   { id: "groupes", title: "Groupes d'action (format simple)", help: "Colonnes : code_commune ; nom ; membres ; statut ; description." },
   { id: "parrains", title: "Parrainages par commune", help: "Colonnes : code_commune ; parrains (nombre de parrainages, ex. JLM27)." },
+  {
+    id: "municipales-lfi",
+    title: "Municipales 2026 : listes soutenues par LFI",
+    help: "Classeur de synthèse des municipales (Excel, un onglet par situation : liste LFI, union de la gauche menée par LFI, tête de liste d'une autre organisation avec LFI…). Seules les lignes « Ok » comptent comme listes LFI ; « En attente » et « Planté » sont ignorées. Remplace la nuance officielle dans la ligne « Municipales 2026 » des fiches.",
+    xlsx: true,
+  },
 ];
 
 type StmtMeta = { rows: number; communes: number; first: string; last: string; updatedAt: string };

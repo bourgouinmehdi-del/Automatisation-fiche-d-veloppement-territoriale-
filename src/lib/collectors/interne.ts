@@ -58,6 +58,8 @@ export interface InternalData {
   /** Totaux par taille de commune (inscrits) : point de comparaison des communes de même taille. */
   bilanTranches?: (Omit<Bilan, "estime"> & { min: number; max: number; communes: number })[];
   groupes: Groupe[];
+  /** Municipales 2026 : listes soutenues par LFI, par commune (classeur interne). */
+  listesLfi?: Map<string, ListeLfi[]>;
   files: string[];
   /** Lignes non rattachées à une commune (export Action Populaire). */
   unmatched?: number;
@@ -73,7 +75,7 @@ export const BILAN_TRANCHES: [number, number][] = [
   [100000, Infinity],
 ];
 
-export const INTERNAL_FILES = ["parrains.csv", "groupes.csv", "action-populaire.csv", "bilan.csv"] as const;
+export const INTERNAL_FILES = ["parrains.csv", "groupes.csv", "action-populaire.csv", "bilan.csv", "municipales-lfi.csv"] as const;
 
 export const internalDir = () => path.join(config.dataDir, "interne");
 
@@ -220,6 +222,116 @@ export function dedupeBilanGa(b: Map<string, Bilan>): Map<string, Bilan> {
   return out;
 }
 
+/**
+ * Municipales 2026, listes soutenues par LFI (classeur de synthèse interne) : un onglet par situation
+ * (liste LFI, union de la gauche menée par LFI, tête de liste d'une autre organisation avec LFI…),
+ * une ligne par commune ; la 1re colonne donne le statut. Seules les lignes « Ok » comptent
+ * (« En attente » et « Planté », en orange et rouge dans le classeur : pas investies).
+ */
+export interface ListeLfi {
+  code: string;
+  situation: string;
+  statut: string;
+  /** Têtes de liste « Prénom NOM » (une ou deux). */
+  tdl: string[];
+}
+
+/** Situation (phrase de la fiche) d'après le nom de l'onglet. */
+export function situationOf(sheet: string): string {
+  const s = sheet.trim();
+  if (/^liste\s*&\s*tdl\s*fi$/i.test(s)) return "liste LFI";
+  if (/^ug\s*tdl\s*fi$/i.test(s)) return "liste d'union de la gauche menée par LFI";
+  if (/dvg|se\b|cit/i.test(s) && /^tdl/i.test(s)) return "liste divers gauche, sans étiquette ou citoyenne, avec LFI";
+  if (/eelv|[ée]colo/i.test(s)) return "liste menée par les Écologistes, avec LFI";
+  if (/pcf/i.test(s)) return "liste menée par le PCF, avec LFI";
+  if (/g\.?\s*s\b|g[ée]n[ée]ration/i.test(s)) return "liste menée par Génération.s, avec LFI";
+  if (/\bps\b/i.test(s)) return "liste menée par le PS, avec LFI";
+  if (/non identifi/i.test(s)) return "liste avec LFI (tête de liste non identifiée)";
+  return "liste soutenue par LFI";
+}
+
+/** Onglets « ## Sheet name: … » (export texte d'un classeur Google) → onglets en lignes. */
+export function splitSheetsText(text: string): { name: string; rows: string[][] }[] {
+  const parts = text.replace(/^\uFEFF/, "").split(/^## Sheet name:\s*/m).filter((x) => x.trim());
+  return parts.map((p) => {
+    const nl = p.indexOf("\n");
+    const name = (nl < 0 ? p : p.slice(0, nl)).trim();
+    const body = nl < 0 ? "" : p.slice(nl + 1);
+    const rows = Papa.parse<string[]>(body, { header: false, skipEmptyLines: true, delimiter: detectDelimiter(body) || "," }).data;
+    return { name, rows };
+  });
+}
+
+/** Secteurs de Paris et de Marseille → codes des arrondissements. */
+const MARSEILLE_SECTEURS: Record<number, number[]> = { 1: [1, 7], 2: [2, 3], 3: [4, 5], 4: [6, 8], 5: [9, 10], 6: [11, 12], 7: [13, 14], 8: [15, 16] };
+export function arrondissementsOf(nom: string): string[] {
+  const m = nom.match(/^marseille\s+(\d)\s*(?:er|e|ème)?\s+secteur/i);
+  if (m) return (MARSEILLE_SECTEURS[Number(m[1])] ?? []).map((a) => `132${String(a).padStart(2, "0")}`);
+  const p = nom.match(/^paris\s+([\d,\s]+(?:et\s+\d+)?)\s*(?:e|er|ème)?\s*$/i);
+  if (p) return [...p[1].matchAll(/\d+/g)].map((x) => Number(x[0])).filter((a) => a >= 1 && a <= 20).map((a) => `751${String(a).padStart(2, "0")}`);
+  return [];
+}
+
+export function parseMunicipalesLfi(sheets: { name: string; rows: string[][] }[]): { listes: ListeLfi[]; unmatched: string[] } {
+  const listes: ListeLfi[] = [];
+  const unmatched: string[] = [];
+  const n = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/œ/g, "oe").replace(/\bst\b/g, "saint").replace(/[^a-z0-9]+/g, " ").trim();
+  const strip = (x: string) => x.replace(/^(le|la|les|l) /, "");
+  for (const sh of sheets) {
+    const hi = sh.rows.findIndex((r) => r.some((c) => /^commune$/i.test(c.trim())));
+    if (hi < 0) continue;
+    const head = sh.rows[hi].map((c) => c.trim());
+    const ix = (re: RegExp) => head.findIndex((c) => re.test(c));
+    const cCom = ix(/^commune$/i);
+    const cDep = ix(/^d[ée]partement$/i);
+    const cPop = ix(/^population$/i);
+    const tdl = [1, 2].map((k) => [ix(new RegExp(`^tdl ${k} pr[ée]nom$`, "i")), ix(new RegExp(`^tdl ${k} nom$`, "i"))] as const);
+    const situation = situationOf(sh.name);
+    const tdlOf = (r: string[]) => tdl.map(([a, b]) => [a >= 0 ? r[a] : "", b >= 0 ? r[b] : ""].map((x) => (x ?? "").trim()).filter(Boolean).join(" ")).filter(Boolean);
+    for (const r of sh.rows.slice(hi + 1)) {
+      const nom = (r[cCom] ?? "").trim();
+      if (!nom) continue;
+      const depRaw = cDep >= 0 ? (r[cDep] ?? "").trim() : "";
+      const dep = (depRaw.match(/^(\d[\dAB]\d?)\b/i)?.[1] ?? "").toUpperCase().padStart(2, "0");
+      const pop = cPop >= 0 ? Number(String(r[cPop] ?? "").replace(/\s/g, "")) : NaN;
+      // Paris (« Paris 1, 2, 3 et 4 ») et Marseille (« Marseille 3e secteur ») : les arrondissements du secteur.
+      const arr = arrondissementsOf(nom);
+      if (arr.length) {
+        for (const code of arr) listes.push({ code, situation, statut: (r[0] ?? "").trim(), tdl: tdlOf(r) });
+        continue;
+      }
+      let cands = searchCommunes(nom, 30).filter((c) => !dep || c.departement === dep || (dep.length === 2 && c.departement.startsWith(dep)));
+      let exact = cands.filter((c) => n(c.nom) === n(nom) || strip(n(c.nom)) === strip(n(nom)));
+      // Département mal saisi (« Vichy, 63 ») : nom exact et unique en France.
+      if (!exact.length) {
+        const all = searchCommunes(nom, 30).filter((c) => n(c.nom) === n(nom) || strip(n(c.nom)) === strip(n(nom)));
+        if (all.length === 1) (exact = all), (cands = all);
+      }
+      const pick = (exact.length ? exact : cands).sort((a, b) => (Number.isFinite(pop) ? Math.abs((a.population ?? 0) - pop) - Math.abs((b.population ?? 0) - pop) : (b.population ?? 0) - (a.population ?? 0)))[0];
+      if (!pick || (!exact.length && cands.length !== 1)) {
+        unmatched.push(`${nom}${depRaw ? ` (${depRaw})` : ""}`);
+        continue;
+      }
+      listes.push({
+        code: pick.code,
+        situation,
+        statut: (r[0] ?? "").trim(),
+        tdl: tdlOf(r),
+      });
+    }
+  }
+  return { listes, unmatched };
+}
+
+/** Listes → CSV compact enregistré dans data/interne/municipales-lfi.csv. */
+export function listesLfiToCsv(listes: ListeLfi[]): string {
+  const q = (x: string) => (/[;"\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x);
+  return ["code_insee;situation;statut;tdl", ...listes.map((l) => [l.code, l.situation, l.statut, l.tdl.join(" / ")].map(q).join(";"))].join("\n") + "\n";
+}
+
+/** Statut « Ok » : liste investie (les autres ne comptent pas comme listes LFI). */
+export const investie = (l: ListeLfi) => /^ok$/i.test(l.statut.trim());
+
 /** Classeur ou CSV du bilan → CSV compact enregistré dans data/interne/bilan.csv. */
 export function bilanToCsv(rows: Record<string, string>[]) {
   const b = parseBilan(rows);
@@ -241,6 +353,20 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
       if (v != null) out.parrains.set(String(r[cCode]).trim().padStart(5, "0"), v);
     }
     out.files.push("parrains.csv");
+  } catch {
+    /* fichier absent */
+  }
+  try {
+    const rows = await readCsv(path.join(dir, "municipales-lfi.csv"));
+    const m = new Map<string, ListeLfi[]>();
+    for (const r of rows) {
+      const code = String(r.code_insee ?? "").trim();
+      if (!code) continue;
+      const l: ListeLfi = { code, situation: String(r.situation ?? ""), statut: String(r.statut ?? ""), tdl: String(r.tdl ?? "").split(" / ").map((x) => x.trim()).filter(Boolean) };
+      m.set(code, [...(m.get(code) ?? []), l]);
+    }
+    if (m.size) out.listesLfi = m;
+    out.files.push("municipales-lfi.csv");
   } catch {
     /* fichier absent */
   }

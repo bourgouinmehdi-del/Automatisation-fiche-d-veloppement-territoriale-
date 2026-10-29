@@ -134,6 +134,9 @@ table.data thead th { position: sticky; top: 0; z-index: 1; }
 .glance-up { border-left-color: var(--mark); }
 .glance-up .glance-v { color: var(--mark); }
 .glance-down { border-left-color: var(--muted); }
+.glance-socio { border-left-color: var(--accent); }
+.glance-militant { border-left-color: var(--mark); }
+.glance-militant .glance-v { color: var(--mark); }
 .action-card { border: 1px solid var(--line); border-radius: 4px; padding: .85rem 1rem; background: var(--surface); }
 .action-card-prio { border: 2px solid var(--mark); background: var(--mark-soft); }
 .finding { border-left: 3px solid #d7dde6; padding: .3rem 0 .3rem .7rem; }

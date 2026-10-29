@@ -41,6 +41,12 @@ export function compareCol(r: Report): CompareCol {
   const glance: CompareCol["glance"] = {};
   for (const b of blocks) if (b.type === "glance") for (const i of b.items) glance[i.label] = { value: i.value, detail: i.detail };
   const ind = (id: string, level: "commune" | "departement") => r.indicators.find((i) => i.id === id && i.geo.level === level && i.value != null);
+  // Votes (part des voix) : plus dans les chiffres clés de la fiche, mais utiles pour comparer.
+  for (const [id, label] of [["lfi_EU24_exp", "Vote LFI aux européennes 2024"], ["lfi_PR22T1_exp", "Vote Mélenchon à la présidentielle 2022"]] as const) {
+    const c = ind(id, "commune");
+    const d = ind(id, "departement");
+    if (c && !glance[label]) glance[label] = { value: fmtValue(Math.round(c.value!), "%"), detail: d ? `département : ${fmtValue(Math.round(d.value!), "%")}` : undefined };
+  }
   const profil: CompareCol["profil"] = {};
   for (const p of PROFIL) {
     const id = ind(p.id, "commune") ? p.id : p.alt && ind(p.alt, "commune") ? p.alt : p.id;

@@ -9,6 +9,7 @@ import { KIND_LABELS } from "@/lib/analysis/findings";
 import { isSmallSample } from "@/lib/analysis/stats";
 import { fmtDate, fmtValue, scoreColor, territoryName } from "@/lib/format";
 import { cellText, Citations, inlineParts, sourceLabel } from "@/lib/render/cite";
+import { glanceRows } from "@/lib/render/glance";
 import ChartView from "./ChartView";
 import { useVoteMode, VoteModeButtons, VoteModeProvider } from "./voteMode";
 import PresenceBars from "./PresenceBars";
@@ -184,12 +185,16 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         return <PresenceBars key={key} b={b} />;
       case "glance":
         return (
-          <div key={key} className="my-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {b.items.map((i, k) => (
-              <div key={k} className={`glance glance-${i.tone ?? "neutral"}`}>
-                <div className="glance-v text-2xl font-bold tabular-nums"><span>{i.value}</span></div>
-                <div className="text-sm font-semibold">{i.label}</div>
-                {i.detail && <div className="text-xs text-[var(--ink-2)]">{i.detail}</div>}
+          <div key={key} className="my-4 space-y-3">
+            {glanceRows(b.items).map((row, r) => (
+              <div key={r} className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {row.map((i, k) => (
+                  <div key={k} className={`glance glance-${i.tone ?? "neutral"}`}>
+                    <div className="glance-v text-2xl font-bold tabular-nums"><span>{i.value}</span></div>
+                    <div className="text-sm font-semibold">{i.label}</div>
+                    {i.detail && <div className="text-xs text-[var(--ink-2)]">{i.detail}</div>}
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -285,6 +290,16 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         if (!t) return null;
         return (
           <Figure key={key} title={t.title} src={t.sources.map((s) => cit.cite(s))} note={t.note}>
+            {t.legend?.length ? (
+              <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-2)]">
+                {t.legend.map((l) => (
+                  <span key={l.label} className="inline-flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-4 rounded-sm" style={{ background: l.color }} aria-hidden="true" />
+                    {l.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <div className="max-h-[520px] overflow-auto rounded-lg border border-[var(--line)]">
               <table className="data">
                 <thead>
@@ -299,8 +314,8 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
                 <tbody>
                   {t.rows.map((row, i) => (
                     <tr key={i} className={t.highlight?.includes(i) ? "hl" : ""}>
-                      {t.columns.map((c) => (
-                        <td key={c.key} className={c.align === "right" ? "r" : ""}>
+                      {t.columns.map((c, j) => (
+                        <td key={c.key} className={c.align === "right" ? "r" : ""} style={j === 0 && t.rowColors?.[i] ? { borderLeft: `4px solid ${t.rowColors[i]}` } : undefined}>
                           {c.bar && typeof row[c.key] === "number" ? (
                             <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                               <span className="inline-block h-2 w-16 overflow-hidden rounded bg-[var(--line)]" aria-hidden="true">

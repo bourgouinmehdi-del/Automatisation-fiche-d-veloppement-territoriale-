@@ -46,7 +46,7 @@ export interface PosterItem {
 export function posterItems(map: MapSpec): PosterItem[] {
   const out: PosterItem[] = [];
   // Les adresses d'abord (logements sociaux, résidences), les bureaux de vote ensuite : c'est l'échelle du porte-à-porte.
-  const RANG: Record<string, number> = { hlm: 0, residences: 1, bv_prio: 2 };
+  const RANG: Record<string, number> = { residences: 0, hlm: 1, bv_prio: 2 };
   const layers = map.layers
     .map((l, i) => ({ l, i }))
     .filter(({ l }) => l.visible && l.labelMode === "number" && l.labelProperty)
