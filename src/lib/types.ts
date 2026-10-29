@@ -135,6 +135,9 @@ export interface DataTable {
   note?: string;
   /** Indices des lignes mises en évidence (ex. le territoire étudié). */
   highlight?: number[];
+  /** Couleur de la bande à gauche de chaque ligne (catégories), expliquée par `legend`. */
+  rowColors?: (string | null)[];
+  legend?: { label: string; color: string }[];
 }
 
 export interface ChartSpec {
@@ -274,7 +277,7 @@ export type Block =
   /** `sub` : une phrase sous le titre, qui dit à quoi sert la rubrique. */
   | { type: "heading"; text: string; sub?: string }
   /** Chiffres clés rédigés (valeur + comparaison). */
-  | { type: "glance"; items: { label: string; value: string; detail?: string; tone?: "up" | "down" | "neutral" }[] }
+  | { type: "glance"; items: { label: string; value: string; detail?: string; tone?: "up" | "down" | "neutral" | "socio" | "militant" }[] }
   /** Présence militante LFI : barres (parrains, groupes d'action, actions) et moyenne nationale. */
   | {
       type: "presence";

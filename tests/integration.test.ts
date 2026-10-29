@@ -22,6 +22,8 @@ beforeAll(async () => {
   await fs.mkdir(path.join(dir, "interne"), { recursive: true });
   await fs.writeFile(path.join(dir, "interne", "parrains.csv"), "code_commune;parrains\n60159;40\n60382;5\n60057;20\n");
   await fs.writeFile(path.join(dir, "interne", "bilan.csv"), "code_insee;nb_actions;nb_ga_actifs;nb_parrains;inscrits;estime\n60159;60;2;300;25000;0\n60057;20;1;100;20000;0\n60151;5;2;250;3000;0\n60382;1.5;0;6.6;900;1\n01001;9000;1000;80000;9074100;0\n");
+  // Listes soutenues par LFI aux municipales 2026 (classeur interne, fictif) : seules les lignes « Ok » comptent.
+  await fs.writeFile(path.join(dir, "interne", "municipales-lfi.csv"), "code_insee;situation;statut;tdl\n60159;liste d'union de la gauche menée par LFI;Ok;Bruno MARTIN\n60382;liste LFI;Planté;Paul DUPONT\n");
   await fs.writeFile(path.join(dir, "interne", "groupes.csv"), "code_commune;nom;membres;statut\n60159;Groupe d'action fictif;9;actif\n");
   // Export Action Populaire : commune retrouvée par code postal et ville.
   await fs.writeFile(path.join(dir, "interne", "action-populaire.csv"), "Nom;Code postal;Ville;Nombre de membres;Certifié\nGroupe des étudiants;60200;Compiègne;4;Oui\n");
@@ -177,9 +179,12 @@ describe("chaîne de génération (API simulées)", () => {
     expect(headings).toEqual(["Profil sociodémographique de la commune", "Profil politique de la commune", "Que faire ?", "Organiser la venue", ...headings.slice(4)]);
     // Que faire ? : une ligne par type d'action, le nombre de lieux, la liste dépliable.
     const planB = fiche.blocks.find((b) => b.type === "plan") as Extract<(typeof fiche.blocks)[number], { type: "plan" }>;
-    // Les adresses (logements sociaux) d'abord, les bureaux prioritaires ensuite.
-    expect(planB.items[0].label).toBe("Porte-à-porte (logements sociaux)");
-    expect(planB.items[1]).toMatchObject({ label: "Porte-à-porte (bureaux prioritaires)", count: "2 bureaux" });
+    // Résidences étudiantes et foyers, logements sociaux ; bureaux prioritaires seulement sous 500 portes ailleurs.
+    expect(planB.items[0]).toMatchObject({ label: "Porte-à-porte (résidences étudiantes et foyers)" });
+    expect(planB.items[0].count).toMatch(/logements$/);
+    expect(planB.items[0].details[0]).toMatch(/\d logements\)$/);
+    expect(planB.items[1].label).toBe("Porte-à-porte (logements sociaux)");
+    expect(planB.items.some((i) => i.label === "Porte-à-porte (bureaux prioritaires)")).toBe(false);
     expect(planB.items.every((i) => !i.quand)).toBe(true);
     expect(planB.items.some((i) => i.label === "Porte-à-porte (logements sociaux)" && i.details.length > 0)).toBe(true);
     // Accès aux services : pas de pharmacie dans la commune, commissariat loin, mais comme les communes semblables.
@@ -256,7 +261,9 @@ describe("chaîne de génération (API simulées)", () => {
       const bl = report.sections[0].blocks;
       const iM = bl.findIndex((b) => b.type === "paragraph" && /^\*\*Municipales 2026\*\*/.test(b.text));
       const m = bl[iM] as { text: string };
-      expect(m.text).toMatch(/En 2020, il y avait une liste LFI \(« Compiègne insoumise », 6\s%\s?au 1er tour\)/);
+      // Classeur interne : situation et liste retrouvée par sa tête de liste (nuance officielle LUG) ; 2020 : écart de score.
+      expect(m.text).toMatch(/^\*\*Municipales 2026\*\* : liste d'union de la gauche menée par LFI, « La gauche unie » \(tête de liste : Bruno MARTIN\), 30\s%\s?au 1er tour, présente au 2nd tour/);
+      expect(m.text).toMatch(/En 2020 : 6\s%\s?\(« Compiègne insoumise »\), soit 24 points de plus en 2026\./);
       expect(iM).toBeGreaterThan(bl.findIndex((b) => b.type === "heading" && /^Profil politique/.test(b.text)));
       expect(iM).toBeLessThan(bl.findIndex((b) => b.type === "heading" && b.text === "Organiser la venue"));
     }
@@ -453,7 +460,7 @@ describe("chaîne de génération (API simulées)", () => {
     // Nom de la rue ciblée écrit le long de la voie.
     expect(mapSvg(m)).toContain("Rue des Roses</text>");
     const fiche = report.sections[0];
-    expect(fiche.blocks.some((b) => b.type === "paragraph" && /Priorité\*\* : porte-à-porte dans les logements sociaux de la rue des Roses \(500 logements\).*, puis dans /.test(b.text))).toBe(true);
+    expect(fiche.blocks.some((b) => b.type === "paragraph" && /Priorité\*\* : porte-à-porte dans les 3 résidences du Crous et foyers de jeunes travailleurs, puis dans les logements sociaux de la rue des Roses \(500 logements\)/.test(b.text))).toBe(true);
     const porte = report.sections.find((s) => s.id === "PORTE")!;
     expect(porte.blocks.some((b) => b.type === "paragraph" && /Résidences HLM du bureau/.test(b.text))).toBe(true);
   });
@@ -486,7 +493,10 @@ describe("chaîne de génération (API simulées)", () => {
   it("présidentielle 2022 (Mélenchon) à côté des européennes dans la fiche", () => {
     const fiche = report.sections[0];
     const glance = fiche.blocks.find((b) => b.type === "glance") as Extract<(typeof fiche.blocks)[number], { type: "glance" }>;
-    expect(glance.items.map((i) => i.label)).toEqual(expect.arrayContaining(["Vote LFI aux européennes 2024", "Vote Mélenchon à la présidentielle 2022"]));
+    // Chiffres clés : habitants et socio (violet), puis présence militante (rouge) ; plus de votes.
+    expect(glance.items[0]).toMatchObject({ label: "Habitants", tone: "socio" });
+    expect(glance.items.filter((i) => i.tone === "militant").map((i) => i.label)).toEqual(["Groupes d'action actifs", "Parrains et marraines", "Actions en 2026"]);
+    expect(glance.items.some((i) => /^Vote/.test(i.label))).toBe(false);
     const bv = report.tables.find((t) => t.id === "lfi_bureaux")!;
     expect(bv.columns.map((c) => c.key)).toEqual(expect.arrayContaining(["lfi2", "lfi2exp"]));
     expect(report.maps.some((m) => m.id === "lfi_map_bv_p22")).toBe(true);

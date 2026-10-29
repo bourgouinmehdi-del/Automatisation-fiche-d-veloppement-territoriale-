@@ -1,4 +1,5 @@
 import { ICONS } from "./icons";
+import { glanceRows } from "./glance";
 import { niveauAcces } from "./indice";
 import { splitWarnings } from "../report/warnings";
 import { presenceRef, presenceScale, presenceValue } from "./presence";
@@ -39,17 +40,19 @@ const LEVEL_LABEL: Record<string, string> = { commune: "Commune", epci: "Interco
 function tableHtml(t: DataTable, cit: Citations) {
   const refs = t.sources.map((s) => cit.cite(s));
   const rowUnit = (r: Record<string, string | number | null>) => (r.unite as string | undefined) ?? undefined;
-  return `<figure class="tbl"><figcaption>${esc(t.title)}</figcaption><table><thead><tr>${t.columns.map((c) => `<th class="${c.align === "right" ? "r" : ""}${c.wide ? " w" : ""}">${esc(c.label)}</th>`).join("")}</tr></thead><tbody>${t.rows
+  const legend = t.legend?.length ? `<div class="tleg">${t.legend.map((l) => `<span><i style="background:${l.color}"></i>${esc(l.label)}</span>`).join("")}</div>` : "";
+  return `<figure class="tbl"><figcaption>${esc(t.title)}</figcaption>${legend}<table><thead><tr>${t.columns.map((c) => `<th class="${c.align === "right" ? "r" : ""}${c.wide ? " w" : ""}">${esc(c.label)}</th>`).join("")}</tr></thead><tbody>${t.rows
     .map(
       (r, i) =>
         `<tr${t.highlight?.includes(i) ? ' class="hl"' : ""}>${t.columns
-          .map((c) => {
+          .map((c, j) => {
             const unit = c.unit ?? (c.key !== "indicateur" && c.key !== "annee" ? rowUnit(r) : undefined);
+            const band = j === 0 && t.rowColors?.[i] ? ` style="border-left:1.4mm solid ${t.rowColors[i]}"` : "";
             if (c.bar && typeof r[c.key] === "number") {
               const v = r[c.key] as number;
               return `<td class="sb"><span class="sbar"><span style="width:${Math.max(2, Math.min(100, v))}%;background:${scoreColor(v)}"></span></span><b>${v}</b></td>`;
             }
-            return `<td class="${c.align === "right" ? "r" : ""}">${inline(cellText(r[c.key], unit))}</td>`;
+            return `<td class="${c.align === "right" ? "r" : ""}"${band}>${inline(cellText(r[c.key], unit))}</td>`;
           })
           .join("")}</tr>`,
     )
@@ -248,9 +251,10 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
     case "glance":
       if (style === "yonne")
         return `<ul class="yl">${b.items.map((i) => `<li>${esc(i.label)} : <strong>${esc(i.value)}</strong>${i.detail ? ` (${esc(i.detail)})` : ""}</li>`).join("")}</ul>`;
-      return `<div class="glance">${b.items
-        .map((i) => `<div class="gl ${i.tone ?? "neutral"}"><div class="gl-v">${esc(i.value)}</div><div class="gl-l">${esc(i.label)}</div>${i.detail ? `<div class="gl-d">${esc(i.detail)}</div>` : ""}</div>`)
-        .join("")}</div>`;
+      // Une ligne par famille (habitants en violet, présence militante en rouge).
+      return glanceRows(b.items)
+        .map((row) => `<div class="glance">${row.map((i) => `<div class="gl ${i.tone ?? "neutral"}"><div class="gl-v">${esc(i.value)}</div><div class="gl-l">${esc(i.label)}</div>${i.detail ? `<div class="gl-d">${esc(i.detail)}</div>` : ""}</div>`).join("")}</div>`)
+        .join("");
     case "services": {
       const faibles = b.faibles.length
         ? `<div class="sv-sub">Points faibles</div><ul class="sv-l">${b.faibles.map((f) => `<li><span class="sv-i">${ICONS[f.cat] ?? ""}</span><b>${esc(f.label)}</b> : ${esc(f.txt)}</li>`).join("")}</ul>`
@@ -367,9 +371,13 @@ h3.fh { font-size: 15pt; font-weight: 800; color: #4c0297; margin: 7mm 0 3mm; pa
 .callout.info { border-color: #e9e3d3; background: #fffcf4; }
 .callout-t { font-weight: 700; margin-bottom: 1mm; }
 .callout.terrain { border-color: #1baf7a; background: #f1faf6; }
+.tleg { display: flex; flex-wrap: wrap; gap: 1mm 4mm; font-size: 8pt; margin: 0 0 1.5mm; }
+.tleg span { display: inline-flex; align-items: center; gap: 1.2mm; }
+.tleg i { display: inline-block; width: 4mm; height: 2.4mm; border-radius: .5mm; }
 .glance { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin: 4mm 0 3mm; break-inside: avoid; }
 .gl { border: 0; border-left: 1mm solid #e9e3d3; padding: .5mm 0 .5mm 3mm; }
 .gl.up { border-left-color: #d1271c; } .gl.up .gl-v { color: #d1271c; } .gl.down { border-left-color: #85877f; }
+.gl.socio { border-left-color: #4c0297; } .gl.militant { border-left-color: #d1271c; } .gl.militant .gl-v { color: #d1271c; }
 .sv-ix { font-size: 9.5pt; margin: 1mm 0 3mm; border: 1px solid #e7e6e2; border-radius: 1.5mm; padding: 2mm 3mm; }
 .sv-g { margin-top: 2mm; font-size: 8.6pt; border-collapse: collapse; }
 .sv-g td { padding: 1mm 2mm 1mm 0; vertical-align: top; border: 0; border-bottom: 1px solid #f0efec; }

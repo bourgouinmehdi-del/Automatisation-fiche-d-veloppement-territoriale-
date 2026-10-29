@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { INTERNAL_FILES, bilanToCsv, internalDir, internalSummary, parseCsv, parseGroupes } from "@/lib/collectors/interne";
+import { INTERNAL_FILES, bilanToCsv, internalDir, internalSummary, investie, listesLfiToCsv, parseCsv, parseGroupes, parseMunicipalesLfi, splitSheetsText } from "@/lib/collectors/interne";
 import { readXlsx, sheetObjects } from "@/lib/collectors/xlsx";
 
 export const runtime = "nodejs";
@@ -40,6 +40,28 @@ export async function POST(req: Request) {
     await fs.mkdir(internalDir(), { recursive: true });
     await fs.writeFile(path.join(internalDir(), name), csv);
     return NextResponse.json({ ok: true, info: `${n.toLocaleString("fr-FR")} communes`, summary: await internalSummary() });
+  }
+  if (kind === "municipales-lfi") {
+    // Classeur de synthèse (un onglet par situation) : Excel, ou texte « ## Sheet name: … » exporté du tableur.
+    let sheets: { name: string; rows: string[][] }[] = [];
+    if (buf[0] === 0x50 && buf[1] === 0x4b) {
+      try {
+        sheets = [...readXlsx(new Uint8Array(buf))].map(([name, rows]) => ({ name, rows }));
+      } catch {
+        return NextResponse.json({ error: "Classeur illisible : fichier Excel (.xlsx) attendu" }, { status: 400 });
+      }
+    } else {
+      const text = buf.toString("utf8");
+      // Un seul onglet exporté en CSV : la situation se lit dans le nom du fichier (« … - UG TDL FI.csv »).
+      const fname = file instanceof File ? file.name.replace(/\.[^.]+$/, "") : "";
+      sheets = /^## Sheet name:/m.test(text) ? splitSheetsText(text) : splitSheetsText(`## Sheet name: ${fname.split(" - ").pop() ?? fname}\n${text}`);
+    }
+    const { listes, unmatched } = parseMunicipalesLfi(sheets);
+    if (!listes.length) return NextResponse.json({ error: "Aucune commune lue : un onglet par situation, colonnes « Département », « Commune », « TDL 1 Prénom », « TDL 1 NOM » attendues" }, { status: 400 });
+    await fs.mkdir(internalDir(), { recursive: true });
+    await fs.writeFile(path.join(internalDir(), name), listesLfiToCsv(listes));
+    const ok = listes.filter(investie).length;
+    return NextResponse.json({ ok: true, info: `${ok.toLocaleString("fr-FR")} listes investies (« Ok »), ${(listes.length - ok).toLocaleString("fr-FR")} en attente ou plantées${unmatched.length ? ` ; commune non reconnue : ${unmatched.slice(0, 5).join(", ")}${unmatched.length > 5 ? "…" : ""}` : ""}`, summary: await internalSummary() });
   }
   // UTF-8 attendu ; repli ISO-8859-1 (exports de tableurs).
   let text = buf.toString("utf8");
