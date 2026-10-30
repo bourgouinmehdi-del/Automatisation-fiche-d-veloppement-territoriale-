@@ -1,4 +1,4 @@
-import { fmtValue } from "../format";
+import { fmtNumber, fmtValue } from "../format";
 import type { Block, ChartSpec, Report } from "../types";
 
 /**
@@ -39,13 +39,18 @@ export function compareCol(r: Report): CompareCol {
   const fiche = r.sections.find((s) => s.id === "LFI");
   const blocks = fiche?.blocks ?? [];
   const glance: CompareCol["glance"] = {};
-  for (const b of blocks) if (b.type === "glance") for (const i of b.items) glance[i.label] = { value: i.value, detail: i.detail };
+  // Chiffres clés : habitants, présence militante et votes ; la pauvreté, le revenu et le logement social sont
+  // dans le « Profil » (mêmes lignes pour toutes les communes : une petite commune sans taux de pauvreté publié
+  // aurait sinon une ligne « revenu médian » à part). Libellé unique quel que soit le nombre (« Groupe » / « Groupes »).
+  const canon = (l: string) => (/^groupes? d'action actifs?$/i.test(l) ? "Groupes d'action actifs" : l);
+  for (const b of blocks) if (b.type === "glance") for (const i of b.items) if (i.tone !== "socio" || i.label === "Habitants") glance[canon(i.label)] = { value: i.value, detail: i.detail };
   const ind = (id: string, level: "commune" | "departement") => r.indicators.find((i) => i.id === id && i.geo.level === level && i.value != null);
   // Votes (part des voix) : plus dans les chiffres clés de la fiche, mais utiles pour comparer.
   for (const [id, label] of [["lfi_EU24_exp", "Vote LFI aux européennes 2024"], ["lfi_PR22T1_exp", "Vote Mélenchon à la présidentielle 2022"]] as const) {
     const c = ind(id, "commune");
     const d = ind(id, "departement");
-    if (c && !glance[label]) glance[label] = { value: fmtValue(Math.round(c.value!), "%"), detail: d ? `département : ${fmtValue(Math.round(d.value!), "%")}` : undefined };
+    const p = (v: number) => `${fmtNumber(Math.round(v))}\u00a0%`;
+    if (c && !glance[label]) glance[label] = { value: p(c.value!), detail: d ? `département : ${p(d.value!)}` : undefined };
   }
   const profil: CompareCol["profil"] = {};
   for (const p of PROFIL) {
@@ -53,7 +58,9 @@ export function compareCol(r: Report): CompareCol {
     const c = ind(id, "commune");
     if (!c) continue;
     const d = ind(id, "departement");
-    profil[p.label] = { value: fmtValue(c.value!, c.unit), dep: d ? fmtValue(d.value!, d.unit) : undefined };
+    // Comme dans la fiche : parts arrondies, revenu par mois.
+    const f = (v: number, unit: string) => (unit === "€" ? `${fmtNumber(Math.round(v / 12 / 10) * 10)}\u00a0€` : unit === "%" ? `${fmtNumber(Math.round(v))}\u00a0%` : fmtValue(v, c.unit));
+    profil[p.label] = { value: f(c.value!, c.unit), dep: d ? f(d.value!, d.unit) : undefined };
   }
   // Synthèse : la première liste sans titre de la fiche (points clés en tête).
   const synthBlock = blocks.find((b) => b.type === "list" && !b.title) as Extract<Block, { type: "list" }> | undefined;
