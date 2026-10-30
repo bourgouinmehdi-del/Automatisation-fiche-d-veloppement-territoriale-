@@ -71,6 +71,15 @@ export const SOURCES: Record<string, SourceInfo> = {
     access: "Classeur Excel déposé dans « Données internes », sinon copie embarquée dans l'application.",
     limits: "« Présent au catalogue » ne veut pas dire « ouvert » ni « libre » ; le nombre total de logements n'est pas toujours renseigné. Résidences rattachées à la commune par leur position.",
   },
+  deputes: {
+    id: "deputes",
+    name: "Députés actifs de l'Assemblée nationale (Datan, data.gouv.fr)",
+    producer: "Datan, d'après l'open data de l'Assemblée nationale",
+    homepage: "https://www.data.gouv.fr/datasets/deputes-actifs-de-lassemblee-nationale-informations-et-statistiques",
+    license: "Licence Ouverte 2.0",
+    access: "Fichier CSV mis à jour chaque jour ; contours des circonscriptions (data.gouv.fr) pour la distance à la commune.",
+    limits: "Groupe parlementaire LFI-NFP. Distance à vol d'oiseau entre le centre de la commune et la circonscription (40 km au plus).",
+  },
   circonscriptions: {
     id: "circonscriptions",
     name: "Contours géographiques des circonscriptions législatives (data.gouv.fr)",

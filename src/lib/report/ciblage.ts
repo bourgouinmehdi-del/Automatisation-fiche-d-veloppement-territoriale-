@@ -312,7 +312,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
     { key: "inscrits", label: "Électeurs inscrits", align: "right" as const },
     { key: "lfi22", label: "Vote Mélenchon 2022", align: "right" as const },
     { key: "lfi24", label: "Vote LFI 2024 (européennes)", align: "right" as const },
-    ...(hasParrains ? [{ key: "parrains", label: "Parrains", align: "right" as const }] : []),
+    ...(hasParrains ? [{ key: "parrains", label: "Soutiens JLM2027", align: "right" as const }] : []),
     { key: "abst22", label: "N'ont pas voté (présidentielle 2022)", align: "right" as const },
     { key: "abst24", label: `N'ont pas voté (${abstLabel})`, align: "right" as const },
   ];
@@ -344,7 +344,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       rows.push(lineOf(u.nom, { e24: e, p22: p.length ? merge(p) : null, lg: lgs.length && lgs.every(Boolean) ? merge(lgs as Agg[]) : null, parrains: hasParrains ? all.reduce((s, m) => s + (c.interne.parrains.get(m) ?? 0), 0) : null }));
     }
     rows.push(depRow);
-    out.tables.push({ id: tid, title: `${u.nom} — vote LFI, parrainages et abstention`, theme: "strategie", columns: colsPol, rows, highlight: [0], sources: [...src, ...(hasParrains ? [interneSrc] : [])], note: "Nombre de voix (ou de parrains, ou d'inscrits qui n'ont pas voté) ; entre parenthèses, la part des électeurs inscrits." });
+    out.tables.push({ id: tid, title: `${u.nom} — vote LFI, soutiens JLM2027 et abstention`, theme: "strategie", columns: colsPol, rows, highlight: [0], sources: [...src, ...(hasParrains ? [interneSrc] : [])], note: "Nombre de voix (ou de parrains, ou d'inscrits qui n'ont pas voté) ; entre parenthèses, la part des électeurs inscrits." });
 
     const ev: string[] = [];
     const rang = ranked.indexOf(u) + 1;
@@ -367,10 +367,10 @@ export function buildCiblage(c: Collected): CiblageOutput {
     }
     if (u.ratio != null && depRatio) {
       const r = u.ratio / depRatio;
-      const e2 = indOf(u, "ciblage_ratio_parrains", "Parrains pour 100 voix LFI (E24)", 100 * u.ratio, "nombre", interneSrc);
+      const e2 = indOf(u, "ciblage_ratio_parrains", "Soutiens JLM2027 pour 100 voix LFI (E24)", 100 * u.ratio, "nombre", interneSrc);
       if (e2) ev.push(e2);
-      if (r >= 1.3) raisons.push(`Beaucoup de parrains au regard des voix LFI (${fmtNumber(r, 1)} fois plus que la moyenne du département) : ${B("de bonnes chances de trouver de futurs militants")}.`);
-      else if (r <= 0.7) raisons.push(`${B("Peu de parrains")} au regard des voix LFI (${fmtNumber(r, 1)} fois la moyenne du département) : il faudra surtout accompagner les nouveaux militants.`);
+      if (r >= 1.3) raisons.push(`Beaucoup de soutiens JLM2027 au regard des voix LFI (${fmtNumber(r, 1)} fois plus que la moyenne du département) : ${B("de bonnes chances de trouver de futurs militants")}.`);
+      else if (r <= 0.7) raisons.push(`${B("Peu de soutiens JLM2027")} au regard des voix LFI (${fmtNumber(r, 1)} fois la moyenne du département) : il faudra surtout accompagner les nouveaux militants.`);
     }
     if (u.kind === "commune" && collees.has(u.codes[0])) raisons.push(`Commune voisine de ${voisinDe(u.codes[0]) ?? "la grande ville"} : score abaissé, la ville proche rayonne déjà.`);
     if (u.groupes.length) raisons.push(`Groupe${u.groupes.length > 1 ? "s" : ""} d'action : ${u.groupes.map((g) => `« ${g.nom} »${g.membres != null ? ` (${g.membres} membres)` : ""}`).join(", ")}.`);
@@ -392,7 +392,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       { key: "lfi", label: "Vote LFI 2024 (% des inscrits)", align: "right" },
       { key: "surperf", label: "Écart aux villes de même taille (points)", align: "right" },
       { key: "abst", label: `N'ont pas voté (${abstLabel})`, align: "right" },
-      ...(hasParrains ? [{ key: "ratio", label: "Parrains pour 100 voix LFI", align: "right" as const }] : []),
+      ...(hasParrains ? [{ key: "ratio", label: "Soutiens JLM2027 pour 100 voix LFI", align: "right" as const }] : []),
       ...(groupesFournis || c.interne.bilan ? [{ key: "groupe", label: "Groupes d'action" }] : []),
       ...(c.municipalDep ? [{ key: "mairie", label: "Mairie (2026)" }] : []),
       { key: "score", label: "Score (0 à 100)", bar: true },
@@ -411,7 +411,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
     })),
     highlight: ranked.slice(0, 20).map((u, i) => (chosen.includes(u) ? i : -1)).filter((i) => i >= 0),
     sources: [...src, ...(hasParrains || c.interne.files.length ? [interneSrc] : []), ...(c.municipalDep ? [c.municipalDep.source] : [])],
-    note: `${bigCities.length ? `${bigCities.length > 1 ? "Les deux villes les plus peuplées" : "La ville la plus peuplée"} (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) ${bigCities.length > 1 ? "restent" : "reste"} hors ciblage ; dans les départements sans ville de 20 000 habitants, toutes les communes sont classées. ` : "Aucune ville de 20 000 habitants ou plus : toutes les communes sont classées, chef-lieu compris. "}${partagees.length ? `Communes partagées avec une autre circonscription (résultats de toute la commune) : ${partagees.map((x) => `${x.nom} (${Math.round(100 * (shares!.get(x.code) ?? 0))} % de sa surface)`).join(", ")}. ` : ""}Score de 0 à 100 : 100 pour le territoire le mieux placé du classement, 0 pour le moins bien placé. Il combine le vote LFI comparé aux villes de même taille (${Math.round(w.o * 100)} %), l'écart d'abstention au département aux ${abstLabel} (${Math.round(w.a * 100)} %)${hasParrains ? `, les parrains au regard des voix (${Math.round(w.r * 100)} %)` : ""} et le nombre de voix LFI (${Math.round(w.v * 100)} %) ; les territoires déjà couverts (groupe de 20 membres ou plus, ou groupe au chef-lieu)${bigFeats.length ? ` et les communes collées à ${joinFr(bigCities.map((k) => ref.byCode.get(k)?.nom ?? k))}` : ""} sont pénalisés. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
+    note: `${bigCities.length ? `${bigCities.length > 1 ? "Les deux villes les plus peuplées" : "La ville la plus peuplée"} (${bigCities.map((k) => ref.byCode.get(k)?.nom).join(", ")}) ${bigCities.length > 1 ? "restent" : "reste"} hors ciblage ; dans les départements sans ville de 20 000 habitants, toutes les communes sont classées. ` : "Aucune ville de 20 000 habitants ou plus : toutes les communes sont classées, chef-lieu compris. "}${partagees.length ? `Communes partagées avec une autre circonscription (résultats de toute la commune) : ${partagees.map((x) => `${x.nom} (${Math.round(100 * (shares!.get(x.code) ?? 0))} % de sa surface)`).join(", ")}. ` : ""}Score de 0 à 100 : 100 pour le territoire le mieux placé du classement, 0 pour le moins bien placé. Il combine le vote LFI comparé aux villes de même taille (${Math.round(w.o * 100)} %), l'écart d'abstention au département aux ${abstLabel} (${Math.round(w.a * 100)} %)${hasParrains ? `, les soutiens JLM2027 au regard des voix (${Math.round(w.r * 100)} %)` : ""} et le nombre de voix LFI (${Math.round(w.v * 100)} %) ; les territoires déjà couverts (groupe de 20 membres ou plus, ou groupe au chef-lieu)${bigFeats.length ? ` et les communes collées à ${joinFr(bigCities.map((k) => ref.byCode.get(k)?.nom ?? k))}` : ""} sont pénalisés. Groupements : bourgs de 1 000 à 2 500 habitants d'une même intercommunalité.`,
   });
 
   // Carte des cibles.
@@ -523,7 +523,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
     // Les critères dits en clair, dès le début (retour d'Édouard : « sur quels critères repose la proposition ? »).
     {
       type: "paragraph" as const,
-      text: `${B("Comment ces territoires sont choisis")} : ${circo ? "toutes les communes de la circonscription" : "les villes de 2 500 habitants et plus et les groupements de petites communes d'une même intercommunalité"} sont classées sur quatre critères. Le vote LFI comparé aux communes de même taille (${Math.round(w.o * 100)} %) ; l'abstention aux législatives 2024 comparée au département (${Math.round(w.a * 100)} %) : des électeurs à aller chercher ; ${w.r ? `les parrains au regard des voix LFI (${Math.round(w.r * 100)} %) : des soutiens déjà présents ; ` : ""}le nombre de voix LFI (${Math.round(w.v * 100)} %). Sont pénalisés les territoires déjà bien couverts (groupe d'action de 20 membres ou plus, ou groupe au chef-lieu) et les communes collées aux plus grandes villes. Deux propositions au plus par intercommunalité, pour couvrir tout le département. Le classement complet est en fin de partie.`,
+      text: `${B("Comment ces territoires sont choisis")} : ${circo ? "toutes les communes de la circonscription" : "les villes de 2 500 habitants et plus et les groupements de petites communes d'une même intercommunalité"} sont classées sur quatre critères. Le vote LFI comparé aux communes de même taille (${Math.round(w.o * 100)} %) ; l'abstention aux législatives 2024 comparée au département (${Math.round(w.a * 100)} %) : des électeurs à aller chercher ; ${w.r ? `les soutiens JLM2027 au regard des voix LFI (${Math.round(w.r * 100)} %) : des soutiens déjà présents ; ` : ""}le nombre de voix LFI (${Math.round(w.v * 100)} %). Sont pénalisés les territoires déjà bien couverts (groupe d'action de 20 membres ou plus, ou groupe au chef-lieu) et les communes collées aux plus grandes villes. Deux propositions au plus par intercommunalité, pour couvrir tout le département. Le classement complet est en fin de partie.`,
     },
     // Les grandes villes en tête du classement mais écartées : dit dès le début, pas seulement sous le tableau.
     ...(() => {

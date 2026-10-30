@@ -18,6 +18,7 @@ import type { Quartier } from "../collectors/quartiers";
 import { NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
 import { investie } from "../collectors/interne";
 import { BPE_VINTAGE, BPE_TYPES } from "../collectors/bpe";
+import { circoLabel } from "../collectors/carto";
 import { fmtDuration } from "../collectors/routes";
 import { hlmByStreet, numsLabel } from "../collectors/rpls";
 import { nearestStation } from "../collectors/carto";
@@ -294,6 +295,8 @@ export function voteCompare(c: number, d: number): { dir: "plus" | "moins" | "au
 }
 
 /** Scores nationaux du vote LFI (% des exprimés), repère d'un « terrain favorable ». */
+/** Tractage devant les grandes surfaces : désactivé (parkings privés). */
+const SUPERMARCHES = false;
 /** En dessous de ce nombre de portes (logements sociaux et résidences), le porte-à-porte par bureau de vote est proposé en plus. */
 const PORTES_SANS_BUREAUX = 500;
 export const LFI_NATIONAL = { EU24: 9.89, PR22T1: 21.95 };
@@ -558,6 +561,29 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       sources: [...new Map(cols.map((x) => [x.a.source.dataset ?? x.a.source.id, x.a.source])).values()],
       note: `Seuls figurent les chiffres où la commune se distingue nettement du département${cols.length > kept.length ? " (et, pour repère, la pauvreté, le revenu, le chômage et le logement social)" : ""}. Revenu médian : la moitié des habitants gagne plus, l'autre moitié moins (par personne, après impôts et aides). Tous les chiffres : diagnostic complet, partie B.`,
     });
+  }
+  // Âges des habitants (retour de Menal) : tranches du recensement, commune, département et France.
+  {
+    const agesOf = (lvl: string) => c.insee.find((x) => x.geo.level === lvl)?.result.ages ?? null;
+    const ac = multi ? null : agesOf("commune");
+    if (ac?.length) {
+      const refs = [
+        { nom: commune.nom, a: ac },
+        { nom: geos.departement.name, a: agesOf("departement") },
+        { nom: "France", a: agesOf("france") },
+      ].filter((r): r is { nom: string; a: NonNullable<typeof ac> } => !!r.a?.length);
+      const src = c.insee.find((x) => x.geo.level === "commune")?.result.agesSource;
+      out.tables.push({
+        id: "lfi_ages",
+        title: "Âge des habitants",
+        theme: "strategie",
+        columns: [{ key: "territoire", label: "", wide: true }, ...ac.map((x, i) => ({ key: `a${i}`, label: x.label, align: "right" as const }))],
+        rows: refs.map((r) => ({ territoire: r.nom, ...Object.fromEntries(ac.map((x, i) => [`a${i}`, pp(r.a.find((y) => y.label === x.label)?.share)])) })),
+        highlight: [0],
+        sources: src ? [src] : [],
+        note: "Part des habitants de chaque tranche d'âge (recensement de la population, INSEE).",
+      });
+    }
   }
   // Phrase d'introduction en langage courant.
   const popI = get("pop_municipale", geos.commune);
@@ -862,14 +888,14 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     });
     out.tables.push({
       id: "lfi_politique",
-      title: "Vote LFI, parrainages et abstention",
+      title: "Vote LFI, soutiens JLM2027 et abstention",
       theme: "strategie",
       columns: [
         { key: "territoire", label: "", wide: true },
         { key: "inscrits", label: "Inscrits (2024)", align: "right" },
         { key: "lfi22", label: "LFI (P22)", align: "right" },
         { key: "lfi24", label: "LFI (E24)", align: "right" },
-        ...(parrains != null || depParrains ? [{ key: "parrains", label: "Parrains", align: "right" as const }] : []),
+        ...(parrains != null || depParrains ? [{ key: "parrains", label: "Soutiens JLM2027", align: "right" as const }] : []),
         { key: "abst22", label: "Abstention (2022)", align: "right" },
         { key: "abst24", label: "Abstention (E24)", align: "right" },
         ...(cL ? [{ key: "abstL", label: "Abstention (L24)", align: "right" as const }] : []),
@@ -970,7 +996,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
           ...(c24 ? [{ key: "gauche24", label: "Gauche hors LFI européennes 2024", align: "right" as const }] : []),
           ...(c22 ? [{ key: "mel22", label: "Vote Mélenchon présidentielle 2022", align: "right" as const }] : []),
           ...(abstRef ? [{ key: "abst24", label: `N'ont pas voté (${abstRef.short})`, align: "right" as const }] : []),
-          ...(hasPar ? [{ key: "parrains", label: "Parrains et marraines", align: "right" as const }] : []),
+          ...(hasPar ? [{ key: "parrains", label: "Soutiens JLM2027", align: "right" as const }] : []),
         ],
         rows: vRows,
         highlight: [0],
@@ -1033,11 +1059,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         const r2 = depParrains / ds.voix;
         parrainsRatio = { r1, r2 };
         const src: SourceRef = { id: "interne", name: "Données militantes internes (parrains.csv)", url: "data/interne/parrains.csv", retrievedAt: new Date().toISOString() };
-        out.indicators.push({ id: "parrains_pour_100_voix", label: "Parrains pour 100 voix LFI (E24)", theme: "strategie", value: r1 * 100, unit: "nombre", year: "2024", geo: geos.commune, source: src, status: "ok", method: "Parrains / voix LFI aux européennes 2024 × 100." });
-        out.indicators.push({ id: "parrains_pour_100_voix", label: "Parrains pour 100 voix LFI (E24)", theme: "strategie", value: r2 * 100, unit: "nombre", year: "2024", geo: geos.departement, source: src, status: "ok", method: "Parrains / voix LFI aux européennes 2024 × 100." });
+        out.indicators.push({ id: "parrains_pour_100_voix", label: "Soutiens JLM2027 pour 100 voix LFI (E24)", theme: "strategie", value: r1 * 100, unit: "nombre", year: "2024", geo: geos.commune, source: src, status: "ok", method: "Parrains / voix LFI aux européennes 2024 × 100." });
+        out.indicators.push({ id: "parrains_pour_100_voix", label: "Soutiens JLM2027 pour 100 voix LFI (E24)", theme: "strategie", value: r2 * 100, unit: "nombre", year: "2024", geo: geos.departement, source: src, status: "ok", method: "Parrains / voix LFI aux européennes 2024 × 100." });
         const ratio = r1 / r2;
         /** « 1 parrain ou marraine pour 70 électeurs insoumis ». */
-        const perVoters = (r: number, short = false) => (r >= 0.5 ? `${fmtNumber(Math.round(r * 10) / 10, 1)} ${short ? "" : "parrains et marraines "}par électeur insoumis`.replace("  ", " ") : `1 ${short ? "" : "parrain ou marraine "}pour ${fmtNumber(Math.round(1 / r))}${short ? "" : " électeurs insoumis"}`);
+        const perVoters = (r: number, short = false) => (r >= 0.5 ? `${fmtNumber(Math.round(r * 10) / 10, 1)} ${short ? "" : "soutiens JLM2027 "}par électeur insoumis`.replace("  ", " ") : `1 ${short ? "" : "soutien JLM2027 "}pour ${fmtNumber(Math.round(1 / r))}${short ? "" : " électeurs insoumis"}`);
         ids.parrains.push(
           addF({
             kind: r1 > r2 * 1.2 ? "atout" : r1 < r2 * 0.8 ? "vigilance" : "constat",
@@ -1880,9 +1906,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     }
     return `${tidy(e.nom).replace(/\s+-\s+/g, " – ")}${adr ? ` (${adr})` : ""}`;
   };
-  // Grandes surfaces : enseignes des grands groupes encore ouvertes (OpenStreetMap) et desservies en transports en commun.
-  // La BPE n'est pas utilisée ici : raisons sociales et établissements fermés (« Aldachanie »).
-  for (const g of c.grandesSurfaces?.list ?? [])
+  // Grandes surfaces : plus proposées (retour de Menal) — parkings privés, le tractage y est interdit sans
+  // l'accord du magasin. Gardé en code pour une éventuelle liste « signalée par les militants ».
+  for (const g of SUPERMARCHES ? (c.grandesSurfaces?.list ?? []) : [])
   {
     // Desserte parlante : la station la plus proche plutôt qu'un nombre d'arrêts.
     const st = nearestStation(c.stationsTC?.list ?? [], g.lon, g.lat, 0.7);
@@ -2059,7 +2085,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const implant: string[] = [];
   if (sansGroupe) implant.push("Aucun groupe d'action référencé : envisager la création d'un groupe local, encadré par un groupe voisin actif.");
   else if (gaAilleurs) implant.push(`Aucun groupe d'action actif dans la commune : s'appuyer sur ${gaVoisins.length > 1 ? "ceux" : "celui"} de ${voisinsTxt} pour en créer un.`);
-  if (parrainsRatio && parrainsRatio.r1 < parrainsRatio.r2 * 0.8) implant.push("Prévoir l'encadrement des nouveaux sympathisants : un futur groupe serait majoritairement composé de personnes n'ayant pas encore parrainé.");
+  if (parrainsRatio && parrainsRatio.r1 < parrainsRatio.r2 * 0.8) implant.push("Prévoir l'encadrement des nouveaux sympathisants : un futur groupe serait majoritairement composé de personnes qui n'ont pas encore signé le soutien à JLM2027.");
   if (implant.length) actionGroups.push({ title: "Implantation", items: implant });
   /* Plan d'action : un tableau court (où, quand, pourquoi) au lieu d'une liste de pistes. */
   // Chaque ligne dit où, pourquoi (chiffre à l'appui) et quand (créneau adapté au public visé).
@@ -2309,7 +2335,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const ga = bilan ? Math.round(bilan.ga) : groupes.length;
     if (bilan || groupes.length) glance.push({ label: ga > 1 ? "Groupes d'action actifs" : "Groupe d'action actif", value: fmtNumber(ga), detail: tr ? ref(tr.ga) : undefined, tone: "militant" });
     const par = bilan ? bilan.parrains : parrains;
-    if (par != null) glance.push({ label: "Parrains et marraines", value: fmtNumber(Math.round(par)), detail: tr ? ref(tr.parrains) : undefined, tone: "militant" });
+    if (par != null) glance.push({ label: "Soutiens JLM2027", value: fmtNumber(Math.round(par)), detail: tr ? ref(tr.parrains) : undefined, tone: "militant" });
     if (bilan) glance.push({ label: "Actions en 2026", value: fmtNumber(Math.round(bilan.actions)), detail: tr ? ref(tr.actions) : undefined, tone: "militant" });
   }
 
@@ -2346,8 +2372,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (parrainsRatio && parrainsRatio.r1 < parrainsRatio.r2 * 0.8) synth.push({ text: `${B("Peu de soutiens déclarés")} au regard du vote : il faudra accueillir et encadrer de nouveaux militants.` });
   else if (sansGroupe) synth.push({ text: `${B("Pas encore de groupe d'action")} dans la commune ni aux alentours : tout est à construire.` });
   else if (gaAilleurs) synth.push({ text: `${B("Pas de groupe d'action actif dans la commune")} : ${gaVoisins.length > 1 ? "les plus proches sont" : "le plus proche est"} à ${voisinsTxt}.` });
-  if (prio.length && ranked.length <= 3) synth.push({ text: `${B("Où aller en priorité")} : toute la commune (${ranked.length} ${ranked.length > 1 ? "bureaux" : "bureau"} de vote), en commençant par le bureau ${dv(prio[0].bv)}${labels.has(prio[0].bv) ? ` (${prio[0].label})` : ""}.` });
-  else if (prio.length) synth.push({ text: `${B("Où aller en priorité")} : ${prio.length > 1 ? "les bureaux de vote" : "le bureau de vote"} ${bvListe(prio)}.` });
+  // Même ordre que « Que faire ? » : résidences, logements sociaux, bureaux s'il reste peu de portes.
+  if (porteParts.length) synth.push({ text: `${B("Où aller en priorité")} : porte-à-porte ${porteParts.join(", puis ")}.` });
   // Lieux nommés, avec jour et heure quand on les connaît ; rien de générique (sinon la ligne est omise).
   const lieuBv = (l: { lon: number | null; lat: number | null }) => {
     const nb = nearestBv(l.lon, l.lat);
@@ -2455,7 +2481,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     blocks.push({
       type: "callout",
       tone: "accent",
-      text: `${B(`Territoire de ${c.perimeter.communes.length} communes`)} : ${commune.nom} et ${joinFr(autres.slice(0, 6))}${autres.length > 6 ? ` et ${autres.length - 6} autres` : ""}. Chiffres (population, revenus, votes, parrains), bureaux de vote prioritaires, adresses et logements sociaux portent sur tout le territoire ; les lieux de tractage (marchés, gares, grandes surfaces), le moment convivial et l'accès aux services sont ceux de ${commune.nom}, la commune principale.`,
+      text: `${B(`Territoire de ${c.perimeter.communes.length} communes`)} : ${commune.nom} et ${joinFr(autres.slice(0, 6))}${autres.length > 6 ? ` et ${autres.length - 6} autres` : ""}. Chiffres (population, revenus, votes, soutiens JLM2027), bureaux de vote prioritaires, adresses et logements sociaux portent sur tout le territoire ; les lieux de tractage (marchés, gares, grandes surfaces), le moment convivial et l'accès aux services sont ceux de ${commune.nom}, la commune principale.`,
     });
   }
   if (glance.length >= 3) blocks.push({ type: "glance", items: glance });
@@ -2468,14 +2494,17 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
 
   // « de la commune » (« de l'arrondissement » à Paris, Lyon, Marseille, voir plmWording) ; groupement : « du territoire ».
   const deLa = c.query.scope === "custom" ? "du territoire" : "de la commune";
-  blocks.push({ type: "heading", text: `Profil sociodémographique ${deLa}`, sub: "Qui habite ici (revenus, âge, logement, services) : pour savoir à qui l'on parle et quels sujets porter à la porte." });
+  blocks.push({ type: "heading", text: `Profil sociodémographique ${deLa}`, sub: "Qui habite ici (revenus, âge, logement) : pour savoir à qui l'on parle et quels sujets porter à la porte." });
   if (socioIntro.length) blocks.push({ type: "paragraph", text: socioIntro.join(" ") });
   if (has("lfi_socio")) blocks.push({ type: "table", tableId: "lfi_socio" });
+  if (has("lfi_ages")) blocks.push({ type: "table", tableId: "lfi_ages" });
   // Quartier qui concentre la pauvreté : en tête des phrases qualitatives (3 au plus).
   const poorQ = ids2.quartiers.map((id) => out.findings.find((f) => f.id === id)).find((f) => f?.kind === "constat" && /concentre la pauvreté/.test(f.text));
   const socioItems = [...(poorQ ? [{ text: poorQ.text, evidence: poorQ.evidence }] : []), ...socio].slice(0, 3);
   if (socioItems.length) blocks.push({ type: "list", items: socioItems });
   // Accès aux services : distance au plus proche, comparée aux communes de taille semblable du département.
+  // Partie à part, après le profil politique et avant « Que faire ? » (retour de Menal).
+  const servicesBlocks: Block[] = [];
   {
     const ref = referentiel();
     const popOf = new Map(ref.communes.map((x) => [x.code, x.population ?? 0]));
@@ -2502,7 +2531,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     }
     const sv = equip.length && centres.length >= 8 ? servicesAccess(commune.code, centres, equip, c.servicesRef) : null;
     if (sv && sv.rows.length) {
-      blocks.push({
+      servicesBlocks.push({
         type: "services",
         title: "Accès aux services",
         faibles: sv.faibles.slice(0, 6).map((x) => ({ cat: x.cat, label: x.label, txt: x.txtFaible })),
@@ -2615,12 +2644,12 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       type: "presence",
       title: `Présence militante LFI${plm ? ` (${plm.ville} entière)` : ""}`,
       rows: [
-        row("Parrains et marraines", "", bilan.parrains, F.parrains, 100, "pour 100 inscrits"),
+        row("Soutiens JLM2027", "", bilan.parrains, F.parrains, 100, "pour 100 inscrits"),
         // Un groupe pour 100 inscrits n'aurait pas de sens : rapporté à 10 000.
         row("Groupes d'action actifs", "5 actions ou plus", bilan.ga, F.ga, 10000, "pour 10 000 inscrits"),
         row("Actions", "en 2026", bilan.actions, F.actions, 100, "pour 100 inscrits"),
       ],
-      note: `Trait rouge et « moyenne à taille égale » : ce qu'aurait une commune du même nombre d'inscrits au rythme moyen des communes de même taille (${tranche.max === Infinity ? `plus de ${fmtNumber(tranche.min)}` : `${fmtNumber(tranche.min)} à ${fmtNumber(tranche.max)}`} inscrits, ${fmtNumber(tranche.communes)} communes)${bilan.estime ? `. Parrains et actions ${deNom(commune.nom)} estimés par le bilan LFI (chiffres arrondis)` : ""}. Bilan LFI par commune, ${fmtNumber(bilan.inscrits)} inscrits (européennes 2024).`,
+      note: `Trait rouge et « moyenne à taille égale » : ce qu'aurait une commune du même nombre d'inscrits au rythme moyen des communes de même taille (${tranche.max === Infinity ? `plus de ${fmtNumber(tranche.min)}` : `${fmtNumber(tranche.min)} à ${fmtNumber(tranche.max)}`} inscrits, ${fmtNumber(tranche.communes)} communes)${bilan.estime ? `. Soutiens et actions ${deNom(commune.nom)} estimés par le bilan LFI (chiffres arrondis)` : ""}. Bilan LFI par commune, ${fmtNumber(bilan.inscrits)} inscrits (européennes 2024).`,
     });
   }
   // (Sans données internes : rien dans la fiche, qui s'adresse aux élus ; le signalement figure dans le journal de collecte.)
@@ -2635,7 +2664,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (politProse.length) detail.push({ type: "findings", ids: politProse, style: "prose" });
   }
   // Détail (annexe du diagnostic) : résultats municipaux, comparaisons, forces politiques.
-  if (has("lfi_politique")) detail.push({ type: "heading", text: "Vote LFI, parrainages et abstention (en nombre de voix)" }, { type: "table", tableId: "lfi_politique" });
+  if (has("lfi_politique")) detail.push({ type: "heading", text: "Vote LFI, soutiens JLM2027 et abstention (en nombre de voix)" }, { type: "table", tableId: "lfi_politique" });
   if (has("lfi_municipales")) detail.push({ type: "heading", text: "Élections municipales 2026" }, { type: "table", tableId: "lfi_municipales" });
   if (ids.perf.length || ids.abst.length || ids.partis.length) {
     detail.push({ type: "heading", text: "Vote insoumis, participation et forces politiques" });
@@ -2648,21 +2677,20 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const ouMain = ids.ou.filter((id) => kindOf(id) === "atout");
   const ouEvo = ids.ou.filter((id) => /Évolution/.test(out.findings.find((f) => f.id === id)?.text ?? ""));
   if (has("lfi_bureaux")) {
-    prose(ouMain.slice(0, 1));
+    // Le paragraphe sur les bureaux prioritaires redisait le tableau : il passe en annexe (retour de Menal).
     // Une seule carte (vote LFI) ; sur le site, un bouton « Participation » bascule sur l'autre carte du groupe.
     // Un seul bureau : carte, classement et graphique n'apprennent rien de plus que les chiffres de la commune.
     const multiBv = ranked.length >= 2;
     if (multiBv) blocks.push({ type: "map", mapId: "lfi_map_bv" });
     if (multiBv && has("lfi_bureaux_prio")) blocks.push({ type: "table", tableId: "lfi_bureaux_prio" });
     if (insc.ficheText) blocks.push({ type: "paragraph", text: insc.ficheText });
-    prose(ouEvo.slice(0, 1));
     // Détail : classement complet, présidentielle 2022, évolution par bureau.
     if (multiBv) {
       detail.push({ type: "heading", text: "Classement de tous les bureaux de vote" });
       detail.push({ type: "table", tableId: "lfi_bureaux" }, { type: "chart", chartId: "lfi_chart_bureaux" });
       if (out.maps.some((m) => m.id === "lfi_map_bv_p22")) detail.push({ type: "map", mapId: "lfi_map_bv_p22" });
     }
-    const rest = ids.ou.filter((id) => !ouMain.slice(0, 1).includes(id) && !ouEvo.slice(0, 1).includes(id));
+    const rest = [...ouMain.slice(0, 1), ...ouEvo.slice(0, 1), ...ids.ou.filter((id) => !ouMain.slice(0, 1).includes(id) && !ouEvo.slice(0, 1).includes(id))];
     if (rest.length) detail.push({ type: "findings", ids: rest, style: "prose" });
     if (has("lfi_evolution")) detail.push({ type: "table", tableId: "lfi_evolution" });
   } else blocks.push({ type: "note", text: "Résultats par bureau de vote indisponibles lors de la génération." });
@@ -2759,7 +2787,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       // voter ou inscrire ; ceux qui ne votent pas à toutes les élections ; l'extrême droite à la fin.
       const T = { nous: "#4c0297", voter: "#e8434b", etranger: "#9aa0a6", rn: "#2c3e7a" };
       const rows: { profil: string; com: number | null; dep: number | null; color: string }[] = [
-        { profil: "A parrainé la candidature de Jean-Luc Mélenchon", com: parrains != null ? (100 * parrains) / aC : null, dep: depParrains && aD ? (100 * depParrains) / aD : null, color: T.nous },
+        { profil: "A signé le soutien à Jean-Luc Mélenchon (JLM2027)", com: parrains != null ? (100 * parrains) / aC : null, dep: depParrains && aD ? (100 * depParrains) / aD : null, color: T.nous },
         { profil: "A voté LFI aux européennes 2024", com: (100 * voix(c24, "lfi")) / aC, dep: aD ? (100 * voix(d24, "lfi")) / aD : null, color: T.nous },
         ...(c22 ? [{ profil: "A voté Mélenchon à la présidentielle 2022", com: (100 * voix(c22, "lfi", "PR22T1")) / aC, dep: d22 && aD ? (100 * voix(d22, "lfi", "PR22T1")) / aD : null, color: T.nous }] : []),
         { profil: "Inscrit, mais n'a pas voté en 2024", com: (100 * abstention(c24).n) / aC, dep: aD ? (100 * abstention(d24).n) / aD : null, color: T.voter },
@@ -2788,10 +2816,13 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
           { label: "Vote d'extrême droite", color: T.rn },
         ].filter((l) => shown.some((r) => r.color === l.color)),
         sources: [...elecSources.slice(0, 1), ...(p22?.source ? [p22.source] : []), ...(c.adultes ? [c.adultes.source] : [])],
-        note: "Ordres de grandeur pour 100 adultes (18 ans et plus) rencontrés au hasard : électeurs de la présidentielle 2022 (1er tour) et des européennes 2024, parrains (données internes), adultes recensés par l'INSEE. Les catégories se recoupent (un électeur LFI peut avoir parrainé). Sympathisants : à venir, à partir des données internes.",
+        note: "Ordres de grandeur pour 100 adultes (18 ans et plus) rencontrés au hasard : électeurs de la présidentielle 2022 (1er tour) et des européennes 2024, soutiens JLM2027 (données internes), adultes recensés par l'INSEE. Les catégories se recoupent (un électeur LFI peut avoir signé le soutien). Sympathisants : à venir, à partir des données internes.",
       });
     }
   }
+
+  /* ---------------------------------------------------------- services publics */
+  if (servicesBlocks.length) blocks.push({ type: "heading", text: "Services publics", sub: "Ce qui manque ou est loin pour les habitants : des sujets concrets à porter à la porte." }, ...servicesBlocks);
 
   /* ---------------------------------------------------------- que faire ? */
   blocks.push({ type: "heading", text: "Que faire ?", sub: "Où agir le week-end : adresses pour le porte-à-porte, bureaux de vote prioritaires, lieux de passage pour tracter." });
@@ -2831,7 +2862,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   }
   if (affiche) blocks.push({ type: "map", mapId: "lfi_affiche" });
   if (has("lfi_profils")) blocks.push({ type: "table", tableId: "lfi_profils" });
-  if (has("lfi_effectifs")) blocks.push({ type: "table", tableId: "lfi_effectifs" });
+  // Effectifs pour les bureaux : seulement si les bureaux sont proposés (moins de 500 portes ailleurs).
+  if (has("lfi_effectifs") && avecBureaux) blocks.push({ type: "table", tableId: "lfi_effectifs" });
+  else if (has("lfi_effectifs")) detail.push({ type: "table", tableId: "lfi_effectifs" });
   if (faitsTop.length >= 2) blocks.push({ type: "paragraph", text: `${B("À avoir en tête à la porte")} : ${faitsTxt}.` });
   blocks.push(...questions);
   blocks.push({ type: "fieldPlaces" });
@@ -2845,7 +2878,16 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (has("lfi_residences")) detail.push({ type: "table", tableId: "lfi_residences" });
 
   /* ---------------------------------------------------------- opérationnel */
-  blocks.push({ type: "heading", text: "Organiser la venue", sub: "Qui peut venir aider et en combien de temps, et comment rejoindre la commune." });
+  blocks.push({ type: "heading", text: "Organiser la venue", sub: "Qui mobiliser : le département d'abord, les villes militantes proches, les élu·es LFI ; puis comment rejoindre la commune." });
+  // Député·es LFI des circonscriptions proches (retour de Menal) : relais pour mobiliser.
+  if (c.deputes?.list.length)
+    blocks.push({
+      type: "paragraph",
+      text: `${B(c.deputes.list.length > 1 ? "Député·es LFI à proximité" : "Député·e LFI à proximité")} : ${c.deputes.list
+        .slice(0, 6)
+        .map((d) => `${d.nom} (${circoLabel(d.circo, d.depNom)}${d.km === 0 ? ", la commune en fait partie" : `, à ${fmtNumber(Math.max(1, Math.round(d.km)))} km`})`)
+        .join(" ; ")}.`,
+    });
   if (access.length) blocks.push({ type: "paragraph", text: `${B("Pour rejoindre la commune")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
 
   out.section = { id: "LFI", letter: "", title: "Fiche d'action — proposition de ciblage", blocks };

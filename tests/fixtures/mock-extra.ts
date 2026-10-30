@@ -178,6 +178,11 @@ export function mockExtra(url: URL): Response | null {
       ],
     });
   if (h === "static.data.gouv.fr" && p === "/qpv-2024-geojson.zip") return bin(qpvZip());
+  // Député·es actifs (Datan) : une députée LFI dans la 2e circonscription de l'Oise (fictive).
+  if (h === "www.data.gouv.fr" && p === "/api/1/datasets/deputes-actifs-de-lassemblee-nationale-informations-et-statistiques/")
+    return json({ resources: [{ id: "dep-csv", title: "deputes-active.csv", format: "csv", url: "https://static.data.gouv.fr/deputes-active.csv" }] });
+  if (h === "static.data.gouv.fr" && p === "/deputes-active.csv")
+    return new Response("id,legislature,civ,nom,prenom,groupe,groupeAbrev,departementNom,departementCode,circo\nPA1,17,Mme,EXEMPLE,Camille,La France insoumise - Nouveau Front Populaire,LFI-NFP,Oise,60,2\nPA2,17,M.,AUTRE,Jean,Rassemblement National,RN,Oise,60,1\n", { status: 200 });
   // Municipales 2020, 1er tour : fichier national du ministère (tabulations, un bloc de colonnes par liste,
   // seul le premier bloc a des en-têtes).
   if (h === "www.data.gouv.fr" && p === "/api/1/datasets/elections-municipales-2020-resultats/")

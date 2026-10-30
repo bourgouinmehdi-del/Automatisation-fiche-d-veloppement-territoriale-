@@ -4,7 +4,10 @@ import { fitAspect, type Bbox } from "../collectors/carto";
 import { collectIdfmIndex, collectRailIndex, directTrains, collectUrbanIndex, pickUrbanGtfs, railStations, RAIL_CHANGE_MIN, routeRail, routeTc, TC_BOARD_MIN, TC_TRANSFER_MIN, TRANSPORT_API, type TcIndex, type TrainGroup } from "../collectors/gtfs";
 import { SNCF } from "../collectors/public-apis";
 import { fmtDuration, OSRM_URL } from "../collectors/routes";
-import { fmtNumber } from "../format";
+import { dansDep, deDep, fmtNumber } from "../format";
+
+const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+const joinList = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} et ${xs[xs.length - 1]}`);
 import type { Block, DataTable, MapSpec, SourceRef } from "../types";
 import type { Collected } from "./collect";
 
@@ -36,7 +39,7 @@ const BIG_HUB_MAX_KM = 130;
 const LOCAL_GA_KM = 25;
 /** … et au moins 25 parrains : un groupe déclaré actif dans une commune presque sans soutiens ne fera pas venir de monde. */
 const LOCAL_MIN_PARRAINS = 25;
-const parrainsTxt = (n: number) => `${fmtNumber(Math.round(n))} parrain${Math.round(n) > 1 ? "s" : ""}`;
+const parrainsTxt = (n: number) => `${fmtNumber(Math.round(n))} soutien${Math.round(n) > 1 ? "s" : ""} JLM2027`;
 
 interface Lieu {
   code: string;
@@ -67,11 +70,15 @@ const AGGLO_KM = 6;
  * 4. la dernière à la grande ville (2 000 parrains et plus) la plus proche — Bordeaux plutôt que Nantes
  *    pour la Charente-Maritime —, à défaut à la ville qui a le plus de parrains.
  */
-export function chooseHubs<T extends { l: { code: string; lon: number; lat: number }; b: { ga: number; parrains: number }; km: number }>(all: T[], max: number): T[] {
+export function chooseHubs<T extends { l: { code: string; lon: number; lat: number }; b: { ga: number; parrains: number }; km: number }>(all: T[], max: number, dep?: string): T[] {
   const idf = (code: string) => IDF.has(code.slice(0, 2));
   const cands = all.filter((x) => idf(x.l.code) || !all.some((y) => y !== x && !idf(y.l.code) && (y.b.parrains > x.b.parrains || (y.b.parrains === x.b.parrains && y.l.code < x.l.code)) && turf.distance([x.l.lon, x.l.lat], [y.l.lon, y.l.lat]) < AGGLO_KM));
   const estVille = (x: T) => x.b.ga >= HUB_MIN_GA || x.b.parrains >= HUB_MIN_PARRAINS;
-  const nearest = [...cands].sort((a, b) => a.km - b.km).slice(0, Math.ceil(max / 2));
+  // Fiche commune : les villes du département d'abord (convois organisés par la boucle départementale) —
+  // une ville d'un autre département compte comme si elle était 20 km plus loin.
+  const sameDep = (x: T) => !dep || x.l.code.startsWith(dep.length === 3 ? dep : dep.padStart(2, "0"));
+  const kmPref = (x: T) => x.km + (sameDep(x) ? 0 : 20);
+  const nearest = [...cands].sort((a, b) => kmPref(a) - kmPref(b)).slice(0, Math.ceil(max / 2));
   const reste = cands.filter((x) => !nearest.includes(x) && estVille(x));
   const grandes = reste.filter((x) => x.b.parrains >= BIG_HUB_PARRAINS).sort((a, b) => a.km - b.km);
   const grande = grandes[0] ?? [...reste].sort((a, b) => b.b.parrains - a.b.parrains)[0];
@@ -125,7 +132,7 @@ export async function ciblageAcces(
       return (ville && (x.km <= HUB_MAX_KM || (x.b.parrains >= BIG_HUB_PARRAINS && x.km <= BIG_HUB_MAX_KM))) || (x.km <= LOCAL_GA_KM && x.b.parrains >= LOCAL_MIN_PARRAINS);
     });
   const max = opts.fiche ? HUB_MAX_FICHE : HUB_MAX;
-  const hubs = chooseHubs(cands, max);
+  const hubs = chooseHubs(cands, max, opts.fiche ? c.commune.departement.code : undefined);
   if (!hubs.length) return null;
 
   // 3. Voiture : une matrice OSRM (villes militantes → territoires).
@@ -364,9 +371,14 @@ export async function ciblageAcces(
   if (opts.fiche) {
     const t = tgt[0];
     const trOf = (h: string) => train.get([h, t.at.code].sort().join("|"));
+    const inDep = (code: string) => {
+      const d = c.commune.departement.code;
+      return code.startsWith(d.length === 3 ? d : d.padStart(2, "0"));
+    };
     const rowsF = hubs
       .map((h) => ({ h, car: car.get(`${h.l.code}|${t.at.code}`) ?? null, tr: trOf(h.l.code) }))
-      .sort((a, b) => (a.car ?? 999) - (b.car ?? 999));
+      // Le département d'abord, puis les autres ; les plus proches en premier.
+      .sort((a, b) => Number(!inDep(a.h.l.code)) - Number(!inDep(b.h.l.code)) || (a.car ?? 999) - (b.car ?? 999));
     const sourcesF = [geoSrc, osrmSrc, gtfsSrc, tcSrc, ...urbanSrc].filter((x): x is SourceRef => !!x);
     const tableF: DataTable = {
       id: "commune_acces",
@@ -388,7 +400,7 @@ export async function ciblageAcces(
         tc: tc.get(`${h.l.code}|${t.at.code}`) ? `${fmtDuration(tc.get(`${h.l.code}|${t.at.code}`)!.minutes)} (${tc.get(`${h.l.code}|${t.at.code}`)!.ligne})` : "—",
       })),
       sources: sourcesF,
-      note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif et ${LOCAL_MIN_PARRAINS} parrains au moins, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; une seule par agglomération (moins de 6 km, hors Île-de-France), les plus proches d'abord, puis la grande ville la plus proche. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF) ; pour un train direct, nombre de trains directs dans la journée, aller et retour ; avec correspondance, ${RAIL_CHANGE_MIN} min au moins dans une même gare, et changement de gare dans une même ville estimé (15 min plus 4 min par km).${tc.size ? ` Métro, RER, tram : trajet le plus rapide, correspondances comprises, depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités ou du réseau urbain) ; ${TC_BOARD_MIN} min comptées à chaque montée (attente) et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""}${gareProche.get(t.at.code) && rowsF.some(({ h }) => trainTxt(h.l.code, t.at.code)) ? ` Pas de gare dans la commune : gare la plus proche, ${gareProche.get(t.at.code)}.` : ""} « — » : pas de trajet trouvé.`,
+      note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif et ${LOCAL_MIN_PARRAINS} soutiens JLM2027 au moins, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} soutiens JLM2027 (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} soutiens et plus) ; une seule par agglomération (moins de 6 km, hors Île-de-France), les plus proches d'abord, puis la grande ville la plus proche. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF) ; pour un train direct, nombre de trains directs dans la journée, aller et retour ; avec correspondance, ${RAIL_CHANGE_MIN} min au moins dans une même gare, et changement de gare dans une même ville estimé (15 min plus 4 min par km).${tc.size ? ` Métro, RER, tram : trajet le plus rapide, correspondances comprises, depuis une station à moins de 1,2 km du centre de la ville (horaires Île-de-France Mobilités ou du réseau urbain) ; ${TC_BOARD_MIN} min comptées à chaque montée (attente) et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""}${gareProche.get(t.at.code) && rowsF.some(({ h }) => trainTxt(h.l.code, t.at.code)) ? ` Pas de gare dans la commune : gare la plus proche, ${gareProche.get(t.at.code)}.` : ""} « — » : pas de trajet trouvé.`,
     };
     const mapF = mapOf({
       id: "commune_acces_carte",
@@ -403,12 +415,19 @@ export async function ciblageAcces(
       sources: sourcesF,
     });
     const first = rowsF.find((x) => x.car != null);
+    const depNom = c.commune.departement.nom;
+    const dansDepRows = rowsF.filter((x) => inDep(x.h.l.code));
     const blocksF: Block[] = [
       {
         type: "paragraph",
         text: first
           ? `**Qui peut venir aider** : la ville militante la plus proche est **${first.h.l.nom}**, à ${fmtDuration(first.car!)} en voiture${Number.isFinite(trainMin(first.h.l.code, t.at.code)) ? ` (${fmtDuration(trainMin(first.h.l.code, t.at.code))} en train${first.tr && first.tr.minutes === trainMin(first.h.l.code, t.at.code) ? " direct" : ""})` : tc.get(`${first.h.l.code}|${t.at.code}`) ? ` (${fmtDuration(tc.get(`${first.h.l.code}|${t.at.code}`)!.minutes)} en ${tc.get(`${first.h.l.code}|${t.at.code}`)!.ligne})` : ""}.${rowsF.length > 1 ? " La carte et le tableau donnent les temps de trajet depuis les autres villes où LFI a des militants." : ""}`
           : "**Qui peut venir aider** : villes où LFI a des militants, avec les temps de trajet.",
+      },
+      // Département d'abord (retour de Menal) : les convois passent par la boucle départementale.
+      {
+        type: "paragraph",
+        text: `**${cap(dansDep(depNom))}** : ${dansDepRows.length ? `${joinList(dansDepRows.slice(0, 5).map((x) => `${x.h.l.nom}${x.car != null ? ` (${fmtDuration(x.car)})` : ""}`))} ; ` : "pas de ville militante proche dans le département ; "}le convoi s'organise avec la boucle départementale ${deDep(depNom)}.`,
       },
       { type: "map", mapId: mapF.id },
       { type: "table", tableId: tableF.id },
@@ -445,7 +464,7 @@ export async function ciblageAcces(
     rows,
     highlight: ranked.length ? [ranked[0].i] : [],
     sources,
-    note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif et ${LOCAL_MIN_PARRAINS} parrains au moins, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} parrains (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} parrains et plus) ; ${hubs.length} retenues, une par agglomération (moins de 6 km, hors Île-de-France) : les plus proches, puis la grande ville la plus proche. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF), direct ou avec correspondance (${RAIL_CHANGE_MIN} min au moins dans une même gare).${tc.size ? ` Métro, RER, tram : correspondances comprises, ${TC_BOARD_MIN} min comptées à chaque montée et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""} « — » : pas de calcul possible.`,
+    note: `Villes militantes : communes à moins de ${LOCAL_GA_KM} km avec un groupe d'action actif et ${LOCAL_MIN_PARRAINS} soutiens JLM2027 au moins, et villes de ${HUB_MIN_GA} groupes ou ${HUB_MIN_PARRAINS} soutiens JLM2027 (bilan LFI) à moins de ${HUB_MAX_KM} km (${BIG_HUB_MAX_KM} km pour celles de ${fmtNumber(BIG_HUB_PARRAINS)} soutiens et plus) ; ${hubs.length} retenues, une par agglomération (moins de 6 km, hors Île-de-France) : les plus proches, puis la grande ville la plus proche. Voiture : temps sans trafic (OSRM). Train : trajet le plus court un samedi, départ entre 5 h et 14 h (horaires SNCF), direct ou avec correspondance (${RAIL_CHANGE_MIN} min au moins dans une même gare).${tc.size ? ` Métro, RER, tram : correspondances comprises, ${TC_BOARD_MIN} min comptées à chaque montée et ${TC_TRANSFER_MIN} min à chaque correspondance.` : ""} « — » : pas de calcul possible.`,
   };
 
   const map = mapOf({
