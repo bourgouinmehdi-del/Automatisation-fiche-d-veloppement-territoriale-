@@ -200,25 +200,53 @@ export function dedupeBilanGa(b: Map<string, Bilan>): Map<string, Bilan> {
   } catch {
     return b;
   }
-  const byCp = new Map<string, string[]>();
+  const cpsOf = (code: string) => ref.byCode.get(code)?.codesPostaux ?? [];
+  // 1. Nombre de groupes de chaque code postal : celui des communes qui n'ont que ce code postal (le plus
+  //    fréquent). Une commune sur deux codes postaux a la somme des deux (Porte-de-Seine, 27100 et 27430).
+  const vals = new Map<string, number[]>();
+  const membres = new Map<string, string[]>();
   for (const [code, x] of b) {
-    if (!x.estime || x.ga <= 0) continue;
-    for (const cp of ref.byCode.get(code)?.codesPostaux ?? []) {
-      if (!byCp.has(cp)) byCp.set(cp, []);
-      byCp.get(cp)!.push(code);
-    }
+    if (!x.estime) continue;
+    const cps = cpsOf(code);
+    for (const cp of cps) membres.set(cp, [...(membres.get(cp) ?? []), code]);
+    if (cps.length === 1) vals.set(cps[0], [...(vals.get(cps[0]) ?? []), x.ga]);
   }
+  const mode = (xs: number[]) => {
+    const n = new Map<number, number>();
+    for (const v of xs) n.set(v, (n.get(v) ?? 0) + 1);
+    return [...n].sort((a, c) => c[1] - a[1] || a[0] - c[0])[0]?.[0] ?? 0;
+  };
+  const cpGa = (cp: string) => {
+    if (vals.has(cp)) return mode(vals.get(cp)!);
+    // Code postal sans commune « simple » : valeur d'une commune qui l'a, moins ses autres codes postaux connus.
+    const xs = (membres.get(cp) ?? []).map((k) => b.get(k)!.ga - cpsOf(k).filter((o) => o !== cp && vals.has(o)).reduce((t, o) => t + mode(vals.get(o)!), 0));
+    return xs.length ? Math.max(0, Math.min(...xs)) : 0;
+  };
+  // 2. Les groupes de chaque code postal vont à sa commune la plus grande (en inscrits).
   const out = new Map(b);
-  for (const [code, x] of b) {
-    if (!x.estime || x.ga <= 0) continue;
-    const sib = [...new Set((ref.byCode.get(code)?.codesPostaux ?? []).flatMap((cp) => byCp.get(cp) ?? []))].filter((k) => k !== code);
-    // Plus grand voisin du même code postal avec au moins autant de groupes : les groupes sont les siens.
-    const owner = sib.find((k) => {
-      const y = b.get(k)!;
-      return y.ga >= x.ga && (y.inscrits > x.inscrits || (y.inscrits === x.inscrits && k < code));
-    });
-    if (owner) out.set(code, { ...x, ga: 0 });
+  for (const [code, x] of b) if (x.estime) out.set(code, { ...x, ga: 0 });
+  for (const [cp, ks] of membres) {
+    const g = cpGa(cp);
+    if (!g) continue;
+    const owner = [...ks].sort((a, c) => b.get(c)!.inscrits - b.get(a)!.inscrits || a.localeCompare(c))[0];
+    const o = out.get(owner)!;
+    out.set(owner, { ...o, ga: o.ga + g });
   }
+  return out;
+}
+
+/**
+ * Communes estimées : quand l'export Action Populaire donne le nombre d'actions des groupes, le nombre de
+ * groupes actifs (5 actions ou plus) est compté commune par commune (code INSEE retrouvé par code postal et
+ * ville), plus fiable que la répartition par code postal du bilan.
+ */
+export function gaFromGroupes(b: Map<string, Bilan>, groupes: Groupe[]): Map<string, Bilan> {
+  const withActions = groupes.filter((g) => g.actions != null);
+  if (withActions.length < 10) return b;
+  const n = new Map<string, number>();
+  for (const g of withActions) if ((g.actions ?? 0) >= 5) n.set(g.code, (n.get(g.code) ?? 0) + 1);
+  const out = new Map(b);
+  for (const [code, x] of b) if (x.estime) out.set(code, { ...x, ga: n.get(code) ?? 0 });
   return out;
 }
 
@@ -380,28 +408,6 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
     }
     if (b.size) {
       out.bilan = dedupeBilanGa(b);
-      const t = { actions: 0, ga: 0, parrains: 0, inscrits: 0 };
-      for (const x of out.bilan.values()) {
-        t.actions += x.actions;
-        t.ga += x.ga;
-        t.parrains += x.parrains;
-        t.inscrits += x.inscrits;
-      }
-      out.bilanFrance = t;
-      // Les groupes d'action sont rattachés à beaucoup de petites communes : la moyenne nationale
-      // n'est pas comparable d'une taille de commune à l'autre.
-      out.bilanTranches = BILAN_TRANCHES.map(([min, max]) => {
-        const z = { min, max, communes: 0, actions: 0, ga: 0, parrains: 0, inscrits: 0 };
-        for (const x of out.bilan!.values())
-          if (x.inscrits >= min && x.inscrits < max) {
-            z.communes++;
-            z.actions += x.actions;
-            z.ga += x.ga;
-            z.parrains += x.parrains;
-            z.inscrits += x.inscrits;
-          }
-        return z;
-      });
       // Parrains manquants (pas de parrains.csv, ou commune absente) : repris du bilan.
       for (const [k, x] of b) if (!out.parrains.has(k)) out.parrains.set(k, Math.round(x.parrains));
       out.files.push("bilan.csv");
@@ -419,6 +425,31 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
     } catch {
       /* fichier absent */
     }
+  }
+  if (out.bilan) {
+    out.bilan = gaFromGroupes(out.bilan, out.groupes);
+    const t = { actions: 0, ga: 0, parrains: 0, inscrits: 0 };
+    for (const x of out.bilan.values()) {
+      t.actions += x.actions;
+      t.ga += x.ga;
+      t.parrains += x.parrains;
+      t.inscrits += x.inscrits;
+    }
+    out.bilanFrance = t;
+    // Les groupes d'action sont rattachés à beaucoup de petites communes : la moyenne nationale
+    // n'est pas comparable d'une taille de commune à l'autre.
+    out.bilanTranches = BILAN_TRANCHES.map(([min, max]) => {
+      const z = { min, max, communes: 0, actions: 0, ga: 0, parrains: 0, inscrits: 0 };
+      for (const x of out.bilan!.values())
+        if (x.inscrits >= min && x.inscrits < max) {
+          z.communes++;
+          z.actions += x.actions;
+          z.ga += x.ga;
+          z.parrains += x.parrains;
+          z.inscrits += x.inscrits;
+        }
+      return z;
+    });
   }
   return out;
 }
