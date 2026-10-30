@@ -13,7 +13,7 @@ const KINDS: { id: string; title: string; help: string; xlsx?: boolean }[] = [
   {
     id: "bilan",
     title: "Bilan militant par commune (LFI)",
-    help: "Classeur « bilan_par_commune » (.xlsx ou .csv) : actions, groupes d'action actifs, parrains et inscrits par commune. Alimente l'encart « Présence militante LFI » des fiches et complète les parrainages.",
+    help: "Classeur « bilan_par_commune » (.xlsx ou .csv) : actions, groupes d'action actifs, soutiens JLM2027 (parrains) et inscrits par commune. Alimente l'encart « Présence militante LFI » des fiches et complète les parrainages.",
     xlsx: true,
   },
   {
@@ -22,7 +22,7 @@ const KINDS: { id: string; title: string; help: string; xlsx?: boolean }[] = [
     help: "Export CSV brut des groupes : les colonnes sont reconnues par leur intitulé (nom, code postal, ville, membres, date de création, type, certification, description, nombre d'actions). La commune est retrouvée par code postal et ville ; les colonnes nominatives (animateurs, contacts) sont ignorées.",
   },
   { id: "groupes", title: "Groupes d'action (format simple)", help: "Colonnes : code_commune ; nom ; membres ; statut ; description." },
-  { id: "parrains", title: "Parrainages par commune", help: "Colonnes : code_commune ; parrains (nombre de parrainages, ex. JLM27)." },
+  { id: "parrains", title: "Soutiens JLM2027 par commune", help: "Colonnes : code_commune ; parrains (nombre de soutiens JLM2027)." },
   {
     id: "municipales-lfi",
     title: "Municipales 2026 : listes soutenues par LFI",
@@ -132,7 +132,7 @@ export default function DonneesInternes() {
     <main className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="mb-2 text-3xl font-bold text-[var(--accent-strong)]">Données internes</h1>
       <p className="mb-6 text-[var(--ink-2)]">
-        Fichiers facultatifs qui complètent les fiches : implantation militante (groupes d&apos;action), parrainages et demandeurs d&apos;emploi. Ils restent sur le serveur
+        Fichiers facultatifs qui complètent les fiches : implantation militante (groupes d&apos;action), soutiens JLM2027 et demandeurs d&apos;emploi. Ils restent sur le serveur
         (dossier <code>data/interne/</code>) et ne sont jamais publiés ; placez l&apos;application derrière une authentification si elle est en ligne.
         Les fiches déjà générées les prennent en compte après « Régénérer ».
       </p>
@@ -144,7 +144,7 @@ export default function DonneesInternes() {
           </div>
           <div>
             <div className="text-2xl font-bold">{sum.parrains}</div>
-            <div className="text-xs text-[var(--ink-2)]">communes avec parrainages</div>
+            <div className="text-xs text-[var(--ink-2)]">communes avec des soutiens JLM2027</div>
           </div>
           <div>
             <div className="text-2xl font-bold">{sum.unmatched}</div>

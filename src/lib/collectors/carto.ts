@@ -32,17 +32,17 @@ export function circoOf(p: Record<string, unknown>): { dep: string; num: number 
   const codeProp = entries.find(([k, v]) => /circ/i.test(k) && /code|id|ref/i.test(k) && /^[\dAB]{3,6}([-_ ]\d{1,2})?$/i.test(v))?.[1] ?? entries.find(([k, v]) => /^(id|code|ref)$/i.test(k) && /^[\dAB]{3,6}([-_ ]\d{1,2})?$/i.test(v))?.[1];
   if (codeProp) {
     const m = codeProp.match(/^([\dAB]{2,3})[-_ ](\d{1,2})$/i);
-    if (m) return { dep: normDep(m[1]), num: Number(m[2]) };
+    if (m) return { dep: normDepCirco(m[1]), num: Number(m[2]) };
     const c = codeProp.toUpperCase();
     // « 0101 », « 2A01 », « 97101 », « 01001 » (code sur 5 avec département sur 3).
-    if (c.length === 4) return { dep: normDep(c.slice(0, 2)), num: Number(c.slice(2)) };
-    if (c.length === 5) return { dep: normDep(c.slice(0, 3)), num: Number(c.slice(3)) };
+    if (c.length === 4) return { dep: normDepCirco(c.slice(0, 2)), num: Number(c.slice(2)) };
+    if (c.length === 5) return { dep: normDepCirco(c.slice(0, 3)), num: Number(c.slice(3)) };
   }
   const numProp = entries.find(([k, v]) => /num|circ/i.test(k) && /^\d{1,2}$/.test(v))?.[1];
-  if (depProp && numProp) return { dep: normDep(depProp), num: Number(numProp) };
+  if (depProp && numProp) return { dep: normDepCirco(depProp), num: Number(numProp) };
   return null;
 }
-const normDep = (d: string) => {
+export const normDepCirco = (d: string) => {
   const u = d.toUpperCase().replace(/^0(?=\d{2}$)/, "").replace(/^0(?=2[AB]$)/, "");
   return /^\d$/.test(u) ? `0${u}` : u;
 };

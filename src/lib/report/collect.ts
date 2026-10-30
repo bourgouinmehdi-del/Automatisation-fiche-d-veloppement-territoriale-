@@ -36,6 +36,7 @@ import { rankBureaux } from "../analysis/political";
 import { collectRpls, type RplsResult } from "../collectors/rpls";
 import { collectAdultes, type AdultesDep } from "../collectors/adultes";
 import { plmInfo } from "../collectors/plm";
+import { collectDeputesLfi, deputesProches, type DeputeLfi } from "../collectors/deputes";
 import { collectIris, collectQpv, Quartier } from "../collectors/quartiers";
 import {
   collectMunicipales,
@@ -122,6 +123,8 @@ export interface Collected {
   }[];
   /** Distance à vol d'oiseau à Paris (km). */
   parisKm?: number | null;
+  /** Député·es LFI dont la circonscription est proche de la commune (moins de 40 km). */
+  deputes?: { list: (DeputeLfi & { km: number })[]; source: SourceRef };
   polesSource?: SourceRef;
   insee: { geo: GeoRef; result: InseeResult }[];
   perimeterInsee: { code: string; nom: string; result: InseeResult }[];
@@ -1057,6 +1060,12 @@ export async function collect(
 
   /* 17. Temps de trajet routiers */
   const run_acces = async () => {
+    // Député·es LFI des circonscriptions proches (fiche commune) : relais pour mobiliser.
+    if (!territorial(query.scope) && commune.centre)
+      await ctx.step("deputes", "deputes:lfi", async (http) => {
+        const r = await collectDeputesLfi(http);
+        c.deputes = { list: deputesProches(r.list, commune.centre as [number, number]), source: ctx.ref("deputes", r.url, r.retrievedAt) };
+      });
     if (enabled("osrm") && commune.centre) {
       await ctx.step("osrm", "acces:routes", async (http) => {
         const fc = await franceCentres(http);

@@ -176,7 +176,7 @@ describe("chaîne de génération (API simulées)", () => {
     expect(fiche.blocks[0]).toMatchObject({ type: "callout", tone: "warning" });
     for (const t of ["glance", "heading", "map", "table"]) expect(types).toContain(t);
     const headings = fiche.blocks.filter((b) => b.type === "heading").map((b) => (b as { text: string }).text);
-    expect(headings).toEqual(["Profil sociodémographique de la commune", "Profil politique de la commune", "Que faire ?", "Organiser la venue", ...headings.slice(4)]);
+    expect(headings).toEqual(["Profil sociodémographique de la commune", "Profil politique de la commune", "Services publics", "Que faire ?", "Organiser la venue", ...headings.slice(5)]);
     // Que faire ? : une ligne par type d'action, le nombre de lieux, la liste dépliable.
     const planB = fiche.blocks.find((b) => b.type === "plan") as Extract<(typeof fiche.blocks)[number], { type: "plan" }>;
     // Résidences étudiantes et foyers, logements sociaux ; bureaux prioritaires seulement sous 500 portes ailleurs.
@@ -256,6 +256,14 @@ describe("chaîne de génération (API simulées)", () => {
     expect(report.tables.find((t) => t.id === "lfi_politique")!.rows.some((r) => /QPV quartier Fictif Nord|QPV Quartier Fictif Nord/.test(String(r.territoire)))).toBe(true);
     expect(report.findings.some((f) => /concentre la pauvreté/.test(f.text))).toBe(true);
     expect(report.maps.find((m) => m.id === "lfi_map_bv")!.layers.some((l) => l.id === "qpv")).toBe(true);
+    // Organiser la venue : le département d'abord, puis les député·es LFI proches (Datan, circonscriptions).
+    {
+      const bl = report.sections[0].blocks;
+      const iO = bl.findIndex((b) => b.type === "heading" && b.text === "Organiser la venue");
+      const after = bl.slice(iO).filter((b) => b.type === "paragraph").map((b) => (b as { text: string }).text);
+      expect(after.some((t) => /^\*\*Dans l'Oise\*\* : .*boucle départementale de l'Oise\./.test(t))).toBe(true);
+      expect(after.some((t) => /^\*\*Député·e LFI à proximité\*\* : Camille EXEMPLE \(2e circonscription de l'Oise/.test(t))).toBe(true);
+    }
     // Municipales 2026, comparées à 2020 (fichier national du ministère), dans le profil politique.
     {
       const bl = report.sections[0].blocks;
@@ -289,13 +297,12 @@ describe("chaîne de génération (API simulées)", () => {
     expect(plan.rows.length).toBeGreaterThan(0);
     // Ni poste ni simple supermarché ; un moment convivial dans un grand parc nommé.
     expect(plan.rows.some((r) => /poste|^Supermarché$/i.test(String(r.action)))).toBe(false);
-    // Grandes surfaces : enseigne d'un grand groupe, desservie ; ni format de proximité ni magasin sans arrêt.
-    expect(plan.rows.find((r) => /hypermarché/.test(String(r.action)))).toMatchObject({ ou: "E.Leclerc (Avenue fictive)" });
-    const gs = actions.groups.find((g) => g.title === "Grandes surfaces")!.items.join(" ");
-    expect(gs).not.toMatch(/Carrefour City|Auchan/);
+    // Grandes surfaces : plus proposées (parkings privés, retour de Menal).
+    expect(plan.rows.some((r) => /hypermarché|supermarché/i.test(String(r.action)))).toBe(false);
+    expect(actions.groups.some((g) => g.title === "Grandes surfaces")).toBe(false);
     // Présence militante : parrains, groupes actifs, actions ; trait = moyenne nationale.
     const pres = report.sections.find((x) => x.id === "LFI")!.blocks.find((b) => b.type === "presence");
-    expect(pres && "rows" in pres ? pres.rows.map((r) => r.label) : []).toEqual(["Parrains et marraines", "Groupes d'action actifs", "Actions"]);
+    expect(pres && "rows" in pres ? pres.rows.map((r) => r.label) : []).toEqual(["Soutiens JLM2027", "Groupes d'action actifs", "Actions"]);
     if (pres && pres.type === "presence") {
       expect(pres.rows[0]).toMatchObject({ n: 300, r: 1.2 });
       // Comparaison aux communes de même taille (10 000 à 30 000 inscrits : 60159 et 60057).
@@ -326,11 +333,9 @@ describe("chaîne de génération (API simulées)", () => {
     const st = actions.groups.find((g) => g.title === "Métro, RER, tram");
     expect(st?.items.join(" ")).toMatch(/Métro Mairie fictive/);
     expect(plan.rows.some((r) => r.action === "Tractage en sortie de métro" && r.ou === "Métro Mairie fictive")).toBe(true);
-    // Grande surface : desserte nommée.
-    expect(gs).toMatch(/du tram Centre commercial/);
-    // Sur la carte : la grande surface dans le tractage, le parc en « moment convivial ».
+    // Sur la carte : pas de grande surface dans le tractage, le parc en « moment convivial ».
     const aff = report.maps.find((m) => m.id === "lfi_affiche")!;
-    expect(aff.layers.find((l) => l.id === "tractage")!.data.features.some((f) => /Leclerc/.test(String(f.properties?.nom)))).toBe(true);
+    expect(aff.layers.find((l) => l.id === "tractage")!.data.features.some((f) => /Leclerc/.test(String(f.properties?.nom)))).toBe(false);
     expect(aff.layers.find((l) => l.id === "convivial")?.data.features[0].properties?.nom).toBe("Parc fictif");
     expect(plan.rows.find((r) => r.action === "Moment convivial")).toMatchObject({ ou: "Parc fictif" });
     const conv = actions.groups.find((g) => g.title === "Moment convivial")!;
@@ -495,7 +500,7 @@ describe("chaîne de génération (API simulées)", () => {
     const glance = fiche.blocks.find((b) => b.type === "glance") as Extract<(typeof fiche.blocks)[number], { type: "glance" }>;
     // Chiffres clés : habitants et socio (violet), puis présence militante (rouge) ; plus de votes.
     expect(glance.items[0]).toMatchObject({ label: "Habitants", tone: "socio" });
-    expect(glance.items.filter((i) => i.tone === "militant").map((i) => i.label)).toEqual(["Groupes d'action actifs", "Parrains et marraines", "Actions en 2026"]);
+    expect(glance.items.filter((i) => i.tone === "militant").map((i) => i.label)).toEqual(["Groupes d'action actifs", "Soutiens JLM2027", "Actions en 2026"]);
     expect(glance.items.some((i) => /^Vote/.test(i.label))).toBe(false);
     const bv = report.tables.find((t) => t.id === "lfi_bureaux")!;
     expect(bv.columns.map((c) => c.key)).toEqual(expect.arrayContaining(["lfi2", "lfi2exp"]));
