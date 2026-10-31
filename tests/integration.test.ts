@@ -262,7 +262,8 @@ describe("chaîne de génération (API simulées)", () => {
       const iO = bl.findIndex((b) => b.type === "heading" && b.text === "Organiser la venue");
       const after = bl.slice(iO).filter((b) => b.type === "paragraph").map((b) => (b as { text: string }).text);
       expect(after.some((t) => /^\*\*Dans l'Oise\*\* : .*boucle départementale de l'Oise\./.test(t))).toBe(true);
-      expect(after.some((t) => /^\*\*Député·e LFI à proximité\*\* : Camille EXEMPLE \(2e circonscription de l'Oise/.test(t))).toBe(true);
+      // Compiègne dans la 2e circonscription (fictive), celle de la députée LFI.
+      expect(after.some((t) => /^\*\*Député·e de la circonscription\*\* : Camille EXEMPLE \(\*\*La France insoumise\*\*\), 2e circonscription de l'Oise\.$/.test(t))).toBe(true);
     }
     // Municipales 2026, comparées à 2020 (fichier national du ministère), dans le profil politique.
     {

@@ -36,7 +36,7 @@ import { rankBureaux } from "../analysis/political";
 import { collectRpls, type RplsResult } from "../collectors/rpls";
 import { collectAdultes, type AdultesDep } from "../collectors/adultes";
 import { plmInfo } from "../collectors/plm";
-import { collectDeputesLfi, deputesProches, type DeputeLfi } from "../collectors/deputes";
+import { collectDeputesLfi, deputeDe, deputesProches, type DeputeLfi } from "../collectors/deputes";
 import { collectIris, collectQpv, Quartier } from "../collectors/quartiers";
 import {
   collectMunicipales,
@@ -124,7 +124,7 @@ export interface Collected {
   /** Distance à vol d'oiseau à Paris (km). */
   parisKm?: number | null;
   /** Député·es LFI dont la circonscription est proche de la commune (moins de 40 km). */
-  deputes?: { list: (DeputeLfi & { km: number })[]; source: SourceRef };
+  deputes?: { list: (DeputeLfi & { km: number })[]; local: DeputeLfi | null; source: SourceRef };
   polesSource?: SourceRef;
   insee: { geo: GeoRef; result: InseeResult }[];
   perimeterInsee: { code: string; nom: string; result: InseeResult }[];
@@ -1064,7 +1064,8 @@ export async function collect(
     if (!territorial(query.scope) && commune.centre)
       await ctx.step("deputes", "deputes:lfi", async (http) => {
         const r = await collectDeputesLfi(http);
-        c.deputes = { list: deputesProches(r.list, commune.centre as [number, number]), source: ctx.ref("deputes", r.url, r.retrievedAt) };
+        const at = commune.centre as [number, number];
+        c.deputes = { list: deputesProches(r.list, at), local: deputeDe(r.list, at), source: ctx.ref("deputes", r.url, r.retrievedAt) };
       });
     if (enabled("osrm") && commune.centre) {
       await ctx.step("osrm", "acces:routes", async (http) => {

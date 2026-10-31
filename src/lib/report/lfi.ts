@@ -507,6 +507,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     { id: "part_locataires_hlm", label: "Logement social (HLM)", core: true, up: { avec: "beaucoup de logements sociaux" }, down: { avec: "peu de logements sociaux" } },
     { id: "part_65_plus", alt: "part_60_plus", label: "Plus de 65 ans", up: { adj: "plus âgée" }, down: { adj: "plus jeune" } },
     { id: "part_moins_25", alt: "part_moins_30", label: "Moins de 25 ans", up: { adj: "plus jeune" }, down: { adj: "plus âgée" } },
+    { id: "part_retraites", label: "Retraités (15 ans et plus)", up: { avec: "beaucoup de retraités" }, down: { avec: "peu de retraités" } },
     { id: "part_sans_diplome", label: "Sans diplôme (ou brevet)", up: { adj: "moins diplômée" }, down: { adj: "plus diplômée" } },
     { id: "part_ouvriers", label: "Ouvriers", up: { avec: "une forte part d'ouvriers" }, down: { avec: "peu d'ouvriers" } },
     { id: "part_employes", label: "Employés", up: { avec: "une forte part d'employés" }, down: { avec: "peu d'employés" } },
@@ -542,6 +543,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   }
   const cols = [...kept];
   for (const x of socioCmp.filter((x) => x.d.core)) if (cols.length < 4 && !cols.includes(x)) cols.push(x);
+  // Âge (retour de Menal) : toujours les jeunes et les retraités, à la suite des autres colonnes.
+  for (const id of ["part_moins_25", "part_retraites"]) {
+    const x = socioCmp.find((y) => y.d.id === id);
+    if (x && !cols.includes(x)) cols.push(x);
+  }
   // Commune, département, France : l'intercommunalité n'apporte rien à un lecteur non spécialiste.
   const socioRefGeos = [geos.commune, geos.departement, geos.france].filter(Boolean) as GeoRef[];
   // Chiffres arrondis ; revenu exprimé par mois, plus parlant qu'un revenu annuel.
@@ -559,31 +565,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       rows: socioRefGeos.map((g) => ({ territoire: g.level === "france" ? "France" : multi && g === geos.commune ? c.perimeter.label : g.name, ...Object.fromEntries(cols.map((x) => [x.id, fmtCell(x.id, g)])) })),
       highlight: [0],
       sources: [...new Map(cols.map((x) => [x.a.source.dataset ?? x.a.source.id, x.a.source])).values()],
-      note: `Seuls figurent les chiffres où la commune se distingue nettement du département${cols.length > kept.length ? " (et, pour repère, la pauvreté, le revenu, le chômage et le logement social)" : ""}. Revenu médian : la moitié des habitants gagne plus, l'autre moitié moins (par personne, après impôts et aides). Tous les chiffres : diagnostic complet, partie B.`,
+      note: `Seuls figurent les chiffres où la commune se distingue nettement du département${cols.length > kept.length ? " (et, pour repère, quelques chiffres de base : pauvreté ou logement social, part des moins de 25 ans et des retraités)" : ""}. Revenu médian : la moitié des habitants gagne plus, l'autre moitié moins (par personne, après impôts et aides). Tous les chiffres : diagnostic complet, partie B.`,
     });
-  }
-  // Âges des habitants (retour de Menal) : tranches du recensement, commune, département et France.
-  {
-    const agesOf = (lvl: string) => c.insee.find((x) => x.geo.level === lvl)?.result.ages ?? null;
-    const ac = multi ? null : agesOf("commune");
-    if (ac?.length) {
-      const refs = [
-        { nom: commune.nom, a: ac },
-        { nom: geos.departement.name, a: agesOf("departement") },
-        { nom: "France", a: agesOf("france") },
-      ].filter((r): r is { nom: string; a: NonNullable<typeof ac> } => !!r.a?.length);
-      const src = c.insee.find((x) => x.geo.level === "commune")?.result.agesSource;
-      out.tables.push({
-        id: "lfi_ages",
-        title: "Âge des habitants",
-        theme: "strategie",
-        columns: [{ key: "territoire", label: "", wide: true }, ...ac.map((x, i) => ({ key: `a${i}`, label: x.label, align: "right" as const }))],
-        rows: refs.map((r) => ({ territoire: r.nom, ...Object.fromEntries(ac.map((x, i) => [`a${i}`, pp(r.a.find((y) => y.label === x.label)?.share)])) })),
-        highlight: [0],
-        sources: src ? [src] : [],
-        note: "Part des habitants de chaque tranche d'âge (recensement de la population, INSEE).",
-      });
-    }
   }
   // Phrase d'introduction en langage courant.
   const popI = get("pop_municipale", geos.commune);
@@ -2497,7 +2480,6 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   blocks.push({ type: "heading", text: `Profil sociodémographique ${deLa}`, sub: "Qui habite ici (revenus, âge, logement) : pour savoir à qui l'on parle et quels sujets porter à la porte." });
   if (socioIntro.length) blocks.push({ type: "paragraph", text: socioIntro.join(" ") });
   if (has("lfi_socio")) blocks.push({ type: "table", tableId: "lfi_socio" });
-  if (has("lfi_ages")) blocks.push({ type: "table", tableId: "lfi_ages" });
   // Quartier qui concentre la pauvreté : en tête des phrases qualitatives (3 au plus).
   const poorQ = ids2.quartiers.map((id) => out.findings.find((f) => f.id === id)).find((f) => f?.kind === "constat" && /concentre la pauvreté/.test(f.text));
   const socioItems = [...(poorQ ? [{ text: poorQ.text, evidence: poorQ.evidence }] : []), ...socio].slice(0, 3);
@@ -2879,15 +2861,21 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
 
   /* ---------------------------------------------------------- opérationnel */
   blocks.push({ type: "heading", text: "Organiser la venue", sub: "Qui mobiliser : le département d'abord, les villes militantes proches, les élu·es LFI ; puis comment rejoindre la commune." });
-  // Député·es LFI des circonscriptions proches (retour de Menal) : relais pour mobiliser.
-  if (c.deputes?.list.length)
-    blocks.push({
-      type: "paragraph",
-      text: `${B(c.deputes.list.length > 1 ? "Député·es LFI à proximité" : "Député·e LFI à proximité")} : ${c.deputes.list
-        .slice(0, 6)
-        .map((d) => `${d.nom} (${circoLabel(d.circo, d.depNom)}${d.km === 0 ? ", la commune en fait partie" : `, à ${fmtNumber(Math.max(1, Math.round(d.km)))} km`})`)
-        .join(" ; ")}.`,
-    });
+  // Député·e de la circonscription (tous groupes) et député·es LFI proches (retour de Menal) : relais pour mobiliser.
+  if (c.deputes) {
+    const GROUPES: Record<string, string> = { "LFI-NFP": "La France insoumise", LFI: "La France insoumise", RN: "Rassemblement national", SOC: "socialiste", EPR: "Ensemble pour la République", DR: "Droite républicaine", "EcoS": "écologiste", DEM: "Les Démocrates", Dem: "Les Démocrates", HOR: "Horizons", LIOT: "LIOT", GDR: "Gauche démocrate et républicaine", UDR: "Union des droites pour la République", NI: "non inscrit" };
+    const grp = (g: string) => GROUPES[g] ?? g;
+    const loc = c.deputes.local;
+    const lfiTxt = c.deputes.list
+      .filter((d) => !(loc && d.dep === loc.dep && d.circo === loc.circo))
+      .slice(0, 6)
+      .map((d) => `${d.nom} (${circoLabel(d.circo, d.depNom)}, à ${fmtNumber(Math.max(1, Math.round(d.km)))} km)`);
+    const parts = [
+      loc ? `${B("Député·e de la circonscription")} : ${loc.nom}${loc.lfi ? ` (${B("La France insoumise")})` : ` (groupe ${grp(loc.groupe)})`}, ${circoLabel(loc.circo, loc.depNom)}.` : "",
+      lfiTxt.length ? `${B(loc?.lfi ? "Autres député·es LFI à proximité" : "Député·es LFI à proximité")} : ${lfiTxt.join(" ; ")}.` : loc?.lfi ? "" : `${B("Pas de député·e LFI")} à moins de 40 km.`,
+    ].filter(Boolean);
+    if (parts.length) blocks.push({ type: "paragraph", text: parts.join(" ") });
+  }
   if (access.length) blocks.push({ type: "paragraph", text: `${B("Pour rejoindre la commune")} : ${access.join(" ; ")}${c.routes || c.timetables ? " (temps théoriques, sans trafic)" : " (distances à vol d'oiseau)"}.` });
 
   out.section = { id: "LFI", letter: "", title: "Fiche d'action — proposition de ciblage", blocks };
