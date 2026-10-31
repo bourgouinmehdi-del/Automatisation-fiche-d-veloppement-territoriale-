@@ -18,6 +18,9 @@ const DATAGOUV = "https://www.data.gouv.fr/api/1";
 
 export interface DeputeLfi {
   nom: string;
+  /** Groupe parlementaire (abrégé : « LFI-NFP », « RN »…). */
+  groupe: string;
+  lfi: boolean;
   dep: string;
   depNom: string;
   circo: number;
@@ -25,18 +28,24 @@ export interface DeputeLfi {
   geometry?: GeoJSON.Polygon | GeoJSON.MultiPolygon;
 }
 
-/** Lignes du CSV de Datan → député·es du groupe LFI. */
+/** Lignes du CSV de Datan → député·es (tous groupes ; `lfi` pour le groupe LFI). */
 export function parseDeputesLfi(text: string): DeputeLfi[] {
-  const rows = Papa.parse<Record<string, string>>(text.replace(/^﻿/, ""), { header: true, skipEmptyLines: true }).data;
+  const rows = Papa.parse<Record<string, string>>(text.replace(/^\uFEFF/, ""), { header: true, skipEmptyLines: true }).data;
   return rows
-    .filter((r) => /^LFI/i.test(String(r.groupeAbrev ?? "").trim()) || /insoumise/i.test(String(r.groupe ?? "")))
-    .map((r) => ({ nom: `${String(r.prenom ?? "").trim()} ${String(r.nom ?? "").trim()}`.trim(), dep: normDepCirco(String(r.departementCode ?? "")), depNom: String(r.departementNom ?? "").trim(), circo: Number(r.circo) }))
+    .map((r) => ({
+      nom: `${String(r.prenom ?? "").trim()} ${String(r.nom ?? "").trim()}`.trim(),
+      groupe: String(r.groupeAbrev ?? "").trim() || String(r.groupe ?? "").trim(),
+      lfi: /^LFI/i.test(String(r.groupeAbrev ?? "").trim()) || /insoumise/i.test(String(r.groupe ?? "")),
+      dep: normDepCirco(String(r.departementCode ?? "")),
+      depNom: String(r.departementNom ?? "").trim(),
+      circo: Number(r.circo),
+    }))
     .filter((d) => d.nom && d.dep && Number.isFinite(d.circo));
 }
 
 export async function collectDeputesLfi(http: TrackedHttp): Promise<{ list: DeputeLfi[]; url: string; retrievedAt: string }> {
   return cachedExtract(
-    "deputes-lfi",
+    "deputes-v2",
     24,
     () =>
       heavyLane.run(async () => {
@@ -70,11 +79,17 @@ export async function collectDeputesLfi(http: TrackedHttp): Promise<{ list: Depu
   );
 }
 
-/** Député·es dont la circonscription est à moins de `km` du point (0 : la commune y est). */
+/** Député·e de la circonscription qui contient le point (tous groupes). */
+export function deputeDe(list: DeputeLfi[], at: [number, number]): DeputeLfi | null {
+  const pt = turf.point(at);
+  return list.find((d) => d.geometry && turf.booleanPointInPolygon(pt, turf.feature(d.geometry) as GeoJSON.Feature<GeoJSON.Polygon>)) ?? null;
+}
+
+/** Député·es LFI dont la circonscription est à moins de `km` du point (0 : la commune y est). */
 export function deputesProches(list: DeputeLfi[], at: [number, number], km = 40): (DeputeLfi & { km: number })[] {
   const pt = turf.point(at);
   return list
-    .filter((d) => d.geometry)
+    .filter((d) => d.lfi && d.geometry)
     .map((d) => {
       const f = turf.feature(d.geometry!);
       let dist = 0;
