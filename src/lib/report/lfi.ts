@@ -541,8 +541,14 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (desc.adj && kept.some((k) => (k.dir === "superieur" ? k.d.up : k.d.down).adj === desc.adj)) continue;
     if (kept.length < 7) kept.push(x);
   }
-  const cols = [...kept];
-  for (const x of socioCmp.filter((x) => x.d.core)) if (cols.length < 4 && !cols.includes(x)) cols.push(x);
+  // Toujours les repères de base (pauvreté, revenu, logement social), puis les trois chiffres qui
+  // distinguent le plus la commune, puis l'âge.
+  const cols: typeof kept = [];
+  for (const id of ["taux_pauvrete", "revenu_median", "part_locataires_hlm"]) {
+    const x = socioCmp.find((y) => y.d.id === id);
+    if (x) cols.push(x);
+  }
+  for (const x of kept.filter((y) => !cols.includes(y)).slice(0, 3)) cols.push(x);
   // Âge (retour de Menal) : toujours les jeunes et les retraités, à la suite des autres colonnes.
   for (const id of ["part_moins_25", "part_retraites"]) {
     const x = socioCmp.find((y) => y.d.id === id);
@@ -565,7 +571,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       rows: socioRefGeos.map((g) => ({ territoire: g.level === "france" ? "France" : multi && g === geos.commune ? c.perimeter.label : g.name, ...Object.fromEntries(cols.map((x) => [x.id, fmtCell(x.id, g)])) })),
       highlight: [0],
       sources: [...new Map(cols.map((x) => [x.a.source.dataset ?? x.a.source.id, x.a.source])).values()],
-      note: `Seuls figurent les chiffres où la commune se distingue nettement du département${cols.length > kept.length ? " (et, pour repère, quelques chiffres de base : pauvreté ou logement social, part des moins de 25 ans et des retraités)" : ""}. Revenu médian : la moitié des habitants gagne plus, l'autre moitié moins (par personne, après impôts et aides). Tous les chiffres : diagnostic complet, partie B.`,
+      note: `Pauvreté, revenu, logement social et âge sur toutes les fiches ; les autres colonnes sont celles où la commune se distingue le plus du département. Revenu médian : la moitié des habitants gagne plus, l'autre moitié moins (par personne, après impôts et aides). Tous les chiffres : diagnostic complet, partie B.`,
     });
   }
   // Phrase d'introduction en langage courant.
