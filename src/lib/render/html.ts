@@ -468,7 +468,8 @@ h3.target-t { font-size: 24pt; font-weight: 900; color: #4c0297; text-transform:
 td.sb { white-space: nowrap; }
 .sbar { display: inline-block; vertical-align: middle; width: 16mm; height: 2.2mm; background: #ebe7de; border-radius: 1mm; margin-right: 1.5mm; overflow: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .sbar > span { display: block; height: 100%; }
-figure.poster svg { width: 100%; height: auto; max-height: 238mm; display: block; }
+/* Carte de ciblage : 150 mm de haut au plus, pour tenir sur la même page que le texte qui la précède. */
+figure.poster svg { width: 100%; height: auto; max-height: 150mm; display: block; margin: 0 auto; }
 figure.poster { break-inside: avoid; margin-bottom: 2mm; }
 .oa { border: 0.3mm solid #212320; padding: 3mm 4mm; margin: 0 0 2mm; font-size: 8.6pt; break-inside: avoid; }
 .oa-t { margin: 0 0 2mm; color: #4c0297; font-size: 11pt; font-weight: 800; }
