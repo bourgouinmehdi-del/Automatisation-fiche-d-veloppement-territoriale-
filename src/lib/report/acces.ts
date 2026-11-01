@@ -35,6 +35,8 @@ const HUB_MAX_KM = 90;
 /** Grandes villes militantes (2 000 parrains et plus : Paris, Lyon, Marseille…) : jusqu'à 130 km. */
 const BIG_HUB_PARRAINS = 2000;
 const BIG_HUB_MAX_KM = 130;
+/** Écart de distance en deçà duquel la grande ville qui a le plus de soutiens passe devant la plus proche. */
+const GRANDE_TOLERANCE_KM = 20;
 /** Communes voisines avec un groupe d'action actif, quelle que soit leur taille. */
 const LOCAL_GA_KM = 25;
 /** … et au moins 25 parrains : un groupe déclaré actif dans une commune presque sans soutiens ne fera pas venir de monde. */
@@ -68,7 +70,8 @@ const AGGLO_KM = 6;
  * 2. la moitié des places aux plus proches des territoires ;
  * 3. puis les villes militantes (2 groupes ou 200 parrains) les plus proches ;
  * 4. la dernière à la grande ville (2 000 parrains et plus) la plus proche — Bordeaux plutôt que Nantes
- *    pour la Charente-Maritime —, à défaut à la ville qui a le plus de parrains.
+ *    pour la Charente-Maritime —, sauf si une autre, à 20 km de plus au plus, a au moins deux fois plus
+ *    de parrains (Paris plutôt que Montreuil) ; à défaut à la ville qui a le plus de parrains.
  */
 export function chooseHubs<T extends { l: { code: string; lon: number; lat: number }; b: { ga: number; parrains: number }; km: number }>(all: T[], max: number, dep?: string): T[] {
   const idf = (code: string) => IDF.has(code.slice(0, 2));
@@ -81,7 +84,11 @@ export function chooseHubs<T extends { l: { code: string; lon: number; lat: numb
   const nearest = [...cands].sort((a, b) => kmPref(a) - kmPref(b)).slice(0, Math.ceil(max / 2));
   const reste = cands.filter((x) => !nearest.includes(x) && estVille(x));
   const grandes = reste.filter((x) => x.b.parrains >= BIG_HUB_PARRAINS).sort((a, b) => a.km - b.km);
-  const grande = grandes[0] ?? [...reste].sort((a, b) => b.b.parrains - a.b.parrains)[0];
+  // La plus proche, sauf si une autre grande ville est à peine plus loin (20 km au plus) avec au moins
+  // deux fois plus de soutiens : Paris plutôt que Montreuil pour Montargis (100 km contre 99 km).
+  let grande = grandes[0];
+  for (const x of grandes.slice(1)) if (x.km - grandes[0].km <= GRANDE_TOLERANCE_KM && x.b.parrains >= 2 * grande.b.parrains) grande = x;
+  grande ??= [...reste].sort((a, b) => b.b.parrains - a.b.parrains)[0];
   const villes = reste.filter((x) => x !== grande).sort((a, b) => a.km - b.km).slice(0, Math.max(0, max - nearest.length - 1));
   return [...nearest, ...villes, ...(grande && nearest.length + villes.length < max ? [grande] : [])];
 }
