@@ -218,7 +218,7 @@ export function groupRpls(rows: Record<string, unknown>[]): { total: number; res
     const key = isProgName(prog) ? `p:${sansAccent(prog).toUpperCase()}|${sansAccent(voie).toUpperCase()}` : `a:${sansAccent(adresse).toUpperCase()}`;
     let e = res.get(key);
     // Caractères mal encodés dans le fichier source (« Montargis Sirene (labellis?e) ») : passage retiré.
-    if (!e) res.set(key, (e = { nom: key.startsWith("p:") ? title(prog).replace(/\s*\([^)]*\?[^)]*\)/g, "").replace(/\S*\?\S*/g, "").replace(/\s+/g, " ").trim() : "", adresse, voie, nums: new Set(), n: 0, xs: [], ys: [], qpv: clean(r.PLG_QP24 ?? r.QPV_CODE) || null, years: new Map() }));
+    if (!e) res.set(key, (e = { nom: key.startsWith("p:") ? title(prog).replace(/\s*\([^)]*[?\uFFFD][^)]*\)/g, "").replace(/\S*[?\uFFFD]\S*/g, "").replace(/\s+/g, " ").trim() : "", adresse, voie, nums: new Set(), n: 0, xs: [], ys: [], qpv: clean(r.PLG_QP24 ?? r.QPV_CODE) || null, years: new Map() }));
     if (num) e.nums.add(num);
     for (const x of extra) e.nums.add(x);
     e.n++;
@@ -316,7 +316,8 @@ async function fetchRows(http: TrackedHttp, code: string): Promise<{ rows: Recor
  */
 export function collectRpls(http: TrackedHttp, code: string, opts: { parent?: string; contour?: GeoJSON.Geometry | null } = {}): Promise<RplsResult> {
   return cachedExtract(
-    `rpls2|${code}`,
+    // Version de la mise en forme (abréviations, accents, noms mal encodés) : à changer quand elle évolue.
+    `rpls3|${code}`,
     24 * 30,
     async () => {
       let f = await fetchRows(http, code);

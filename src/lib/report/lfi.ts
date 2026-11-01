@@ -17,6 +17,7 @@ import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from
 import type { Quartier } from "../collectors/quartiers";
 import { NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
 import { investie } from "../collectors/interne";
+import { ecartParts, ecartRatio } from "./gradation";
 import { BPE_VINTAGE, BPE_TYPES } from "../collectors/bpe";
 import { circoLabel } from "../collectors/carto";
 import { fmtDuration } from "../collectors/routes";
@@ -263,35 +264,19 @@ export function oneInV(v: number, who: string, sing: string, plur: string): stri
   return `${t} ${/^((près|plus) d')?1 /.test(t) ? sing : plur}`;
 }
 /** « deux fois plus », « nettement plus », « un peu plus »… */
+/** Rapport entre deux taux ou nombres, en mots, sur l'échelle graduée commune (voir gradation.ts). */
 export function compareWords(a: number, b: number, more = "plus", less = "moins"): string {
-  if (!b) return more;
-  const r = a / b;
-  const words = ["", "", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix"];
-  if (r >= 1.8) return `${r >= 2.5 ? `${words[Math.min(10, Math.round(r))] || Math.round(r)} fois` : "deux fois"} ${more}`;
-  if (r >= 1.25) return `nettement ${more}`;
-  if (r > 1.05) return `un peu ${more}`;
-  if (r <= 1 / 1.8) return `${1 / r >= 2.5 ? `${words[Math.min(10, Math.round(1 / r))] || Math.round(1 / r)} fois` : "deux fois"} ${less}`;
-  if (r <= 1 / 1.25) return `nettement ${less}`;
-  if (r < 0.95) return `un peu ${less}`;
-  return "autant";
+  return ecartRatio(a, b, more, less).words;
 }
 
 /**
- * Comparaison d'un score de vote à une référence, en mots, avec une seule
- * règle pour toute la fiche (synthèse, « En bref ») : l'écart doit être net à
- * la fois en rapport et en points pour être signalé. 6 % contre 4 % : « un peu
- * plus » (2 points), pas « nettement plus » ; 15 % contre 14 % : « autant ».
+ * Comparaison d'un score de vote à une référence, en mots, sur l'échelle graduée commune : points et
+ * proportion comptent tous les deux. 11 % contre 8 % : « plus » ; 6 % contre 4 % : « plus » ; 15 % contre
+ * 14 % : « à peine plus ». `net` (niveau 4 et au-delà) : « nettement plus » ou davantage.
  */
-export function voteCompare(c: number, d: number): { dir: "plus" | "moins" | "autant"; words: string; net: boolean } {
-  const diff = c - d;
-  const r = d ? c / d : 2;
-  if (Math.abs(diff) < 1.5 || Math.abs(r - 1) < 0.08) return { dir: "autant", words: "autant", net: false };
-  const dir = diff > 0 ? "plus" : "moins";
-  const strong = Math.abs(diff) >= 3 && (r >= 1.2 || r <= 1 / 1.2);
-  if (!strong) return { dir, words: `un peu ${dir}`, net: false };
-  // « deux fois plus » seulement si l'écart dépasse aussi 5 points.
-  const w = compareWords(c, d, "plus", "moins");
-  return { dir, words: /fois/.test(w) && Math.abs(diff) < 5 ? `nettement ${dir}` : w, net: true };
+export function voteCompare(c: number, d: number): { dir: "plus" | "moins" | "autant"; words: string; net: boolean; level: number } {
+  const e = ecartParts(c, d);
+  return { dir: e.dir, words: e.words, net: e.net, level: e.level };
 }
 
 /** Scores nationaux du vote LFI (% des exprimés), repère d'un « terrain favorable ». */
@@ -386,9 +371,13 @@ export function politiqueIntro(
   else if (rang[0] && !GAUCHE.includes(rang[0][0]) && iLfi !== 1) out.push(`${NOM_FORCE[rang[0][0]].charAt(0).toUpperCase()}${NOM_FORCE[rang[0][0]].slice(1)} arrive en tête aux européennes de 2024.`);
   // 4. Participation.
   const pa = e24?.abst != null ? e24.abst - 48.51 : by.get("PR22T1")?.abst != null ? by.get("PR22T1")!.abst! - 26.31 : null;
-  if (pa != null && pa >= 5) out.push("On y vote nettement moins qu'ailleurs.");
-  else if (pa != null && pa >= 3) out.push("On y vote un peu moins qu'ailleurs.");
-  else if (pa != null && pa <= -5) out.push("On y vote nettement plus qu'ailleurs.");
+  // Participation : dite explicitement (« on y vote moins » se lisait comme un vote moins favorable), écart en points.
+  const scrutin = e24?.abst != null ? "aux européennes 2024" : "à la présidentielle 2022";
+  if (pa != null && Math.abs(pa) >= 3) {
+    const n = Math.round(Math.abs(pa));
+    const adv = Math.abs(pa) >= 12 ? "beaucoup " : Math.abs(pa) >= 6 ? "nettement " : "";
+    out.push(`La participation y est ${adv}${pa > 0 ? "plus faible" : "plus forte"} qu'en moyenne en France (${n} points ${pa > 0 ? "d'abstention en plus" : "d'abstention en moins"} ${scrutin}).`);
+  }
   // 5. Écarts entre bureaux de vote ; partie de la commune où LFI a le plus progressé.
   const r = o.bvRange;
   if (r && r.max - r.min >= 20) out.push(`La commune est fortement ségréguée politiquement : les scores de LFI varient de ${pct(r.min, 0)} à ${pct(r.max, 0)} d'un bureau de vote à l'autre.`);
@@ -1655,7 +1644,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       ids2.quartiers.push(
         addF({
           kind: "constat",
-          text: `${B(`${cap(poorest.kind === "qpv" ? leQuartier(poorest) : quartierLabel(poorest.nom))} concentre la pauvreté`)} : ${oneInV(poorest.stats.pauvrete!, "habitant", "y vit", "y vivent")} sous le seuil de pauvreté, contre ${oneIn(comPov)} dans l'ensemble de la commune${poorest.stats.revenu != null ? ` (revenu médian : ${fmtNumber(Math.round(poorest.stats.revenu / 12 / 10) * 10)}\u00a0€ par mois)` : ""}.`,
+          text: `${B(`${cap(poorest.kind === "qpv" ? leQuartier(poorest) : quartierLabel(poorest.nom))} ${/^(les|des)\s/i.test(poorest.kind === "qpv" ? leQuartier(poorest) : quartierLabel(poorest.nom)) ? "concentrent" : "concentre"} la pauvreté`)} : ${oneInV(poorest.stats.pauvrete!, "habitant", "y vit", "y vivent")} sous le seuil de pauvreté, contre ${oneIn(comPov)} dans l'ensemble de la commune${poorest.stats.revenu != null ? ` (revenu médian : ${fmtNumber(Math.round(poorest.stats.revenu / 12 / 10) * 10)}\u00a0€ par mois)` : ""}.`,
           evidence: [`taux_pauvrete_quartier@quartier:${poorest.kind}:${poorest.code}`, ...(get("taux_pauvrete", geos.commune) ? [evidenceId(get("taux_pauvrete", geos.commune)!)] : [])],
           weight: 88,
         }),
@@ -2265,8 +2254,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const road = (label: string) => c.routes?.routes.find((r) => r.label === label);
   const rPole = road("Pôle urbain le plus proche");
   const rParis = road("Paris");
-  if (rPole) access.push(`${rPole.nom} à ${fmtDuration(rPole.minutes)} en voiture`);
-  else if (nearestBig) access.push(`${nearestBig.nom} à ${fmtValue(nearestBig.distanceKm, "km")}`);
+  // Pôle urbain voisin : utile pour un bourg, pas pour une ville qui est elle-même un pôle (Montargis → Montereau).
+  const petite = (commune.population ?? 0) < 10000;
+  if (rPole && petite) access.push(`${rPole.nom} à ${fmtDuration(rPole.minutes)} en voiture`);
+  else if (nearestBig && petite) access.push(`${nearestBig.nom} à ${fmtValue(nearestBig.distanceKm, "km")}`);
   for (const lab of ["Grande ville la plus proche", "Préfecture"]) {
     const r = road(lab);
     if (r) access.push(`${r.nom}${lab === "Préfecture" ? " (préfecture)" : ""} à ${fmtDuration(r.minutes)}`);
@@ -2335,14 +2326,20 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (lfiStrong || melStrong) {
     const x = lfiStrong ? { c: l24!.pctExprimes, d: dl24!.pctExprimes, what: "aux européennes 2024", w: cmp24!.words } : { c: m22!.pctExprimes, d: dm22!.pctExprimes, what: "pour J.-L. Mélenchon en 2022", w: cmp22!.words };
     synth.push({ text: `${B("Un terrain favorable")} : on y vote ${x.w} pour la France insoumise que dans le reste du département (${pp(x.c)} ${x.what}, contre ${pp(x.d)}).` });
-  } else if (lowAbove)
+  } else if (cmp24 && cmp24.dir === "plus" && cmp24.level >= 2 && l24!.pctExprimes >= LFI_NATIONAL.EU24 * 0.9)
+    // Écart réel mais modeste (3 points) : « plutôt favorable », sans « nettement ».
+    synth.push({ text: `${B("Un terrain plutôt favorable")} : on y vote ${cmp24.words} pour la France insoumise que dans le reste du département (${pp(l24!.pctExprimes)} aux européennes 2024, contre ${pp(dl24!.pctExprimes)}).` });
+  else if (lowAbove)
     synth.push({ text: `${B("Un vote insoumis encore faible")} : ${pp(l24!.pctExprimes)} aux européennes 2024, ${cmp24!.words} que dans le département (${pp(dl24!.pctExprimes)}) mais loin du niveau national (${pp(LFI_NATIONAL.EU24)}).` });
   else if (perfMain?.dir === "superieur" && (!l24 || l24.pctExprimes >= LFI_NATIONAL.EU24 * 0.9))
     // Cohérent avec « En bref » : si l'écart au département est faible, on le dit.
     synth.push({ text: cmp24 && !cmp24.net ? `${B("Un terrain plutôt favorable")} : on y vote davantage pour la France insoumise que dans les villes de même taille du département, mais à peu près comme dans l'ensemble du département.` : `${B("Un terrain favorable")} : on y vote davantage pour la France insoumise que dans les villes de même taille du département.` });
   else if (l24 && dl24 && m22 && dm22 && l24.pctExprimes < dl24.pctExprimes * 0.85 && m22.pctExprimes >= dm22.pctExprimes * 0.95)
     // Faible aux européennes, mais au niveau du département à la présidentielle : un électorat qui se mobilise surtout pour la présidentielle.
-    synth.push({ text: `${B("Un vote insoumis à réveiller")} : faible aux européennes 2024 (${pp(l24.pctExprimes)}, contre ${pp(dl24.pctExprimes)} dans le département), mais ${m22.pctExprimes >= dm22.pctExprimes * 1.05 ? "plus fort" : "au même niveau"} qu'ailleurs pour J.-L. Mélenchon en 2022 (${pp(m22.pctExprimes)}).` });
+    synth.push({ text: `${B("Un vote insoumis à réveiller")} : faible aux européennes 2024 (${pp(l24.pctExprimes)}, contre ${pp(dl24.pctExprimes)} dans le département), mais ${(() => {
+      const e = voteCompare(m22.pctExprimes, dm22.pctExprimes);
+      return e.dir === "autant" || e.level <= 1 ? "au même niveau" : `${e.words.replace(/ plus$/, " plus fort").replace(/^plus$/, "plus fort")}`;
+    })()} qu'ailleurs pour J.-L. Mélenchon en 2022 (${pp(m22.pctExprimes)}).` });
   else if (perfMain?.dir === "inferieur" || (l24 && dl24 && l24.pctExprimes < dl24.pctExprimes * 0.85))
     synth.push({ text: `${B("Un terrain difficile")} : on y vote moins pour la France insoumise que dans le reste du département ${l24 && dl24 ? `(${pp(l24.pctExprimes)} aux européennes 2024, contre ${pp(dl24.pctExprimes)}${m22 && dm22 ? ` ; ${pp(m22.pctExprimes)} pour J.-L. Mélenchon en 2022, contre ${pp(dm22.pctExprimes)}` : ""})` : ""}.` });
   if (abstMain?.dir === "superieur")
@@ -2477,7 +2474,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (socioIntro.length) blocks.push({ type: "paragraph", text: socioIntro.join(" ") });
   if (has("lfi_socio")) blocks.push({ type: "table", tableId: "lfi_socio" });
   // Quartier qui concentre la pauvreté : en tête des phrases qualitatives (3 au plus).
-  const poorQ = ids2.quartiers.map((id) => out.findings.find((f) => f.id === id)).find((f) => f?.kind === "constat" && /concentre la pauvreté/.test(f.text));
+  const poorQ = ids2.quartiers.map((id) => out.findings.find((f) => f.id === id)).find((f) => f?.kind === "constat" && /concentrent? la pauvreté/.test(f.text));
   const socioItems = [...(poorQ ? [{ text: poorQ.text, evidence: poorQ.evidence }] : []), ...socio].slice(0, 3);
   if (socioItems.length) blocks.push({ type: "list", items: socioItems });
   // Accès aux services : distance au plus proche, comparée aux communes de taille semblable du département.
@@ -2887,7 +2884,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     out.maps.push(...porte.maps);
     out.tables.push(...porte.tables);
     out.extra = [porte.section, ...(out.extra ?? [])];
-    blocks.push({ type: "note", text: `${B("Feuilles de porte-à-porte")} : une page par bureau prioritaire (rues et numéros à couvrir) est jointe à la fiche et disponible en PDF séparé.` });
+    // Avec « Que faire ? » (et non seule en fin de fiche, sur une page presque vide).
+    const iOrg = blocks.findIndex((b) => b.type === "heading" && b.text === "Organiser la venue");
+    blocks.splice(iOrg >= 0 ? iOrg : blocks.length, 0, { type: "note", text: `${B("Feuilles de porte-à-porte")} : une page par bureau prioritaire (rues et numéros à couvrir) est jointe à la fiche et disponible en PDF séparé.` });
   }
   // Arrondissement de Paris, Lyon ou Marseille : « l'arrondissement » et la ville, pas « la commune » et « le département ».
   if (plm) plmWording(out, plm.ville);
