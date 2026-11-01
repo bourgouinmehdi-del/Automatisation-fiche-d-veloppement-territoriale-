@@ -93,6 +93,23 @@ export function chooseHubs<T extends { l: { code: string; lon: number; lat: numb
   return [...nearest, ...villes, ...(grande && nearest.length + villes.length < max ? [grande] : [])];
 }
 
+/**
+ * Paris, Lyon, Marseille : un bilan tenu par arrondissement (75112…) est regroupé sous le code de la ville
+ * (75056), seul connu de la liste des communes (centres) — sinon Paris n'est jamais proposée comme ville militante.
+ */
+export function withVilles<B extends { ga: number; parrains: number; actions: number; inscrits: number }>(bilan: Map<string, B>): Map<string, B> {
+  const out = new Map(bilan);
+  for (const [ville, arrs] of Object.entries(ARRONDISSEMENTS)) {
+    if (out.has(ville)) continue;
+    const parts = arrs.map((a) => bilan.get(a)).filter((x): x is B => !!x);
+    if (!parts.length) continue;
+    const sum = (k: "ga" | "parrains" | "actions" | "inscrits") => parts.reduce((n, x) => n + x[k], 0);
+    out.set(ville, { ...parts[0], ga: sum("ga"), parrains: sum("parrains"), actions: sum("actions"), inscrits: sum("inscrits") });
+    for (const a of arrs) out.delete(a);
+  }
+  return out;
+}
+
 export async function ciblageAcces(
   c: Collected,
   targets: AccesTarget[],
@@ -129,7 +146,7 @@ export async function ciblageAcces(
   // 2. Villes militantes proches : au moins 2 groupes d'action actifs ou 200 parrains, et les communes
   // voisines (moins de 25 km) qui ont un groupe actif. On garde d'abord les plus proches, puis les plus grandes.
   const targetCodes = new Set(targets.flatMap((t) => t.codes));
-  const cands = [...bilan]
+  const cands = [...withVilles(bilan)]
     .filter(([code, b]) => !targetCodes.has(code) && b.ga >= 1)
     .map(([code, b]) => ({ l: at(code), b }))
     .filter((x): x is { l: Lieu; b: (typeof x)["b"] } => !!x.l)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseHubs } from "@/lib/report/acces";
+import { chooseHubs, withVilles } from "@/lib/report/acces";
 
 /** Coordonnées approximatives des centres ; groupes et parrains fictifs. */
 const c = (code: string, lon: number, lat: number, ga: number, parrains: number, km: number) => ({ l: { code, lon, lat }, b: { ga, parrains }, km });
@@ -41,6 +41,13 @@ describe("choix des villes militantes proches", () => {
     const h = chooseHubs(all, 10, "45").map((x) => x.l.code);
     expect(h).toContain("75056");
     expect(h[h.length - 1]).toBe("75056");
+  });
+  it("bilan par arrondissement : Paris regroupée sous 75056", () => {
+    const b = (ga: number, parrains: number) => ({ ga, parrains, actions: 1, inscrits: 1000, estime: false });
+    const m = withVilles(new Map([["75112", b(3, 900)], ["75120", b(4, 1500)], ["93048", b(10, 2374)]]));
+    expect(m.get("75056")).toMatchObject({ ga: 7, parrains: 2400, inscrits: 2000 });
+    expect(m.has("75112")).toBe(false);
+    expect(m.get("93048")?.parrains).toBe(2374);
   });
   it("Île-de-France : les villes voisines restent distinctes", () => {
     const all = [c("94081", 2.39, 48.79, 1, 800, 3), c("75056", 2.35, 48.86, 70, 31000, 7), c("94041", 2.38, 48.81, 1, 1000, 1)];
