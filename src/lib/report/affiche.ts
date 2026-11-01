@@ -60,6 +60,18 @@ export const WEEKEND = {
  * 8 h – 13 h » ; « vendredi, 12 h – 21 h ; dimanche, 8 h – 14 h » → « dimanche, 8 h – 14 h ».
  * Chaîne vide si aucun créneau du week-end n'est connu.
  */
+/**
+ * Jours d'un marché le week-end : horaires détaillés si OpenStreetMap les donne, sinon le seul jour
+ * (« sam. » → « samedi matin ») ; vide si aucun jour du week-end n'est connu.
+ */
+export function marcheWeekend(h: string): string {
+  const w = weekendHours(h);
+  if (w) return w;
+  const sam = /\bsam(\.|edi)?\b|\bSa\b/i.test(h);
+  const dim = /\bdim(\.|anche)?\b|\bSu\b/i.test(h);
+  return sam && dim ? "samedi et dimanche matin" : sam ? "samedi matin" : dim ? "dimanche matin" : "";
+}
+
 export function weekendHours(h: string): string {
   const JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
   const out: string[] = [];
@@ -405,7 +417,7 @@ export function communePoster(
   const tract = [
     ...markets.map((m) => {
       const nom = /^march[ée]$/i.test(m.nom.trim()) ? "Marché" : m.nom;
-      const h = /à (compléter|vérifier)/.test(m.infos) || !m.infos ? "" : weekendHours(m.infos) || m.infos;
+      const h = /à (compléter|vérifier)/.test(m.infos) || !m.infos ? "" : marcheWeekend(m.infos) || m.infos;
       return { nom, sub: h ? `Marché · ${h}` : "Marché · jour du week-end à confirmer en mairie", det: ["Lieu de passage régulier des habitants", h ? `Horaires (OpenStreetMap, à confirmer) : ${h}` : "Jours et horaires à confirmer en mairie"], quand: m.quand ?? (h ? cap(h) : WEEKEND.marche), lon: m.lon!, lat: m.lat! };
     }),
     ...gares.map((g) => ({ nom: gareNom(g.nom), sub: "Départs et retours de week-end", det: ["Départs et retours de week-end, étudiants"], quand: g.quand ?? WEEKEND.gare, lon: g.lon!, lat: g.lat! })),

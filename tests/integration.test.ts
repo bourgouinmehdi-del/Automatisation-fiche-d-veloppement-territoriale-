@@ -325,8 +325,8 @@ describe("chaîne de génération (API simulées)", () => {
     // Résidence aux coordonnées hors de la commune : écartée.
     expect(JSON.stringify(report.tables.filter((t) => /hlm/.test(t.id)))).not.toMatch(/Lointains/);
     // Effectifs estimés pour les bureaux prioritaires.
-    const tete = report.sections.find((x) => x.id === "LFI")!.blocks.find((b) => b.type === "paragraph" && /À avoir en tête/.test(b.text));
-    expect(tete && "text" in tete ? tete.text : "").toMatch(/médecins généralistes .*\(6,3 dans le département\) ; .* de chômage/);
+    // « À avoir en tête à la porte » retiré (redisait les chiffres clés et le profil).
+    expect(report.sections.find((x) => x.id === "LFI")!.blocks.some((b) => b.type === "paragraph" && /À avoir en tête/.test(b.text))).toBe(false);
     expect(report.tables.some((t) => t.id === "lfi_sujets")).toBe(false);
     const eff = report.tables.find((t) => t.id === "lfi_effectifs")!;
     expect(String(eff.rows[eff.rows.length - 1].binomes)).toMatch(/militants/);

@@ -11,7 +11,7 @@ import type { Block, ChartSpec, DataTable, Finding, GeoRef, Indicator, MapLegend
 import { MISSING_COLOR, SEQ_COLORS } from "./assemble";
 import { buildPorte } from "./porte";
 import { plmInfo } from "../collectors/plm";
-import { communePoster, GARE_MIN_JOUR, gareNom, openWeekend, perDay, weekendHours, WEEKEND } from "./affiche";
+import { communePoster, GARE_MIN_JOUR, gareNom, marcheWeekend, openWeekend, perDay, weekendHours, WEEKEND } from "./affiche";
 import { buildInscription } from "./inscription";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
@@ -1754,24 +1754,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     reasons.push("beaucoup de logements sociaux");
     ev.push(hlmI, hlmDep);
   }
-  // Question précise : les bureaux qui concentrent le plus de logements sociaux sans être prioritaires.
-  const prioQ = new Set(prio.map((p) => p.bv));
-  const hlmHors = [...hlmByBv]
-    .filter(([bv, n]) => !prioQ.has(bv) && n >= 100)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 2)
-    .map(([bv, n]) => ({ bv, n, r: ranked.find((x) => x.bv === bv) }))
-    .filter((x) => x.r);
-  if (reasons.length && hlmHors.length)
-    ids.hyp.push(
-      addF({
-        kind: "hypothese",
-        text: `${B(`Logements sociaux hors des bureaux prioritaires`)} : ${hlmHors.map((x) => `bureau ${dv(x.bv)}${labels.has(x.bv) ? ` (${labels.get(x.bv)})` : ""}, ${fmtNumber(x.n)} logements, vote LFI à ${pp(x.r!.lfiPctExp)}, ${pp(x.r!.abstPct)} d'abstention`).join(" ; ")}. À ajouter au porte-à-porte si des militants ou des sympathisants y habitent ?`,
-        evidence: ev.map(evidenceId),
-        weight: 75,
-      }),
-    );
-  else if (reasons.length)
+  // Plus de question « logements sociaux hors des bureaux prioritaires » : depuis que le porte-à-porte
+  // commence par les logements sociaux de toute la commune, ils sont déjà dans la liste (retour sur Montargis).
+  if (reasons.length)
     ids.hyp.push(
       addF({
         kind: "hypothese",
@@ -2105,7 +2090,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       action: "Tractage au marché",
       ou: m.nom,
       infos: "Lieu de passage régulier des habitants du quartier",
-      quand: weekendHours(m.infos) ? cap(weekendHours(m.infos)) : WEEKEND.marche,
+      quand: marcheWeekend(m.infos) ? cap(marcheWeekend(m.infos)) : WEEKEND.marche,
       bv: m.bv,
     });
   for (const g of gares.slice(0, 2)) {
@@ -2320,7 +2305,12 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const dm22 = d22 ? score("PR22T1", d22, "lfi") : null;
   {
     const tr = bilan ? c.interne.bilanTranches?.find((t) => bilan.inscrits >= t.min && bilan.inscrits < t.max && t.inscrits) : undefined;
-    const ref = (n: number) => (tr ? `moyenne à taille égale : ${fmtNumber(Math.round((n / tr.inscrits) * bilan!.inscrits))}` : undefined);
+    // Moins de 10 : une décimale (« 0,4 groupe » dit plus que « 0 »).
+    const ref = (n: number) => {
+      if (!tr) return undefined;
+      const v = (n / tr.inscrits) * bilan!.inscrits;
+      return `moyenne à taille égale : ${v < 10 ? fmtNumber(Math.round(v * 10) / 10, 1) : fmtNumber(Math.round(v))}`;
+    };
     const ga = bilan ? Math.round(bilan.ga) : groupes.length;
     if (bilan || groupes.length) glance.push({ label: ga > 1 ? "Groupes d'action actifs" : "Groupe d'action actif", value: fmtNumber(ga), detail: tr ? ref(tr.ga) : undefined, tone: "militant" });
     const par = bilan ? bilan.parrains : parrains;
@@ -2371,7 +2361,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     return q ? ` ${leQuartier(q).replace(/^(le|la|les|l')\s?/i, (m) => `dans ${m}`)}` : labels.has(nb.bv) ? `, près de ${labels.get(nb.bv)} (bureau ${dv(nb.bv)})` : ` (bureau ${dv(nb.bv)})`;
   };
   const named = (n: string) => !/^(march[ée]|supermarch[ée]|gare)$/i.test(n.trim());
-  const weHours = weekendHours;
+  const weHours = marcheWeekend;
   const leviers = [
     ...markets.slice(0, 2).map((m) => {
       const h = weHours(m.infos);
@@ -2521,7 +2511,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (sv && sv.rows.length) {
       servicesBlocks.push({
         type: "services",
-        title: "Accès aux services",
+        // Sous le titre « Services publics » : pas de second titre.
+        title: "",
         faibles: sv.faibles.slice(0, 6).map((x) => ({ cat: x.cat, label: x.label, txt: x.txtFaible })),
         enDessous: sv.rows.filter((x) => !x.faible && x.score >= 0.25).sort((a, b) => b.score - a.score).slice(0, 6).map((x) => ({ cat: x.cat, label: x.label, txt: x.txt })),
         cats: sv.cats.map((k) => ({ cat: k.cat, label: k.label, niveau: k.niveau, details: sv.rows.filter((x) => x.cat === k.cat).map((x) => ({ label: x.label, txt: x.txt })) })),
@@ -2840,9 +2831,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         count: n(prio.length, "bureau", "bureaux"),
         details: prio.map((p) => `Bureau ${dv(p.bv)}${labels.has(p.bv) ? ` (${labels.get(p.bv)})` : ""} : ${fmtNumber(p.abstN)} inscrits n'ont pas voté, vote LFI à ${pp(p.lfiPctExp)}`),
       });
-    if (markets.length) items.push({ label: "Tractage (marchés)", count: n(markets.length, "marché", "marchés"), details: markets.map((m) => `${m.nom} : ${weekendHours(m.infos) || "jour du week-end à confirmer"}`) });
+    if (markets.length) items.push({ label: "Tractage (marchés)", count: n(markets.length, "marché", "marchés"), details: markets.map((m) => `${m.nom} : ${marcheWeekend(m.infos) || "jour du week-end à confirmer"}`) });
     if (gares.length || stationsTc.length)
-      items.push({ label: "Tractage (gares, métro, RER, tram)", count: n(gares.length + stationsTc.length, "lieu", "lieux"), details: [...gares.map((g) => `${gareNom(g.nom)} : ${g.infos}`), ...stationsTc.map((x) => x.nom)] });
+      items.push({ label: "Tractage (gares, métro, RER, tram)", count: n(gares.length + stationsTc.length, "lieu", "lieux"), details: [...gares.map((g) => `${gareNom(g.nom)} : départs et retours de week-end, samedi matin`), ...stationsTc.map((x) => x.nom)] });
     if (sup.length) items.push({ label: "Tractage (grandes surfaces)", count: n(sup.length, "magasin", "magasins"), details: sup.map((v) => `${v.nom} : ${v.infos}`) });
     if (conv.length) items.push({ label: "Moment convivial", count: n(Math.min(conv.length, 5), "lieu", "lieux"), details: conv.slice(0, 5).map((x) => `${x.nom} (${convTxt(x)})`) });
     if (items.length) blocks.push({ type: "plan", items });
@@ -2853,7 +2844,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // Effectifs pour les bureaux : seulement si les bureaux sont proposés (moins de 500 portes ailleurs).
   if (has("lfi_effectifs") && avecBureaux) blocks.push({ type: "table", tableId: "lfi_effectifs" });
   else if (has("lfi_effectifs")) detail.push({ type: "table", tableId: "lfi_effectifs" });
-  if (faitsTop.length >= 2) blocks.push({ type: "paragraph", text: `${B("À avoir en tête à la porte")} : ${faitsTxt}.` });
+  // « À avoir en tête à la porte » retiré : il redisait les chiffres clés et le tableau du profil.
   blocks.push(...questions);
   blocks.push({ type: "fieldPlaces" });
   blocks.push({ type: "fieldNotes", part: "actions" });

@@ -76,7 +76,7 @@ export interface RplsResult {
 const clean = (s: unknown) => String(s ?? "").trim();
 
 // Types de voie abrégés du répertoire.
-const TYPVOIE: Record<string, string> = { AV: "Avenue", AVE: "Avenue", BD: "Boulevard", BLD: "Boulevard", ALL: "Allée", ALLE: "Allée", CHE: "Chemin", CHEM: "Chemin", IMP: "Impasse", PL: "Place", SQ: "Square", RTE: "Route", R: "Rue", RES: "Résidence", CRS: "Cours", QU: "Quai", QUA: "Quai", PROM: "Promenade", LOT: "Lotissement", HAM: "Hameau", PAS: "Passage", FG: "Faubourg", FBG: "Faubourg", CITE: "Cité", CTRE: "Centre", MAIL: "Mail", SEN: "Sente", VLA: "Villa", ESP: "Esplanade", RPT: "Rond-point" };
+const TYPVOIE: Record<string, string> = { AV: "Avenue", AVE: "Avenue", BD: "Boulevard", BLD: "Boulevard", ALL: "Allée", ALLE: "Allée", CHE: "Chemin", CHEM: "Chemin", IMP: "Impasse", PL: "Place", SQ: "Square", RTE: "Route", R: "Rue", RU: "Rue", RUE: "Rue", CHS: "Chaussée", RES: "Résidence", CRS: "Cours", QU: "Quai", QUA: "Quai", PROM: "Promenade", LOT: "Lotissement", HAM: "Hameau", PAS: "Passage", FG: "Faubourg", FBG: "Faubourg", CITE: "Cité", CTRE: "Centre", MAIL: "Mail", SEN: "Sente", VLA: "Villa", ESP: "Esplanade", RPT: "Rond-point" };
 
 /**
  * Nom de programme exploitable (« Les Musiciens »), et non un code de gestion
@@ -95,6 +95,8 @@ export function isProgName(prog: string): boolean {
 }
 
 /** « Cité des Perrieres M,j » → « Cité des Perrieres » (suffixes de bâtiments). */
+/** Accents ignorés pour regrouper (« Sirene » et « Sirène » : une seule rue). */
+const sansAccent = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const tidyProg = (p: string) => p.replace(/[\s,-]+([A-Z]{1,2}(\s*[,/.-]\s*[A-Z]{1,2})*\.?|\d+[A-Z]?|[A-Z]\d+)$/i, "").trim();
 const title = (s: string) =>
   s
@@ -153,7 +155,7 @@ export function numsLabel(nums: string[]): string {
 export function hlmByStreet<T extends Residence>(residences: T[], keyOf?: (r: T) => string): (RueHlm & { items: T[] })[] {
   const byVoie = new Map<string, T[]>();
   for (const r of residences) {
-    const v = `${(r.voie ?? r.adresse.replace(/^\d+\s*\w?\s+/, "")).toUpperCase()}|${keyOf ? keyOf(r) : ""}`;
+    const v = `${sansAccent(r.voie ?? r.adresse.replace(/^\d+\s*\w?\s+/, "")).toUpperCase()}|${keyOf ? keyOf(r) : ""}`;
     if (!byVoie.has(v)) byVoie.set(v, []);
     byVoie.get(v)!.push(r);
   }
@@ -168,7 +170,8 @@ export function hlmByStreet<T extends Residence>(residences: T[], keyOf?: (r: T)
     for (const g of groups) {
       const n = g.reduce((s, r) => s + r.logements, 0);
       out.push({
-        voie: g[0].voie ?? g[0].adresse.replace(/^\d+\s*\w?\s+/, ""),
+        // Graphie accentuée de préférence (« Sirène » plutôt que « Sirene »).
+        voie: g.map((x) => x.voie ?? x.adresse.replace(/^\d+\s*\w?\s+/, "")).sort((a, b) => (b.match(/[^\x00-\x7f]/g)?.length ?? 0) - (a.match(/[^\x00-\x7f]/g)?.length ?? 0))[0],
         nums: sortNums(g.flatMap((r) => r.nums ?? [])),
         logements: n,
         lon: g.reduce((s, r) => s + r.lon * r.logements, 0) / n,
@@ -212,9 +215,10 @@ export function groupRpls(rows: Record<string, unknown>[]): { total: number; res
     const adresse = [num, voie].filter(Boolean).join(" ");
     const prog = tidyProg(clean(r.COMPLGEO));
     // Programme nommé : une résidence par programme et par voie ; sinon une par adresse.
-    const key = isProgName(prog) ? `p:${prog.toUpperCase()}|${voie.toUpperCase()}` : `a:${adresse.toUpperCase()}`;
+    const key = isProgName(prog) ? `p:${sansAccent(prog).toUpperCase()}|${sansAccent(voie).toUpperCase()}` : `a:${sansAccent(adresse).toUpperCase()}`;
     let e = res.get(key);
-    if (!e) res.set(key, (e = { nom: key.startsWith("p:") ? title(prog) : "", adresse, voie, nums: new Set(), n: 0, xs: [], ys: [], qpv: clean(r.PLG_QP24 ?? r.QPV_CODE) || null, years: new Map() }));
+    // Caractères mal encodés dans le fichier source (« Montargis Sirene (labellis?e) ») : passage retiré.
+    if (!e) res.set(key, (e = { nom: key.startsWith("p:") ? title(prog).replace(/\s*\([^)]*\?[^)]*\)/g, "").replace(/\S*\?\S*/g, "").replace(/\s+/g, " ").trim() : "", adresse, voie, nums: new Set(), n: 0, xs: [], ys: [], qpv: clean(r.PLG_QP24 ?? r.QPV_CODE) || null, years: new Map() }));
     if (num) e.nums.add(num);
     for (const x of extra) e.nums.add(x);
     e.n++;

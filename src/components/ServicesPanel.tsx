@@ -42,7 +42,7 @@ export default function ServicesPanel({ b }: { b: B }) {
   const themes = b.indice?.gammes ?? b.cats.map((c) => ({ cat: c.cat, label: c.label, exemples: "", value: c.niveau === "moins" ? 80 : c.niveau === "mieux" ? 120 : 100 }));
   return (
     <figure className="my-5 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-      <figcaption className="mb-3 text-sm font-extrabold text-[var(--accent)]">{b.title}</figcaption>
+      {b.title && <figcaption className="mb-3 text-sm font-extrabold text-[var(--accent)]">{b.title}</figcaption>}
       {b.indice && (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
           <span>Accès aux services, comparé {b.indice.ref === "France" ? "à l'habitant moyen en France" : "à l'habitant moyen du département"} :</span>

@@ -276,7 +276,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       ];
     case "services": {
       return [
-        caption(b.title),
+        ...(b.title ? [caption(b.title)] : []),
         ...(b.indice
           ? [
               new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: `Accès aux services, comparé ${b.indice.ref === "France" ? "à l'habitant moyen en France" : "à l'habitant moyen du département"} : `, font: FONT, size: 19 }), new TextRun({ text: niveauAcces(b.indice.global).txt.toLowerCase(), font: FONT, size: 19, bold: true, color: niveauAcces(b.indice.global).ink.replace("#", "") })] }),
