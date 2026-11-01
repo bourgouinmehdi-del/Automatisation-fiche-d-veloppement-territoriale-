@@ -169,7 +169,8 @@ export function blocksHtml(r: Report, blocks: Block[], cit: Citations, style: Fi
     if (lead) {
       let j = i + 1;
       while (j < blocks.length && j - i < 3 && blocks[j].type === "paragraph" && (blocks[j] as { text: string }).text.length < 300) j++;
-      if (j < blocks.length && blocks[j].type === "map") {
+      // Titre gardé avec la carte ou l'encadré qui suit (pas de titre seul en bas de page).
+      if (j < blocks.length && (blocks[j].type === "map" || blocks[j].type === "services")) {
         out.push(`<div class="keep">${blocks.slice(i, j + 1).map((x) => blockHtml(r, x, cit, style)).join("\n")}</div>`);
         i = j;
         continue;
@@ -270,7 +271,7 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
       const themes = b.indice?.gammes ?? b.cats.map((c) => ({ cat: c.cat, label: c.label, exemples: "", value: c.niveau === "moins" ? 80 : c.niveau === "mieux" ? 120 : 100 }));
       const tableau = `<table class="sv-g"><tbody>${themes.map((g) => `<tr><td class="sv-gl"><b>${g.cat ? `<span class="sv-i">${ICONS[g.cat] ?? ""}</span>` : ""}${esc(g.label)}</b></td><td class="sv-gp">${pas(g.value)}</td><td class="sv-d">${(b.cats.find((c) => c.cat === g.cat)?.details ?? []).map((d) => `${esc(d.label)} : ${esc(d.txt)}`).join(" ; ")}</td></tr>`).join("")}</tbody></table>`;
       const indice = `<div class="sv-ix">${b.indice ? `<div>Accès aux services, comparé ${b.indice.ref === "France" ? "à l'habitant moyen en France" : "à l'habitant moyen du département"} : ${pas(b.indice.global, true)}</div>` : ""}${tableau}</div>`;
-      return `<figure class="services"><figcaption>${esc(b.title)}</figcaption>${indice}${faibles}${dessous}<div class="pr-n">${esc(b.note)}</div></figure>`;
+      return `<figure class="services">${b.title ? `<figcaption>${esc(b.title)}</figcaption>` : ""}${indice}${faibles}${dessous}<div class="pr-n">${esc(b.note)}</div></figure>`;
     }
     case "plan":
       return `<div class="plan">${b.items

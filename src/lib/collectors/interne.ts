@@ -222,13 +222,15 @@ export function dedupeBilanGa(b: Map<string, Bilan>): Map<string, Bilan> {
     const xs = (membres.get(cp) ?? []).map((k) => b.get(k)!.ga - cpsOf(k).filter((o) => o !== cp && vals.has(o)).reduce((t, o) => t + mode(vals.get(o)!), 0));
     return xs.length ? Math.max(0, Math.min(...xs)) : 0;
   };
-  // 2. Les groupes de chaque code postal vont à sa commune la plus grande (en inscrits).
+  // 2. Les groupes de chaque code postal vont à sa commune la plus peuplée.
   const out = new Map(b);
   for (const [code, x] of b) if (x.estime) out.set(code, { ...x, ga: 0 });
   for (const [cp, ks] of membres) {
     const g = cpGa(cp);
     if (!g) continue;
-    const owner = [...ks].sort((a, c) => b.get(c)!.inscrits - b.get(a)!.inscrits || a.localeCompare(c))[0];
+    // La plus peuplée (recensement) : Montargis plutôt qu'Amilly, qui a plus d'inscrits mais moins d'habitants.
+    const pop = (k: string) => ref.byCode.get(k)?.population ?? 0;
+    const owner = [...ks].sort((a, c) => pop(c) - pop(a) || b.get(c)!.inscrits - b.get(a)!.inscrits || a.localeCompare(c))[0];
     const o = out.get(owner)!;
     out.set(owner, { ...o, ga: o.ga + g });
   }

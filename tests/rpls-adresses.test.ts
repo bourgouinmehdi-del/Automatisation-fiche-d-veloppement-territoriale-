@@ -16,3 +16,17 @@ describe("logements sociaux : adresses", () => {
     expect(rues[1].noms).toEqual(["Avon Peupliers-Bouleaux"]);
   });
 });
+
+describe("logements sociaux : abréviations et accents (retour Montargis)", () => {
+  it("« RU » = rue ; « Sirene » et « Sirène » : une seule rue ; nom mal encodé nettoyé", () => {
+    const base = { X: "2.73", Y: "48.0", EPSG: "4326", DEPCOM: "45208" };
+    const rows = [
+      ...Array(3).fill({ ...base, NUMVOIE: "4", TYPVOIE: "RU", NOMVOIE: "DE CROWBOROUGH", COMPLGEO: "" }),
+      ...Array(2).fill({ ...base, NUMVOIE: "2", TYPVOIE: "RUE", NOMVOIE: "DE LA SIRENE", COMPLGEO: "MONTARGIS SIRENE (LABELLIS?E)" }),
+      ...Array(2).fill({ ...base, NUMVOIE: "57", TYPVOIE: "RUE", NOMVOIE: "DE LA SIRÈNE", COMPLGEO: "" }),
+    ];
+    const rues = hlmByStreet(groupRpls(rows).residences);
+    expect(rues.map((r) => r.voie).sort()).toEqual(["Rue de Crowborough", "Rue de la Sirène"]);
+    expect(rues.find((r) => r.voie === "Rue de la Sirène")!.noms).toEqual(["Montargis Sirene"]);
+  });
+});
