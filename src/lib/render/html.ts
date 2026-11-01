@@ -205,7 +205,8 @@ export function blocksHtml(r: Report, blocks: Block[], cit: Citations, style: Fi
       let j = i + 1;
       while (j < blocks.length && j - i < 3 && blocks[j].type === "paragraph" && (blocks[j] as { text: string }).text.length < 300) j++;
       // Titre gardé avec la carte ou l'encadré qui suit.
-      if (j < blocks.length && (blocks[j].type === "map" || blocks[j].type === "services")) {
+      // « Questions pour le terrain : » avec sa liste, titre avec son encadré ou sa carte.
+      if (j < blocks.length && ["map", "services", "findings", "list", "presence", "chart", "callout", "glance"].includes(blocks[j].type)) {
         out.push(`<div class="keep">${blocks.slice(i, j + 1).map((x) => blockHtml(r, x, cit, style)).join("\n")}</div>`);
         i = j;
         continue;

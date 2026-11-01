@@ -347,7 +347,8 @@ describe("chaîne de génération (API simulées)", () => {
       expect(String(r.quand)).not.toMatch(/semaine/i);
     }
     const access = fiche.blocks.find((b) => b.type === "paragraph" && /Pour rejoindre la commune/.test(b.text)) as { text: string };
-    expect(access.text).toMatch(/en voiture/);
+    // Ville de plus de 10 000 habitants : pas de « pôle urbain le plus proche » (elle en est un).
+    expect(access.text).toMatch(/Gare/);
     // Groupe d'action importé depuis l'export Action Populaire (code postal + ville).
     expect(fiche.blocks.some((b) => b.type === "callout" && /Groupe d'action fictif/.test(b.text))).toBe(true);
   });
@@ -415,12 +416,18 @@ describe("chaîne de génération (API simulées)", () => {
 
   it("comparaisons du vote en mots : une seule règle, jamais « autant » et « nettement plus » à la fois", async () => {
     const { voteCompare } = await import("@/lib/report/lfi");
-    expect(voteCompare(6, 4)).toMatchObject({ dir: "plus", words: "un peu plus", net: false });
-    expect(voteCompare(15, 14)).toMatchObject({ dir: "autant" });
-    expect(voteCompare(22, 15)).toMatchObject({ dir: "plus", net: true });
+    // Échelle graduée (gradation.ts) : points et proportion comptent tous les deux.
+    expect(voteCompare(11.4, 8.2)).toMatchObject({ dir: "plus", words: "plus", net: false }); // Montargis : pas « nettement »
+    expect(voteCompare(6, 4)).toMatchObject({ dir: "plus", words: "plus", net: false });
+    expect(voteCompare(15, 14).words).toBe("à peine plus");
+    expect(voteCompare(9.9, 9.5).dir).toBe("autant");
+    expect(voteCompare(22, 15)).toMatchObject({ dir: "plus", words: "nettement plus", net: true });
     expect(voteCompare(12, 6).words).toBe("deux fois plus");
     expect(voteCompare(7, 3.5).words).toBe("nettement plus");
-    expect(voteCompare(8, 12)).toMatchObject({ dir: "moins", net: true });
+    expect(voteCompare(8, 12)).toMatchObject({ dir: "moins", net: false });
+    expect(voteCompare(42, 33).words).toBe("nettement plus");
+    const { FORMULATIONS } = await import("@/lib/report/gradation");
+    expect(FORMULATIONS.length).toBeGreaterThanOrEqual(20);
   });
 
   it("graphique « Européennes 2024 » dans le profil politique", async () => {

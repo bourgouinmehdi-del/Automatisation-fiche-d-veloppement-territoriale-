@@ -24,7 +24,8 @@ export function presenceValue(r: PresenceRow, mode: PresenceMode) {
 }
 
 export function presenceRef(r: PresenceRow, mode: PresenceMode) {
-  if (mode === "nombre") return `Moyenne : ${nf(Math.round(r.nRef))}`;
+  // Ce qu'aurait une commune de même taille ; une décimale sous 10 (« 0,4 groupe » plutôt que « 0 »).
+  if (mode === "nombre") return `Moyenne à taille égale : ${r.nRef < 10 ? nf(Math.round(r.nRef * 10) / 10, 1) : nf(Math.round(r.nRef))}`;
   return `Moyenne : ${nf(r.rRef, r.rRef >= 10 ? 1 : 2)}`;
 }
 
