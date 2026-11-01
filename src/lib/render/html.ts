@@ -37,11 +37,14 @@ export const inline = (s: unknown) =>
 
 const LEVEL_LABEL: Record<string, string> = { commune: "Commune", epci: "Intercommunalité", departement: "Département", region: "Région", france: "France", bureau_vote: "Bureau de vote" };
 
+/** Petits tableaux (en lignes) : jamais coupés entre deux pages. */
+const TABLE_KEEP_ROWS = 18;
+
 function tableHtml(t: DataTable, cit: Citations) {
   const refs = t.sources.map((s) => cit.cite(s));
   const rowUnit = (r: Record<string, string | number | null>) => (r.unite as string | undefined) ?? undefined;
   const legend = t.legend?.length ? `<div class="tleg">${t.legend.map((l) => `<span><i style="background:${l.color}"></i>${esc(l.label)}</span>`).join("")}</div>` : "";
-  return `<figure class="tbl"><figcaption>${esc(t.title)}</figcaption>${legend}<table><thead><tr>${t.columns.map((c) => `<th class="${c.align === "right" ? "r" : ""}${c.wide ? " w" : ""}">${esc(c.label)}</th>`).join("")}</tr></thead><tbody>${t.rows
+  return `<figure class="tbl${t.rows.length <= TABLE_KEEP_ROWS ? " keep" : ""}"><figcaption>${esc(t.title)}</figcaption>${legend}<table><thead><tr>${t.columns.map((c) => `<th class="${c.align === "right" ? "r" : ""}${c.wide ? " w" : ""}">${esc(c.label)}</th>`).join("")}</tr></thead><tbody>${t.rows
     .map(
       (r, i) =>
         `<tr${t.highlight?.includes(i) ? ' class="hl"' : ""}>${t.columns
@@ -161,15 +164,47 @@ export type FicheStyle = "moderne" | "yonne";
  * Blocs d'une partie : un titre suivi d'un court texte et d'une carte reste avec la carte (pas de titre
  * seul en bas de page, la carte en haut de la suivante).
  */
+/**
+ * Bloc qui tient sur une page : on peut le garder d'un seul tenant avec le titre qui le précède.
+ * Estimation en lignes de texte (une page A4 en compte une cinquantaine).
+ */
+function keepable(r: Report, b: Block): boolean {
+  switch (b.type) {
+    case "table": {
+      const t = r.tables.find((x) => x.id === b.tableId);
+      return !!t && t.rows.length <= TABLE_KEEP_ROWS;
+    }
+    case "plan":
+      return b.items.reduce((n, it) => n + 2 + Math.min(it.details.length, 9), 0) <= 40;
+    case "actions":
+      return b.groups.reduce((n, g) => n + 1 + g.items.length, 0) <= 30;
+    case "list":
+      return b.items.length <= 12;
+    case "findings":
+      return (b.ids?.length ?? 99) <= 6;
+    case "targets":
+    case "missing":
+      return false;
+    default:
+      return true;
+  }
+}
+
 export function blocksHtml(r: Report, blocks: Block[], cit: Citations, style: FicheStyle = "moderne"): string {
   const out: string[] = [];
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
+    // Titre suivi d'un paragraphe, ou d'un bloc qui tient sur une page : gardés ensemble (pas de titre seul en bas de page).
+    if (b.type === "heading" && blocks[i + 1] && (blocks[i + 1].type === "paragraph" || keepable(r, blocks[i + 1])) && blocks[i + 2]?.type !== "map") {
+      out.push(`<div class="keep">${[b, blocks[i + 1]].map((x) => blockHtml(r, x, cit, style)).join("\n")}</div>`);
+      i++;
+      continue;
+    }
     const lead = b.type === "heading" || (b.type === "paragraph" && b.text.length < 300);
     if (lead) {
       let j = i + 1;
       while (j < blocks.length && j - i < 3 && blocks[j].type === "paragraph" && (blocks[j] as { text: string }).text.length < 300) j++;
-      // Titre gardé avec la carte ou l'encadré qui suit (pas de titre seul en bas de page).
+      // Titre gardé avec la carte ou l'encadré qui suit.
       if (j < blocks.length && (blocks[j].type === "map" || blocks[j].type === "services")) {
         out.push(`<div class="keep">${blocks.slice(i, j + 1).map((x) => blockHtml(r, x, cit, style)).join("\n")}</div>`);
         i = j;
@@ -332,6 +367,8 @@ tr { break-inside: avoid; }
 td.r { white-space: nowrap; }
 th.w { min-width: 30mm; }
 figure.tbl { break-inside: auto; }
+figure.tbl.keep { break-inside: avoid; }
+.fh-sub, figcaption, .tleg { break-after: avoid; }
 figure.tbl figcaption { break-after: avoid; }
 .lvl { font-weight: 400; color: #8a8984; font-size: 7.5pt; }
 sup { color: #8a8984; font-size: 6.5pt; margin-left: .5mm; }
@@ -431,9 +468,10 @@ h3.target-t { font-size: 24pt; font-weight: 900; color: #4c0297; text-transform:
 td.sb { white-space: nowrap; }
 .sbar { display: inline-block; vertical-align: middle; width: 16mm; height: 2.2mm; background: #ebe7de; border-radius: 1mm; margin-right: 1.5mm; overflow: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .sbar > span { display: block; height: 100%; }
-figure.poster svg { width: 100%; height: auto; max-height: 238mm; display: block; }
+/* Carte de ciblage : 150 mm de haut au plus, pour tenir sur la même page que le texte qui la précède. */
+figure.poster svg { width: 100%; height: auto; max-height: 150mm; display: block; margin: 0 auto; }
 figure.poster { break-inside: avoid; margin-bottom: 2mm; }
-.oa { border: 0.3mm solid #212320; padding: 3mm 4mm; margin: 0 0 2mm; font-size: 8.6pt; }
+.oa { border: 0.3mm solid #212320; padding: 3mm 4mm; margin: 0 0 2mm; font-size: 8.6pt; break-inside: avoid; }
 .oa-t { margin: 0 0 2mm; color: #4c0297; font-size: 11pt; font-weight: 800; }
 .oa-g { break-inside: avoid; margin-bottom: 2mm; }
 .oa-gt { font-weight: 700; color: #52514e; font-size: 8pt; margin-bottom: 1mm; }
