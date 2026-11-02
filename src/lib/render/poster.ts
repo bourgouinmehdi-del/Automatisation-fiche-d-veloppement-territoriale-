@@ -97,13 +97,15 @@ export function posterMapSvg(map: MapSpec, width = 900, opts: { list?: boolean }
   const P = map.poster!;
   const layers = map.layers.filter((l) => l.visible && l.data.features.length).map((l) => (l.kind === "polygons" ? { ...l, data: forD3(structuredClone(l.data)) } : l));
   const bb = map.bbox ?? [-5, 41, 10, 51];
-  const pad = 24;
-  const headH = 74;
+  // Carte compacte (feuilles de porte-à-porte) : sans bandeau titre, le titre de la page suffit.
+  const compact = !!P.compact;
+  const pad = compact ? 6 : 24;
+  const headH = compact ? 6 : 74;
   const frameW = width - 2 * pad;
   // Hauteur du cadre : proportions de l'emprise (projection de Mercator).
   const k = 1 / Math.cos((((bb[1] + bb[3]) / 2) * Math.PI) / 180);
   const ratio = ((bb[3] - bb[1]) * k) / (bb[2] - bb[0] || 1);
-  const frameH = Math.round(Math.max(0.62, Math.min(1.25, ratio)) * frameW);
+  const frameH = Math.round(Math.max(0.62, Math.min(compact ? 0.8 : 1.25, ratio)) * frameW);
   const fx = pad;
   const fy = headH;
   const extent: GeoJSON.Feature = {
@@ -414,10 +416,12 @@ export function posterMapSvg(map: MapSpec, width = 900, opts: { list?: boolean }
   const height = footY + 10;
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${esc(`${P.kicker} — ${P.title}`)}">`;
   s += `<rect width="100%" height="100%" fill="#fff"/>`;
-  s += `<rect x="${pad}" y="14" width="6" height="50" fill="${POSTER.violet}"/>`;
-  s += `<text x="${pad + 18}" y="38" font-size="25" font-weight="800" fill="${POSTER.violet}" ${TITLE_FONT}>${esc(P.kicker.toUpperCase())}</text>`;
-  s += `<text x="${pad + 18}" y="62" font-size="19" font-weight="700" fill="${POSTER.charbon}" ${TITLE_FONT}>${esc(P.title)}</text>`;
-  s += `<line x1="${pad}" x2="${width - pad}" y1="${headH - 4}" y2="${headH - 4}" stroke="${POSTER.charbon}" stroke-width="0.6"/>`;
+  if (!compact) {
+    s += `<rect x="${pad}" y="14" width="6" height="50" fill="${POSTER.violet}"/>`;
+    s += `<text x="${pad + 18}" y="38" font-size="25" font-weight="800" fill="${POSTER.violet}" ${TITLE_FONT}>${esc(P.kicker.toUpperCase())}</text>`;
+    s += `<text x="${pad + 18}" y="62" font-size="19" font-weight="700" fill="${POSTER.charbon}" ${TITLE_FONT}>${esc(P.title)}</text>`;
+    s += `<line x1="${pad}" x2="${width - pad}" y1="${headH - 4}" y2="${headH - 4}" stroke="${POSTER.charbon}" stroke-width="0.6"/>`;
+  }
   s += `<defs><clipPath id="${clip}"><rect x="${fx}" y="${fy}" width="${frameW}" height="${frameH}"/></clipPath></defs>`;
   s += `<g clip-path="url(#${clip})"><rect x="${fx}" y="${fy}" width="${frameW}" height="${frameH}" fill="${POSTER.hors}"/>${body}${labels}${P.scaleBar ? scaleBar(proj, fx + 40, fy + frameH - 40) : ""}</g>`;
   s += `<rect x="${fx}" y="${fy}" width="${frameW}" height="${frameH}" fill="none" stroke="${POSTER.charbon}" stroke-width="1.5"/>`;

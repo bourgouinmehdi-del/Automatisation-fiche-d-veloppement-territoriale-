@@ -485,9 +485,10 @@ figure.poster { break-inside: avoid; margin-bottom: 2mm; }
 /* Fiche destinée à des non-spécialistes : pas d'appels de note dans le texte (les sources restent listées en fin de fiche). */
 .fiche section:not(.fiche-src) sup, .fiche section:not(.fiche-src) .refs { display: none; }
 /* Feuilles de porte-à-porte : une page par bureau. */
-#part-PORTE h3.fh { break-before: page; }
-#part-PORTE h3.fh:first-of-type { break-before: auto; }
-#part-PORTE figure.map svg { max-height: 92mm; width: auto; margin: 0 auto; }
+/* Chaque bureau commence une page (son titre est souvent groupé avec les chiffres qui suivent). */
+#part-PORTE h3.fh, #part-PORTE .keep:has(> h3.fh) { break-before: page; }
+#part-PORTE .keep h3.fh { break-before: auto; }
+#part-PORTE figure.map svg { max-height: 112mm; width: auto; max-width: 100%; margin: 0 auto; display: block; }
 #part-PORTE figure.map { break-inside: avoid; margin-top: 2mm; }
 #part-PORTE td:first-child { font-size: 11pt; width: 9mm; text-align: center; }
 `;

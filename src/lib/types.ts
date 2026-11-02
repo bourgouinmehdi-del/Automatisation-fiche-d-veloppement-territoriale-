@@ -226,7 +226,7 @@ export interface MapSpec {
    * Carte « affiche » (modèle des cartes du pôle) : bandeau titre, fond clair,
    * étiquettes avec traits de rappel, légende encadrée, échelle et source.
    */
-  poster?: { kicker: string; title: string; source: string; footnote?: string; scaleBar?: boolean };
+  poster?: { kicker: string; title: string; source: string; footnote?: string; scaleBar?: boolean; /** Sans bandeau titre, plus étroite (feuilles de porte-à-porte). */ compact?: boolean };
   /**
    * Lectures du vote (part des voix, part des inscrits) : bouton du site, partagé avec les graphiques.
    * La première est celle des exports ; chacune désigne la propriété de la couche principale à colorer.

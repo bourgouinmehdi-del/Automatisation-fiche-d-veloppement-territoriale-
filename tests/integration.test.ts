@@ -475,7 +475,11 @@ describe("chaîne de génération (API simulées)", () => {
     const fiche = report.sections[0];
     expect(fiche.blocks.some((b) => b.type === "paragraph" && /Priorité\*\* : porte-à-porte dans les 3 résidences du Crous et foyers de jeunes travailleurs, puis dans les logements sociaux de la rue des Roses \(500 logements\)/.test(b.text))).toBe(true);
     const porte = report.sections.find((s) => s.id === "PORTE")!;
-    expect(porte.blocks.some((b) => b.type === "paragraph" && /Résidences HLM du bureau/.test(b.text))).toBe(true);
+    expect(porte.blocks.some((b) => b.type === "list" && /Logements sociaux du bureau/.test(b.title ?? "") && b.items.some((i) => /Rue des Roses .*500 logements/.test(i.text)))).toBe(true);
+    // Feuilles de porte-à-porte : carte compacte sur fond de plan, rues du bureau nommées.
+    const pm = report.maps.find((x) => x.id.startsWith("porte_map_"))!;
+    expect(pm.poster?.compact).toBe(true);
+    expect(pm.layers.some((l) => l.id === "voies")).toBe(true);
   });
 
   it("non-inscription : estimation commune et par bureau", () => {
