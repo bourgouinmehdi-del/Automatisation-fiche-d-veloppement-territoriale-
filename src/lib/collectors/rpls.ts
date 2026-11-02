@@ -138,7 +138,8 @@ export function numVoie(numvoie: string, indrep = ""): string {
   const m = numvoie.trim().match(/^0*(\d+)\s*([A-Za-z]*)(?:\s+([A-Za-z]+))?$/);
   if (!m) return [numvoie.trim(), indrep.trim().toLowerCase()].filter(Boolean).join(" ");
   const suf = (m[2] || m[3] || indrep.trim()).toUpperCase();
-  const ind = suf ? (IND[suf] ?? suf.toLowerCase()) : "";
+  if (suf && !IND[suf]) return /^[A-Z]$/.test(suf) ? `${m[1]}${suf}` : `${m[1]} ${suf.toLowerCase()}`;
+  const ind = suf ? IND[suf] : "";
   return ind ? `${m[1]} ${ind}` : m[1];
 }
 
@@ -203,12 +204,12 @@ export function groupRpls(rows: Record<string, unknown>[]): { total: number; res
     let typ = clean(r.TYPVOIE);
     let nomv = clean(r.NOMVOIE);
     // Numéro et type de voie parfois répétés dans le nom de voie (« 192 RUE 192 RUE … »).
-    if (num) nomv = nomv.replace(new RegExp(`^${num.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+`, "i"), "");
+    if (num) nomv = nomv.replace(new RegExp(`^${num.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*,\\s*|\\s+)`, "i"), "");
     // Numéro seulement dans le nom de voie (« 1-3 DU GENERAL DE GAULLE », « 1/3 AVENUE … ») :
     // sans cela, une même adresse donne deux rues distinctes.
     const extra: string[] = [];
     if (!num) {
-      const m = nomv.match(/^0*(\d+)\s*(bis|ter)?(?:\s*[-/]\s*0*(\d+)\s*(bis|ter)?)?\s+(?=[a-zà-ÿ])/i);
+      const m = nomv.match(/^0*(\d+)\s*(bis|ter)?(?:\s*[-/]\s*0*(\d+)\s*(bis|ter)?)?(?:\s*,\s*|\s+)(?=[a-zà-ÿ])/i);
       if (m) {
         num = numVoie(m[1], m[2] ?? "");
         if (m[3]) extra.push(numVoie(m[3], m[4] ?? ""));
@@ -323,7 +324,7 @@ async function fetchRows(http: TrackedHttp, code: string): Promise<{ rows: Recor
 export function collectRpls(http: TrackedHttp, code: string, opts: { parent?: string; contour?: GeoJSON.Geometry | null } = {}): Promise<RplsResult> {
   return cachedExtract(
     // Version de la mise en forme (abréviations, accents, noms mal encodés) : à changer quand elle évolue.
-    `rpls4|${code}`,
+    `rpls5|${code}`,
     24 * 30,
     async () => {
       let f = await fetchRows(http, code);

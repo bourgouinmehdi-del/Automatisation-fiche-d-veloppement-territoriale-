@@ -327,8 +327,12 @@ export function politiqueIntro(
     const b = gaps[gaps.length - 1];
     const trend = b.d - a.d;
     const depuis = `Depuis ${ANNEE[a.eid]}`;
-    if (trend >= 8) (out.push(`${depuis}, la gauche progresse fortement ${ici}.`), (gaucheMonte = true));
+    // L'évolution se mesure par rapport à la France : une gauche encore bien au-dessus de la moyenne
+    // nationale ne « recule » pas aux yeux du lecteur, son avance se réduit (retour Farébersviller).
+    if (trend >= 4 && b.d <= -5) (out.push(`La gauche reste plus faible ${ici} qu'en moyenne en France, mais l'écart se réduit depuis ${ANNEE[a.eid]}.`), (gaucheMonte = true));
+    else if (trend >= 8) (out.push(`${depuis}, la gauche progresse fortement ${ici}.`), (gaucheMonte = true));
     else if (trend >= 4) (out.push(`${depuis}, la gauche progresse ${ici}.`), (gaucheMonte = true));
+    else if (trend <= -4 && b.d >= 5) out.push(`La gauche reste plus forte ${ici} qu'en moyenne en France, mais son avance se réduit depuis ${ANNEE[a.eid]}.`);
     else if (trend <= -8) out.push(`${depuis}, la gauche recule nettement ${ici}.`);
     else if (trend <= -4) out.push(`${depuis}, la gauche recule ${ici}.`);
     else if (b.d >= 5) out.push(`La gauche est plus forte ${ici} qu'en moyenne en France.`);
@@ -620,7 +624,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       evidence: evOf(conc),
     });
   const car = cmp("part_menages_sans_voiture");
-  if (car?.dir === "superieur" && !inTable("part_menages_sans_voiture")) socio.push({ text: `${B(cap(oneInV(car.a.value!, "foyer", "n'a pas de voiture", "n'ont pas de voiture")))} (département : ${pp(car.b.value)}).`, evidence: evOf(car.a, car.b) });
+  if (car?.dir === "superieur" && !inTable("part_menages_sans_voiture")) socio.push({ text: `${B("Beaucoup de foyers sans voiture")} : ${oneInV(car.a.value!, "foyer", "n'a pas de voiture", "n'ont pas de voiture")} (département : ${pp(car.b.value)}).`, evidence: evOf(car.a, car.b) });
 
   // Services : Base permanente des équipements (INSEE) si disponible, sinon OpenStreetMap.
   const popDep = c.populations.find((p) => p.geo.level === "departement")?.value ?? null;
@@ -2831,7 +2835,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       items.push({
         label: "Porte-à-porte (logements sociaux)",
         count: `${n(ruesRank.length, "rue", "rues")}, ${fmtNumber(ruesRank.reduce((t, r) => t + r.logements, 0))} logements`,
-        details: ruesRank.slice(0, 15).map((r) => `${r.voie}${r.nums.length ? ` (${numsLabel(r.nums)})` : ""} : ${fmtNumber(r.logements)} logements${r.bv ? `, bureau ${dv(r.bv)}${prioBvSet.has(r.bv) ? " (prioritaire)" : ""}` : ""}`),
+        details: ruesRank.map((r) => `${r.voie}${r.nums.length ? ` (${numsLabel(r.nums)})` : ""} : ${fmtNumber(r.logements)} logements${r.bv ? `, bureau ${dv(r.bv)}${prioBvSet.has(r.bv) ? " (prioritaire)" : ""}` : ""}`),
       });
     if (avecBureaux || (prio.length && !items.length))
       items.push({
@@ -2843,6 +2847,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (gares.length || stationsTc.length)
       items.push({ label: "Tractage (gares, métro, RER, tram)", count: n(gares.length + stationsTc.length, "lieu", "lieux"), details: [...gares.map((g) => `${gareNom(g.nom)} : départs et retours de week-end, samedi matin`), ...stationsTc.map((x) => x.nom)] });
     if (sup.length) items.push({ label: "Tractage (grandes surfaces)", count: n(sup.length, "magasin", "magasins"), details: sup.map((v) => `${v.nom} : ${v.infos}`) });
+    // Ni marché ni gare (Farébersviller) : des pistes plutôt que « à compléter ».
+    if (items.length && !markets.length && !gares.length && !stationsTc.length && !sup.length)
+      items.push({ label: "Tractage", count: "à repérer sur place", details: ["Pas de marché ni de gare repérés dans la commune", "Pistes : sortie des écoles, abords de la mairie et de la poste, commerces du centre, le samedi matin"] });
     if (conv.length) items.push({ label: "Moment convivial", count: n(Math.min(conv.length, 5), "lieu", "lieux"), details: conv.slice(0, 5).map((x) => `${x.nom} (${convTxt(x)})`) });
     if (items.length) blocks.push({ type: "plan", items });
     else blocks.push({ type: "note", text: "Aucun lieu d'action identifié automatiquement (marchés, gares, commerces, établissements) : à compléter avec les militants locaux." });
