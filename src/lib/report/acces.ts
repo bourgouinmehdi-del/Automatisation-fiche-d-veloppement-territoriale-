@@ -336,6 +336,10 @@ export async function ciblageAcces(
   // Carte : villes militantes, territoires visés, liaisons (fiche commune et ciblage).
   type Hub = (typeof hubs)[number];
   type Tgt = (typeof tgt)[number];
+  const inDepCode = (code: string) => {
+    const d = c.commune.departement.code;
+    return code.startsWith(d.length === 3 ? d : d.padStart(2, "0"));
+  };
   const mapOf = (o: { id: string; title: string; posterTitle: string; kicker?: string; subTarget: (t: Tgt) => string; subHub: (h: Hub) => string; sources: SourceRef[] }): MapSpec => {
   const pts = [...hubs.map((h) => [h.l.lon, h.l.lat]), ...tgt.map((t) => [t.at.lon, t.at.lat])];
   const bb0 = turf.bbox(turf.multiPoint(pts)) as Bbox;
@@ -382,20 +386,27 @@ export async function ciblageAcces(
         visible: true,
         source: base!,
       },
-      {
-        id: "villes",
-        label: "Villes militantes",
-        kind: "points",
-        data: turf.featureCollection(hubs.map((h) => turf.point([h.l.lon, h.l.lat], { nom: h.l.nom, sub: o.subHub(h) }))),
-        style: { fill: "#4c0297", stroke: "#ffffff", symbol: "diamond", size: 15 },
-        labelMode: "callout",
-        labelProperty: "nom",
-        sublabelProperty: "sub",
-        labelColor: "#4c0297",
-        legendItem: { label: "Ville avec un groupe d'action actif", swatch: "diamond" },
-        visible: true,
-        source: base!,
-      },
+      // Villes du département (boucle départementale) en violet, celles des autres départements en rose.
+      ...[
+        { id: "villes", dans: true, fill: "#4c0297", label: `Ville militante ${dansDep(c.commune.departement.nom)}` },
+        { id: "villes_autres", dans: false, fill: "#c2185b", label: "Ville militante d'un autre département" },
+      ]
+        .map((g) => ({ ...g, hs: hubs.filter((h) => inDepCode(h.l.code) === g.dans) }))
+        .filter((g) => g.hs.length)
+        .map((g) => ({
+          id: g.id,
+          label: g.label,
+          kind: "points" as const,
+          data: turf.featureCollection(g.hs.map((h) => turf.point([h.l.lon, h.l.lat], { nom: h.l.nom, sub: o.subHub(h) }))),
+          style: { fill: g.fill, stroke: "#ffffff", symbol: "diamond" as const, size: 15 },
+          labelMode: "callout" as const,
+          labelProperty: "nom",
+          sublabelProperty: "sub",
+          labelColor: g.fill,
+          legendItem: { label: g.label, swatch: "diamond" as const },
+          visible: true,
+          source: base!,
+        })),
     ],
     note: "Liaisons en pointillé : trajets calculés (voir le tableau).",
   };
