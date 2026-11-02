@@ -53,4 +53,19 @@ describe("choix des villes militantes proches", () => {
     const all = [c("94081", 2.39, 48.79, 1, 800, 3), c("75056", 2.35, 48.86, 70, 31000, 7), c("94041", 2.38, 48.81, 1, 1000, 1)];
     expect(chooseHubs(all, 6).map((x) => x.l.code).sort()).toEqual(["75056", "94041", "94081"]);
   });
+  it("territoire hors Île-de-France (Montargis) : deux villes franciliennes au plus, la plus proche et Paris", () => {
+    const all = [
+      c("45155", 2.27, 47.83, 2, 30, 40), // Châteauneuf-sur-Loire
+      c("89387", 3.28, 48.2, 3, 120, 45), // Sens
+      c("91174", 2.47, 48.61, 1, 340, 60), // Corbeil-Essonnes
+      c("77288", 2.66, 48.54, 3, 300, 62), // Melun
+      c("91228", 2.43, 48.63, 3, 590, 63), // Évry-Courcouronnes
+      c("77251", 2.57, 48.62, 2, 84, 69), // Lieusaint
+      c("77296", 2.6, 48.63, 2, 127, 72), // Moissy-Cramayel
+      c("75056", 2.35, 48.86, 70, 31000, 95), // Paris
+    ];
+    const h = chooseHubs(all, 10, "45", false).map((x) => x.l.code);
+    expect(h.filter((k) => /^(75|77|78|91|92|93|94|95)/.test(k)).sort()).toEqual(["75056", "91174"]);
+    expect(h).toContain("89387");
+  });
 });

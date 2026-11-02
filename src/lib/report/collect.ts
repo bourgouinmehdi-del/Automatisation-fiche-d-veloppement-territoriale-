@@ -1396,6 +1396,14 @@ export async function collect(
       });
       return;
     }
+    // Départements voisins (fiche commune) : fond de la carte « Venir depuis les villes militantes proches »,
+    // qui s'étend souvent hors du département (Montargis : Yonne, Seine-et-Marne, Essonne, Paris).
+    if (c.depFeatures?.features.length)
+      await ctx.step("contours_admin", "cartes:departements", async (http) => {
+        const bb = fitAspect(turf.bbox(c.depFeatures!) as Bbox, 0.04);
+        const r = await collectDepartementsVoisins(http, commune.departement.code, bb);
+        c.depVoisins = { features: r.features, bbox: bb, source: ctx.ref("contours_admin", r.url, r.retrievedAt) };
+      });
     // Résidences étudiantes et foyers de jeunes travailleurs (catalogue « Mon Logement Étudiant »).
     await ctx.step("residences_etudiantes", "cartes:residences", async (http) => {
       const cat = await loadCatalogue();
