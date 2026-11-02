@@ -30,3 +30,19 @@ describe("logements sociaux : abréviations et accents (retour Montargis)", () =
     expect(rues.find((r) => r.voie === "Rue de la Sirène")!.noms).toEqual(["Montargis Sirene"]);
   });
 });
+
+describe("logements sociaux : numéros vides, bâtiments, accents (retour Pont-l'Évêque)", () => {
+  it("« n° 0 », « Bat G - 6 Lgts », « Alencon »", () => {
+    const base = { X: "0.19", Y: "49.28", EPSG: "4326", DEPCOM: "14514" };
+    const rows = [
+      ...Array(3).fill({ ...base, NUMVOIE: "0 -", TYPVOIE: "RTE", NOMVOIE: "DE ROUEN", COMPLGEO: "" }),
+      ...Array(2).fill({ ...base, NUMVOIE: "2", TYPVOIE: "RUE", NOMVOIE: "D ALENCON", COMPLGEO: "" }),
+      ...Array(2).fill({ ...base, NUMVOIE: "1", TYPVOIE: "RUE", NOMVOIE: "DES PRAIRIES", COMPLGEO: "LES LONGS CHAMPS - BAT G - 6 LGTS" }),
+    ];
+    const rues = hlmByStreet(groupRpls(rows).residences);
+    const rouen = rues.find((r) => /Rouen/.test(r.voie))!;
+    expect(rouen.nums).toEqual([]);
+    expect(rues.some((r) => /Alençon/.test(r.voie))).toBe(true);
+    expect(rues.find((r) => /Prairies/.test(r.voie))!.noms).toEqual(["Les Longs Champs"]);
+  });
+});

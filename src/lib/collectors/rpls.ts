@@ -96,7 +96,9 @@ export function isProgName(prog: string): boolean {
 
 /** « Cité des Perrieres M,j » → « Cité des Perrieres » (suffixes de bâtiments). */
 /** Accents ignorés pour regrouper (« Sirene » et « Sirène » : une seule rue). */
-const sansAccent = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const sansAccent = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/['’]/g, " ");
+/** « Les Longs Champs - Bat G - 6 Lgts » → « Les Longs Champs » (bâtiment, nombre de logements). */
+const sansBatiment = (p: string) => p.replace(/\s*[-–,/]?\s*\b(b[aâ]t(iment)?|bt|esc(alier)?|entr[ée]e|immeuble)\b\.?\s*[\w-]{1,4}\b.*$/i, "").replace(/\s*[-–,]?\s*\d+\s*(lgts?|logements?)\b.*$/i, "").trim();
 const tidyProg = (p: string) => p.replace(/[\s,-]+([A-Z]{1,2}(\s*[,/.-]\s*[A-Z]{1,2})*\.?|\d+[A-Z]?|[A-Z]\d+)$/i, "").trim();
 const title = (s: string) =>
   s
@@ -104,9 +106,11 @@ const title = (s: string) =>
     .replace(/(^|[\s'-])([a-zà-ÿ])/g, (_m, a: string, c: string) => a + c.toUpperCase())
     .replace(/\b(De|Du|Des|La|Le|Les|Et|D|L|Sur|Sous|En|Aux?)\b/g, (w) => w.toLowerCase())
     .replace(/^./, (c) => c.toUpperCase())
+    // « D ALENCON » : apostrophe perdue (« Rue d'Alençon »).
+    .replace(/\b([dl]) (?=[A-ZÀ-Ý])/g, "$1'")
     // Accents absents des fichiers en capitales (mots fréquents).
-    .replace(/\b(Cite|Residence|Republique|General|Generale|Liberte|Egalite|Fraternite|Ecole|Eglise|Prefecture|Marechal|Hopital|Theatre)\b/g, (w) =>
-      ({ Cite: "Cité", Residence: "Résidence", Republique: "République", General: "Général", Generale: "Générale", Liberte: "Liberté", Egalite: "Égalité", Fraternite: "Fraternité", Ecole: "École", Eglise: "Église", Prefecture: "Préfecture", Marechal: "Maréchal", Hopital: "Hôpital", Theatre: "Théâtre" })[w] ?? w,
+    .replace(/\b(Cite|Residence|Republique|General|Generale|Liberte|Egalite|Fraternite|Ecole|Eglise|Prefecture|Marechal|Hopital|Theatre|Alencon|Francois|Besancon|Mont-De-Marsan|Chateau|Fontaine Saint Meen|Gare|Elysee|Etienne|Eugene|Andre|Rene|Desire|Clemenceau|Jaures|Pere|Freres|Lycee|College|Peguy|Moliere|Cretes|Fetes|Eglantiers|Erables|Epis|Etang|Ecoles|Ile|Iles)\b/g, (w) =>
+      ({ Cite: "Cité", Residence: "Résidence", Republique: "République", General: "Général", Generale: "Générale", Liberte: "Liberté", Egalite: "Égalité", Fraternite: "Fraternité", Ecole: "École", Eglise: "Église", Prefecture: "Préfecture", Marechal: "Maréchal", Hopital: "Hôpital", Theatre: "Théâtre", Alencon: "Alençon", Francois: "François", Besancon: "Besançon", Chateau: "Château", Elysee: "Élysée", Etienne: "Étienne", Eugene: "Eugène", Andre: "André", Rene: "René", Desire: "Désiré", Jaures: "Jaurès", Pere: "Père", Freres: "Frères", Lycee: "Lycée", College: "Collège", Peguy: "Péguy", Moliere: "Molière", Cretes: "Crêtes", Fetes: "Fêtes", Eglantiers: "Églantiers", Erables: "Érables", Epis: "Épis", Etang: "Étang", Ecoles: "Écoles", Ile: "Île", Iles: "Îles" })[w] ?? w,
     );
 
 /** Coordonnées WGS84 d'un logement (selon le système déclaré, ou deviné). */
@@ -128,6 +132,8 @@ const sortNums = (xs: string[]) => [...new Set(xs)].sort((a, b) => parseInt(a) -
 /** « n° 2, 4 et 6 », « n° 2 à 18 » (plus de quatre numéros). */
 /** Numéro lisible : « 0004 » → « 4 », « 4BIS » + « BIS » → « 4 bis », « 12 B » → « 12 bis ». */
 export function numVoie(numvoie: string, indrep = ""): string {
+  // « 0 », « 0 - », « S/N » : pas de numéro.
+  if (!/[1-9]/.test(numvoie)) return "";
   const IND: Record<string, string> = { B: "bis", BIS: "bis", T: "ter", TER: "ter", Q: "quater", QUATER: "quater", C: "quinquies" };
   const m = numvoie.trim().match(/^0*(\d+)\s*([A-Za-z]*)(?:\s+([A-Za-z]+))?$/);
   if (!m) return [numvoie.trim(), indrep.trim().toLowerCase()].filter(Boolean).join(" ");
@@ -213,7 +219,7 @@ export function groupRpls(rows: Record<string, unknown>[]): { total: number; res
     if (typ && nomv.toUpperCase().startsWith(`${typ.toUpperCase()} `)) typ = "";
     const voie = title([typ, nomv].filter(Boolean).join(" "));
     const adresse = [num, voie].filter(Boolean).join(" ");
-    const prog = tidyProg(clean(r.COMPLGEO));
+    const prog = tidyProg(sansBatiment(clean(r.COMPLGEO)));
     // Programme nommé : une résidence par programme et par voie ; sinon une par adresse.
     const key = isProgName(prog) ? `p:${sansAccent(prog).toUpperCase()}|${sansAccent(voie).toUpperCase()}` : `a:${sansAccent(adresse).toUpperCase()}`;
     let e = res.get(key);
@@ -317,7 +323,7 @@ async function fetchRows(http: TrackedHttp, code: string): Promise<{ rows: Recor
 export function collectRpls(http: TrackedHttp, code: string, opts: { parent?: string; contour?: GeoJSON.Geometry | null } = {}): Promise<RplsResult> {
   return cachedExtract(
     // Version de la mise en forme (abréviations, accents, noms mal encodés) : à changer quand elle évolue.
-    `rpls3|${code}`,
+    `rpls4|${code}`,
     24 * 30,
     async () => {
       let f = await fetchRows(http, code);

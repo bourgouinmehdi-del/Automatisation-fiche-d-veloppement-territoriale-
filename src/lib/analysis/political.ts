@@ -154,12 +154,19 @@ export function prettyBvLabel(raw: string): string {
     [/\blycee\b/gi, "lycée"],
     [/\bmairie\b/gi, "mairie"],
     [/\bgymnase\b/gi, "gymnase"],
+    // Accents perdus dans les fichiers en capitales.
+    [/\bmarche couvert\b/gi, "marché couvert"],
+    [/\bsalle des fetes\b/gi, "salle des fêtes"],
+    [/\bmediatheque\b/gi, "médiathèque"],
+    [/\bhalle des sports\b/gi, "halle des sports"],
+    [/\bfoyer rural\b/gi, "foyer rural"],
+    [/\bmaison des associations\b/gi, "maison des associations"],
   ];
   // Numéro du bureau répété en tête du libellé (« 22 école… », « BV 3 - … »).
   let s = raw.trim().replace(/\s+/g, " ").replace(/^(bv|bureau( de vote)?)?\s*n?°?\s*\d{1,4}\s*[-–:.]?\s+(?=\D)/i, "");
   for (const [re, rep] of abbr) s = s.replace(re, rep);
   const small = new Set(["de", "du", "des", "la", "le", "les", "l", "d", "et", "à", "au", "aux", "sur", "en"]);
-  const lowerWords = new Set(["école", "maternelle", "primaire", "élémentaire", "groupe", "scolaire", "bibliothèque", "collège", "lycée", "salle", "salles", "mairie", "gymnase", "centre", "espace", "maison", "rencontres", "professionnel", "polyvalente", "social", "quartier", "hôtel", "ville", "médiathèque", "bât."]);
+  const lowerWords = new Set(["école", "maternelle", "primaire", "élémentaire", "groupe", "scolaire", "bibliothèque", "collège", "lycée", "salle", "salles", "mairie", "gymnase", "centre", "espace", "maison", "rencontres", "professionnel", "polyvalente", "social", "quartier", "hôtel", "ville", "médiathèque", "bât.", "marché", "couvert", "fêtes", "halle", "sports", "foyer", "rural", "associations"]);
   s = s
     .split(" ")
     .map((w, i) => {

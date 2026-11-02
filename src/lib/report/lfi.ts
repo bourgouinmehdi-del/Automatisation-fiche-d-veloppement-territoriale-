@@ -360,15 +360,22 @@ export function politiqueIntro(
     if (gain.g >= 2) out.push(`Cette progression profite surtout ${LABEL[gain.f]}${gain.f === "lfi" && place ? `, ${place}` : ""}.`);
     if ((gain.g < 2 || gain.f !== "lfi") && placeSeule) out.push(placeSeule);
   } else if (placeSeule) out.push(placeSeule);
-  // 3. Force de droite en tête et en forte progression.
+  // 3. Force de droite en forte progression : la plus forte hausse en points, chiffres et scrutins à l'appui
+  // (Pont-l'Évêque : le RN de 28 % à 38 % aux européennes, pas « le camp présidentiel progresse aussi »).
   const prog = [["EU19", "EU24"], ["PR17T1", "PR22T1"]]
-    .map(([a, b]) => ({ a: by.get(a), b: by.get(b) }))
+    .map(([a, b]) => ({ ea: a, eb: b, a: by.get(a), b: by.get(b) }))
     .filter((x) => x.a && x.b)
-    .flatMap(({ a, b }) => ["rn", "rec", "lr", "ens"].filter((f) => f in b!.sh && f in a!.sh && a!.sh[f] >= 1).map((f) => ({ f, d: b!.sh[f] - a!.sh[f] - ((b!.nat[f] ?? 0) - (a!.nat[f] ?? 0)), abs: b!.sh[f] - a!.sh[f] })))
-    .filter((x) => x.abs >= 6 && x.d >= 3)
+    .flatMap(({ ea, eb, a, b }) => ["rn", "rec", "lr", "ens"].filter((f) => f in b!.sh && f in a!.sh && a!.sh[f] >= 1).map((f) => ({ f, ea, eb, va: a!.sh[f], vb: b!.sh[f], d: b!.sh[f] - a!.sh[f] - ((b!.nat[f] ?? 0) - (a!.nat[f] ?? 0)), abs: b!.sh[f] - a!.sh[f] })))
+    .filter((x) => x.abs >= 5)
     .sort((x, y) => y.abs - x.abs)[0];
-  if (prog) out.push(`${NOM_FORCE[prog.f].charAt(0).toUpperCase()}${NOM_FORCE[prog.f].slice(1)} y progresse aussi fortement${rang[0]?.[0] === prog.f ? " et arrive en tête" : ""}.`);
-  else if (rang[0] && !GAUCHE.includes(rang[0][0]) && iLfi !== 1) out.push(`${NOM_FORCE[rang[0][0]].charAt(0).toUpperCase()}${NOM_FORCE[rang[0][0]].slice(1)} arrive en tête aux européennes de 2024.`);
+  const Nom = (f: string) => `${NOM_FORCE[f].charAt(0).toUpperCase()}${NOM_FORCE[f].slice(1)}`;
+  if (prog) {
+    const fort = prog.abs >= 8 ? "fortement" : "nettement";
+    const nat = prog.d >= 3 ? ", plus qu'en moyenne en France" : prog.d <= -3 ? ", moins qu'en moyenne en France" : ", comme en moyenne en France";
+    const tete = prog.eb === "EU24" && rang[0]?.[0] === prog.f ? ", et arrive en tête en 2024" : "";
+    out.push(`${Nom(prog.f)} y progresse ${fort} ${QUAND[prog.ea].replace(/ \d{4}$/, "")} : de ${pct(prog.va, 0)} en ${ANNEE[prog.ea]} à ${pct(prog.vb, 0)} en ${ANNEE[prog.eb]}${nat}${tete}.`);
+    if (!tete && rang[0] && !GAUCHE.includes(rang[0][0]) && rang[0][0] !== prog.f && iLfi !== 1) out.push(`${Nom(rang[0][0])} arrive en tête aux européennes de 2024.`);
+  } else if (rang[0] && !GAUCHE.includes(rang[0][0]) && iLfi !== 1) out.push(`${Nom(rang[0][0])} arrive en tête aux européennes de 2024.`);
   // 4. Participation.
   const pa = e24?.abst != null ? e24.abst - 48.51 : by.get("PR22T1")?.abst != null ? by.get("PR22T1")!.abst! - 26.31 : null;
   // Participation : dite explicitement (« on y vote moins » se lisait comme un vote moins favorable), écart en points.
@@ -1815,7 +1822,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const eq = c.equipments?.features ?? [];
   for (const f of eq.filter((f) => f.properties?.category === "marche")) {
     const [lon, lat] = f.geometry.coordinates;
-    pushLieu("Marché", String(f.properties?.name ?? "Marché"), frenchHours(f.properties?.opening_hours as string) || "jours et horaires à vérifier", lon, lat);
+    // Marché nommé d'après sa place (« Place Foch ») : « Marché, place Foch ».
+    const nm = String(f.properties?.name ?? "Marché");
+    pushLieu("Marché", /march[ée]|halle/i.test(nm) ? nm : `Marché, ${nm.charAt(0).toLowerCase()}${nm.slice(1)}`, frenchHours(f.properties?.opening_hours as string) || "jours et horaires à vérifier", lon, lat);
   }
   for (const s of c.stations?.stations ?? []) {
     const last = s.frequentation[s.frequentation.length - 1];
@@ -2143,7 +2152,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     for (const x of r.items) if (x.bv) w.set(x.bv, (w.get(x.bv) ?? 0) + x.logements);
     return { ...r, bv: [...w].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null };
   });
-  const ruesRank = rues.filter((r) => r.logements >= 10).sort((a, b) => Number(!!(b.bv && prioBvSet.has(b.bv))) - Number(!!(a.bv && prioBvSet.has(a.bv))) || b.logements - a.logements);
+  // Les plus grandes adresses d'abord (le porte-à-porte commence par les logements sociaux, quel que soit
+  // le bureau) ; « (prioritaire) » reste indiqué.
+  const ruesRank = rues.filter((r) => r.logements >= 10).sort((a, b) => b.logements - a.logements || Number(!!(b.bv && prioBvSet.has(b.bv))) - Number(!!(a.bv && prioBvSet.has(a.bv))));
   const hlmCols = [
     { key: "nom", label: "Résidence", wide: true },
     { key: "adresse", label: "Adresse" },
