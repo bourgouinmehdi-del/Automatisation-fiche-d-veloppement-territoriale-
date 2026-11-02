@@ -1065,7 +1065,7 @@ export async function collect(
       await ctx.step("deputes", "deputes:lfi", async (http) => {
         const r = await collectDeputesLfi(http);
         const at = commune.centre as [number, number];
-        c.deputes = { list: deputesProches(r.list, at), local: deputeDe(r.list, at), source: ctx.ref("deputes", r.url, r.retrievedAt) };
+        c.deputes = { list: deputesProches(r.list, at, 120), local: deputeDe(r.list, at), source: ctx.ref("deputes", r.url, r.retrievedAt) };
       });
     if (enabled("osrm") && commune.centre) {
       await ctx.step("osrm", "acces:routes", async (http) => {
