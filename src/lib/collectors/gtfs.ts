@@ -347,6 +347,26 @@ export function directTrains(index: RailIndex, groups: TrainGroup[]): DirectTrai
   return { pairs, date: index.date, url: index.url, retrievedAt: index.retrievedAt };
 }
 
+/** Trains directs entre deux ensembles de gares (aller et retour), quand l'une des communes n'a pas de gare à elle. */
+export function directBetween(index: RailIndex, from: Set<number>, to: Set<number>): { minutes: number; trains: number } | null {
+  let minutes = Infinity;
+  let trains = 0;
+  for (const t of index.trips) {
+    let a = -1;
+    let b = -1;
+    t.s.forEach((s, k) => {
+      if (a < 0 && from.has(s)) a = k;
+      if (b < 0 && to.has(s)) b = k;
+    });
+    if (a < 0 || b < 0) continue;
+    const d = Math.abs(t.d[b] - t.d[a]);
+    if (d <= 0) continue;
+    trains++;
+    minutes = Math.min(minutes, d);
+  }
+  return trains ? { minutes, trains } : null;
+}
+
 /* Trains avec correspondance (algorithme « connection scan »). */
 
 /** Temps minimal de correspondance dans une même gare (minutes). */

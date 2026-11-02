@@ -1,7 +1,7 @@
 import * as turf from "@turf/turf";
 import { GEO_API } from "../collectors/admin";
 import { fitAspect, type Bbox } from "../collectors/carto";
-import { collectIdfmIndex, collectRailIndex, directTrains, collectUrbanIndex, pickUrbanGtfs, railStations, RAIL_CHANGE_MIN, routeRail, routeTc, TC_BOARD_MIN, TC_TRANSFER_MIN, TRANSPORT_API, type TcIndex, type TrainGroup } from "../collectors/gtfs";
+import { collectIdfmIndex, collectRailIndex, directBetween, directTrains, collectUrbanIndex, pickUrbanGtfs, railStations, RAIL_CHANGE_MIN, routeRail, routeTc, TC_BOARD_MIN, TC_TRANSFER_MIN, TRANSPORT_API, type TcIndex, type TrainGroup } from "../collectors/gtfs";
 import { SNCF } from "../collectors/public-apis";
 import { fmtDuration, OSRM_URL } from "../collectors/routes";
 import { dansDep, fmtNumber } from "../format";
@@ -237,6 +237,12 @@ export async function ciblageAcces(
         if (!from?.size) continue;
         const v = routeRail(r, from, to);
         if (v) trainVia.set(`${h.l.code}|${t.at.code}`, v);
+        // Trajet direct vers la gare la plus proche : nombre de trains, comme pour les autres liaisons directes.
+        const k = [h.l.code, t.at.code].sort().join("|");
+        if (v && !v.changes.length && !train.has(k)) {
+          const dt = directBetween(r, from, to);
+          if (dt) train.set(k, dt);
+        }
       }
     }
     gtfsSrc = ctx.ref("gtfs", r.url, r.retrievedAt, { vintage: `samedi ${r.date.slice(6, 8)}/${r.date.slice(4, 6)}/${r.date.slice(0, 4)}` });
@@ -323,7 +329,7 @@ export async function ciblageAcces(
     const jusqua = g ? ` jusqu'à ${g}` : "";
     const pre = short ? "train " : "";
     if (r) {
-      const d = short ? `train ${fmtDuration(r.minutes)}` : `${fmtDuration(r.minutes)} direct (${r.trains} train${r.trains > 1 ? "s" : ""})`;
+      const d = short ? `train ${fmtDuration(r.minutes)}` : `${fmtDuration(r.minutes)} direct (${r.trains} train${r.trains > 1 ? "s" : ""})${jusqua}`;
       return v && v.changes.length && v.minutes + 15 <= r.minutes ? `${d} ; ${pre}${viaTxt(v)}` : d;
     }
     return v ? `${pre}${viaTxt(v)}${jusqua}` : "";

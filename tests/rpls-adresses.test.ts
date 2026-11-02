@@ -46,3 +46,17 @@ describe("logements sociaux : numéros vides, bâtiments, accents (retour Pont-l
     expect(rues.find((r) => /Prairies/.test(r.voie))!.noms).toEqual(["Les Longs Champs"]);
   });
 });
+
+describe("logements sociaux : numéro suivi d'une virgule, lettre (retour Farébersviller)", () => {
+  it("« 1, RUE … » et « 3, RUE … » : une seule rue ; « 1 D » → « 1D »", () => {
+    const base = { X: "6.87", Y: "49.12", EPSG: "4326", DEPCOM: "00000" };
+    const rows = [
+      ...Array(2).fill({ ...base, NUMVOIE: "", TYPVOIE: "", NOMVOIE: "1, RUE DES TILLEULS", COMPLGEO: "" }),
+      ...Array(2).fill({ ...base, NUMVOIE: "3", TYPVOIE: "RUE", NOMVOIE: "3, RUE DES TILLEULS", COMPLGEO: "" }),
+      ...Array(2).fill({ ...base, NUMVOIE: "1", INDREP: "D", TYPVOIE: "IMP", NOMVOIE: "DES CHENES", COMPLGEO: "" }),
+    ];
+    const rues = hlmByStreet(groupRpls(rows).residences);
+    expect(rues.find((r) => r.voie === "Rue des Tilleuls")).toMatchObject({ nums: ["1", "3"], logements: 4 });
+    expect(rues.find((r) => /Chênes|Chenes/.test(r.voie))!.nums).toEqual(["1D"]);
+  });
+});
