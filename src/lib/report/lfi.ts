@@ -2340,7 +2340,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const lowAbove = !lfiStrong && !melStrong && cmp24?.dir === "plus" && l24!.pctExprimes < LFI_NATIONAL.EU24 * 0.9;
   if (lfiStrong || melStrong) {
     const x = lfiStrong ? { c: l24!.pctExprimes, d: dl24!.pctExprimes, what: "aux européennes 2024", w: cmp24!.words } : { c: m22!.pctExprimes, d: dm22!.pctExprimes, what: "pour J.-L. Mélenchon en 2022", w: cmp22!.words };
-    synth.push({ text: `${B("Un terrain favorable")} : on y vote ${x.w} pour la France insoumise que dans le reste du département (${pp(x.c)} ${x.what}, contre ${pp(x.d)}).` });
+    // Écart maximal (« bien plus », « deux fois plus »…) et score bien au-dessus du niveau national : « très favorable ».
+    const nat = lfiStrong ? LFI_NATIONAL.EU24 : LFI_NATIONAL.PR22T1;
+    const tres = (lfiStrong ? cmp24! : cmp22!).level >= 6 && x.c >= nat * 1.5;
+    synth.push({ text: `${B(tres ? "Un terrain très favorable" : "Un terrain favorable")} : on y vote ${x.w} pour la France insoumise que dans le reste du département (${pp(x.c)} ${x.what}, contre ${pp(x.d)}).` });
   } else if (cmp24 && cmp24.dir === "plus" && cmp24.level >= 2 && l24!.pctExprimes >= LFI_NATIONAL.EU24 * 0.9)
     // Écart réel mais modeste (3 points) : « plutôt favorable », sans « nettement ».
     synth.push({ text: `${B("Un terrain plutôt favorable")} : on y vote ${cmp24.words} pour la France insoumise que dans le reste du département (${pp(l24!.pctExprimes)} aux européennes 2024, contre ${pp(dl24!.pctExprimes)}).` });
