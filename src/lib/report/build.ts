@@ -115,7 +115,9 @@ export async function buildReport(
       // Juste sous le titre « Organiser la venue » (la liste aux municipales est dans le profil politique).
       const iAcc = bl.findIndex((b) => b.type === "paragraph" && /^\*\*Pour rejoindre la commune\*\*/.test(b.text));
       const iOp = bl.findIndex((b) => b.type === "heading" && b.text === "Organiser la venue");
-      const at = iOp >= 0 ? iOp + 1 : iAcc >= 0 ? iAcc : bl.length;
+      // Après « Sur place » (groupe d'action de la commune) s'il existe.
+      const iSur = bl.findIndex((b, k) => k > iOp && b.type === "paragraph" && /^\*\*Sur place\*\*/.test(b.text));
+      const at = iSur >= 0 ? iSur + 1 : iOp >= 0 ? iOp + 1 : iAcc >= 0 ? iAcc : bl.length;
       bl.splice(at, 0, ...acc.blocks);
     }
   }

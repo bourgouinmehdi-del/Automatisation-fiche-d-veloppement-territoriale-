@@ -2855,6 +2855,17 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
 
   /* ---------------------------------------------------------- opérationnel */
   blocks.push({ type: "heading", text: "Organiser la venue", sub: "Qui mobiliser : le département d'abord, les villes militantes proches, les élu·es LFI ; puis comment rejoindre la commune." });
+  // Groupe d'action de la commune : premier relais, avant les villes voisines (Montargis a son groupe,
+  // la fiche ne parlait que de Châteauneuf-sur-Loire à 40 min).
+  {
+    const nGa = bilan ? Math.round(bilan.ga) : groupes.length;
+    const nSout = bilan ? Math.round(bilan.parrains) : parrains;
+    if (nGa > 0)
+      blocks.push({
+        type: "paragraph",
+        text: `${B("Sur place")} : ${nGa > 1 ? `${fmtNumber(nGa)} groupes d'action actifs` : "un groupe d'action actif"} ${aNom(commune.nom)}${nSout ? ` et ${fmtNumber(nSout)} soutiens JLM2027` : ""} : premier relais pour préparer la venue et accueillir le convoi.`,
+      });
+  }
   // Député·e de la circonscription (tous groupes) et député·es LFI proches (retour de Menal) : relais pour mobiliser.
   if (c.deputes) {
     const GROUPES: Record<string, string> = { "LFI-NFP": "La France insoumise", LFI: "La France insoumise", RN: "Rassemblement national", SOC: "socialiste", EPR: "Ensemble pour la République", DR: "Droite républicaine", "EcoS": "écologiste", DEM: "Les Démocrates", Dem: "Les Démocrates", HOR: "Horizons", LIOT: "LIOT", GDR: "Gauche démocrate et républicaine", UDR: "Union des droites pour la République", NI: "non inscrit" };

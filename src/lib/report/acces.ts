@@ -73,9 +73,19 @@ const AGGLO_KM = 6;
  *    pour la Charente-Maritime —, sauf si une autre, à 20 km de plus au plus, a au moins deux fois plus
  *    de parrains (Paris plutôt que Montreuil) ; à défaut à la ville qui a le plus de parrains.
  */
-export function chooseHubs<T extends { l: { code: string; lon: number; lat: number }; b: { ga: number; parrains: number }; km: number }>(all: T[], max: number, dep?: string): T[] {
+export function chooseHubs<T extends { l: { code: string; lon: number; lat: number }; b: { ga: number; parrains: number }; km: number }>(all: T[], max: number, dep?: string, localIdf = true): T[] {
   const idf = (code: string) => IDF.has(code.slice(0, 2));
-  const cands = all.filter((x) => idf(x.l.code) || !all.some((y) => y !== x && !idf(y.l.code) && (y.b.parrains > x.b.parrains || (y.b.parrains === x.b.parrains && y.l.code < x.l.code)) && turf.distance([x.l.lon, x.l.lat], [y.l.lon, y.l.lat]) < AGGLO_KM));
+  const merged = all.filter((x) => idf(x.l.code) || !all.some((y) => y !== x && !idf(y.l.code) && (y.b.parrains > x.b.parrains || (y.b.parrains === x.b.parrains && y.l.code < x.l.code)) && turf.distance([x.l.lon, x.l.lat], [y.l.lon, y.l.lat]) < AGGLO_KM));
+  // Territoire hors Île-de-France (Montargis) : l'Île-de-France compte pour deux places au plus — la ville
+  // francilienne la plus proche et la plus grande (Paris) —, pas cinq villes de banlieue voisines.
+  const idfKeep = new Set<T>();
+  if (!localIdf) {
+    const xs = merged.filter((x) => idf(x.l.code));
+    const near = [...xs].sort((a, b) => a.km - b.km)[0];
+    const big = [...xs].sort((a, b) => b.b.parrains - a.b.parrains)[0];
+    for (const x of [near, big]) if (x) idfKeep.add(x);
+  }
+  const cands = merged.filter((x) => localIdf || !idf(x.l.code) || idfKeep.has(x));
   const estVille = (x: T) => x.b.ga >= HUB_MIN_GA || x.b.parrains >= HUB_MIN_PARRAINS;
   // Fiche commune : les villes du département d'abord (convois organisés par la boucle départementale) —
   // une ville d'un autre département compte comme si elle était 20 km plus loin.
@@ -158,7 +168,7 @@ export async function ciblageAcces(
       return (ville && (x.km <= HUB_MAX_KM || (x.b.parrains >= BIG_HUB_PARRAINS && x.km <= BIG_HUB_MAX_KM))) || x.km <= LOCAL_GA_KM;
     });
   const max = opts.fiche ? HUB_MAX_FICHE : HUB_MAX;
-  const hubs = chooseHubs(cands, max, opts.fiche ? c.commune.departement.code : undefined);
+  const hubs = chooseHubs(cands, max, opts.fiche ? c.commune.departement.code : undefined, IDF.has(c.commune.departement.code));
   if (!hubs.length) return null;
 
   // 3. Voiture : une matrice OSRM (villes militantes → territoires).
@@ -342,7 +352,7 @@ export async function ciblageAcces(
     poster: { kicker: o.kicker ?? c.commune.departement.nom, title: o.posterTitle, source: "Source : bilan LFI (villes militantes), OSRM, SNCF. Fonds : IGN." },
     layers: [
       ...(c.depVoisins?.features.length
-        ? [{ id: "voisins", label: "Départements voisins", kind: "polygons" as const, data: turf.featureCollection(c.depVoisins.features), style: { fill: "#ece8df", stroke: "#b9b2a4", strokeWidth: 1 }, labelMode: "caps" as const, labelProperty: "nom", visible: true, source: c.depVoisins.source }]
+        ? [{ id: "voisins", label: "Départements voisins", kind: "polygons" as const, data: turf.featureCollection(c.depVoisins.features), style: { fill: "#f7f4ec", stroke: "#8a8170", strokeWidth: 1.1 }, labelMode: "caps" as const, labelProperty: "nom", visible: true, source: c.depVoisins.source }]
         : []),
       ...(c.depFeatures?.features.length
         ? [{ id: "communes", label: "Communes", kind: "polygons" as const, data: c.depFeatures, style: { fill: "#fffcf4", stroke: "#e2dccd", strokeWidth: 0.4 }, visible: true, source: c.depVoisins?.source ?? base! }]
