@@ -474,7 +474,7 @@ export async function ciblageAcces(
       {
         type: "paragraph",
         text: first
-          ? `**Qui peut venir aider** : la ville militante la plus proche est **${first.h.l.nom}**, à ${fmtDuration(first.car!)} en voiture${Number.isFinite(trainMin(first.h.l.code, t.at.code)) ? ` (${fmtDuration(trainMin(first.h.l.code, t.at.code))} en train${first.tr && first.tr.minutes === trainMin(first.h.l.code, t.at.code) ? " direct" : ""})` : tc.get(`${first.h.l.code}|${t.at.code}`) ? ` (${fmtDuration(tc.get(`${first.h.l.code}|${t.at.code}`)!.minutes)} en ${tc.get(`${first.h.l.code}|${t.at.code}`)!.ligne})` : ""}.${rowsF.length > 1 ? " La carte et le tableau donnent les temps de trajet depuis les autres villes où LFI a des militants." : ""}`
+          ? `**Qui peut venir aider** : la ville militante la plus proche est **${first.h.l.nom}**, à ${fmtDuration(first.car!)} en voiture${Number.isFinite(trainMin(first.h.l.code, t.at.code)) ? ` (${fmtDuration(trainMin(first.h.l.code, t.at.code))} en train${first.tr && first.tr.minutes === trainMin(first.h.l.code, t.at.code) ? " direct" : ""})` : tc.get(`${first.h.l.code}|${t.at.code}`) ? ` (${fmtDuration(tc.get(`${first.h.l.code}|${t.at.code}`)!.minutes)} en ${tc.get(`${first.h.l.code}|${t.at.code}`)!.ligne})` : ""}.`
           : "**Qui peut venir aider** : villes où LFI a des militants, avec les temps de trajet.",
       },
       // Département d'abord (retour de Menal). Pas de phrase sur la boucle départementale : c'est elle qui lit la fiche.
