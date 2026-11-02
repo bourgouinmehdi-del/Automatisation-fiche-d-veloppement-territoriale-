@@ -221,7 +221,8 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
           faible,
           // Dans la commune : rien de mieux possible, la comparaison (« France : sur place ») n'apporte rien.
           txt: val === 0 ? "dans la commune" : `à ${km(val)} (${refTxt})`,
-          txtFaible: `le plus proche à ${km(val)}, contre ${km(ref)} pour l'habitant moyen ${ref === fr ? `en France${Number.isFinite(dep) ? ` (département : ${km(dep)})` : ""}` : "du département"}`,
+          // « contre sur place » : l'habitant moyen en dispose dans sa commune.
+          txtFaible: `le plus proche à ${km(val)}, ${ref < 0.1 ? `alors que l'habitant moyen ${ref === fr ? "en France" : "du département"} en dispose dans sa commune${ref === fr && Number.isFinite(dep) ? ` (département : ${km(dep)})` : ""}` : `contre ${km(ref)} pour l'habitant moyen ${ref === fr ? `en France${Number.isFinite(dep) ? ` (département : ${km(dep)})` : ""}` : "du département"}`}`,
         };
       };
       // Offre à portée : équipements de la commune et à moins de 5 km, pour 10 000 habitants à portée.

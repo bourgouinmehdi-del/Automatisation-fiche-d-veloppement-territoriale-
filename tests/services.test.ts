@@ -78,7 +78,7 @@ describe("référence : l'habitant moyen du département", () => {
     const r = servicesAccess("07000", [...petites, grande], equip)!;
     const pis = r.rows.find((x) => x.label === "Piscine")!;
     expect(pis.faible).toBe(true);
-    expect(pis.txtFaible).toMatch(/^le plus proche à 1\d km, contre sur place pour l'habitant moyen du département$/);
+    expect(pis.txtFaible).toMatch(/^le plus proche à 1\d km, alors que l'habitant moyen du département en dispose dans sa commune$/);
   });
 });
 

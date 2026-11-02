@@ -146,7 +146,8 @@ export function prettyBvLabel(raw: string): string {
     [/\bcite\b/gi, "cité"],
     [/\bsalle polyvalente\b/gi, "salle polyvalente"],
     [/\bgr(p)?\b\.?\s+scol(aire)?\b\.?/gi, "groupe scolaire"],
-    [/\bgs\b\.?(?=\s)/gi, "groupe scolaire"],
+    // « Gs 18 Christophe Colomb » : le numéro après « groupe scolaire » n'est pas utile.
+    [/\bgs\b\.?\s+(\d{1,3}\s+)?(?=\D)/gi, "groupe scolaire "],
     [/\bscol\b\.?/gi, "scolaire"],
     [/\bsco\b\.?/gi, "scolaire"],
     [/\bbat\b\.?(?=\s)/gi, "bât."],
