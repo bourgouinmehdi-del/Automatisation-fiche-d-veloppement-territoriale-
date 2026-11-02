@@ -5,6 +5,7 @@ import { reportToDocx } from "@/lib/export/docx";
 import { reportToPdf } from "@/lib/export/pdf";
 import { renderReportHtml } from "@/lib/render/html";
 import { mapSvg } from "@/lib/render/svg";
+import { territoryName } from "@/lib/format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,10 +23,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const style = q.get("style") === "yonne" ? "yonne" : "moderne";
   const ciblage = r.sections.some((s) => s.id === "CIBLAGE");
   const ficheIds = [ciblage ? "CIBLAGE" : "LFI"];
-  const ficheName = (ext: string) => `${name}-${ciblage ? "ciblage" : "fiche-action"}${style === "yonne" ? "-yonne" : ""}.${ext}`;
   const name = `diagnostic-${r.commune.nom.normalize("NFD").replace(/[^\w]+/g, "-").toLowerCase()}-${r.commune.code}`;
+  // Noms lisibles pour les documents à envoyer : « Fiche action - Chabanais.pdf », « Fiche ciblage - Côte-d'Or.pdf ».
+  const lieu = (ciblage ? territoryName(r) : r.commune.nom).replace(/[\\/:*?"<>|]+/g, " ").trim();
+  const ficheName = (ext: string, yonne = style === "yonne") => `Fiche ${ciblage ? "ciblage" : "action"}${yonne ? " (format Word)" : ""} - ${lieu}.${ext}`;
+  // Nom accentué (RFC 5987) et nom ASCII de secours pour les anciens navigateurs.
+  const disposition = (filename: string, inline: boolean) => {
+    const ascii = filename.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "'");
+    const utf8 = encodeURIComponent(filename).replace(/['()*]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+    return `${inline ? "inline" : "attachment"}; filename="${ascii}"; filename*=UTF-8''${utf8}`;
+  };
   const file = (body: BodyInit, type: string, filename: string, inline = false) =>
-    new Response(body, { headers: { "Content-Type": type, "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${filename}"` } });
+    new Response(body, { headers: { "Content-Type": type, "Content-Disposition": disposition(filename, inline) } });
   switch (format) {
     case "pdf":
       try {
@@ -34,16 +43,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         // ?porte=1 : feuilles de porte-à-porte seules (une page par bureau prioritaire).
         if (q.get("porte")) {
           if (!r.sections.some((s) => s.id === "PORTE")) return new Response("Pas de feuilles de porte-à-porte pour cette fiche (contours des bureaux ou adresses indisponibles).", { status: 404 });
-          return file(new Uint8Array(await reportToPdf(r, { sectionIds: ["PORTE"] })), "application/pdf", `${name}-porte-a-porte.pdf`);
+          return file(new Uint8Array(await reportToPdf(r, { sectionIds: ["PORTE"] })), "application/pdf", `Fiche porte-à-porte - ${lieu}.pdf`);
         }
-        return file(new Uint8Array(await reportToPdf(r)), "application/pdf", `${name}.pdf`);
+        return file(new Uint8Array(await reportToPdf(r)), "application/pdf", `Diagnostic complet - ${lieu}.pdf`);
       } catch (e) {
         return new Response(`Export PDF impossible : ${e instanceof Error ? e.message : e}. Renseignez CHROMIUM_PATH.`, { status: 500 });
       }
     case "docx":
       // ?fiche=1 : fiche seule, au format Word du document de référence (modifiable).
-      if (q.get("fiche")) return file(new Uint8Array(await reportToDocx(r, { sectionIds: ficheIds, style: "yonne" })), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ficheName("docx").replace("-yonne", ""));
-      return file(new Uint8Array(await reportToDocx(r)), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", `${name}.docx`);
+      if (q.get("fiche")) return file(new Uint8Array(await reportToDocx(r, { sectionIds: ficheIds, style: "yonne" })), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ficheName("docx", false));
+      return file(new Uint8Array(await reportToDocx(r)), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", `Diagnostic complet - ${lieu}.docx`);
     case "html":
       if (q.get("fiche")) return file(renderReportHtml(r, { sectionIds: ficheIds, style }), "text/html; charset=utf-8", ficheName("html"), true);
       return file(renderReportHtml(r), "text/html; charset=utf-8", `${name}.html`, true);

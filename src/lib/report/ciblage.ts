@@ -2,7 +2,7 @@ import * as turf from "@turf/turf";
 import { referentiel } from "../collectors/admin";
 import { circoLabel, fitAspect } from "../collectors/carto";
 import type { ElectionResult } from "../collectors/elections";
-import { NUANCES, nuanceFamily } from "../collectors/municipales";
+import { NUANCES } from "../collectors/municipales";
 import { abstention, score } from "../analysis/political";
 import { median } from "../analysis/stats";
 import { dansDep, deDep, fmtNumber, fmtSigned, fmtValue } from "../format";
@@ -31,6 +31,16 @@ import type { Collected } from "./collect";
  * Ce classement est une aide à la décision : il ne remplace ni la
  * connaissance du terrain ni les choix politiques des militants.
  */
+
+/** Nuance de la liste municipale, lisible dans une phrase : « Rassemblement national », « divers droite », « sans étiquette ». */
+export function mairieTxt(nuance: string): string {
+  const n = (nuance ?? "").trim();
+  if (!n || n === "LNC") return "";
+  if (n === "LDIV") return "sans étiquette (divers)";
+  const lab = NUANCES[n] ?? n;
+  // Étiquettes génériques en minuscules ; noms de partis tels quels.
+  return /^(divers|union|extrême|droite|écologistes$|régionalistes|gilets)/i.test(lab) ? lab.charAt(0).toLowerCase() + lab.slice(1) : lab;
+}
 
 export interface CiblageOutput {
   /** Territoires retenus (pour le calcul des temps de trajet, fait après coup). */
@@ -298,7 +308,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
   };
   const depRow = {
     territoire: "Moyenne départementale",
-    inscrits: null,
+    inscrits: "—",
     lfi22: d22 ? pct(lfiPct(d22, "PR22T1")) : "",
     lfi24: pct(depLfi24),
     parrains: hasParrains ? pct((100 * depParrains) / d24.inscrits, 2) : "",
@@ -344,7 +354,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       rows.push(lineOf(u.nom, { e24: e, p22: p.length ? merge(p) : null, lg: lgs.length && lgs.every(Boolean) ? merge(lgs as Agg[]) : null, parrains: hasParrains ? all.reduce((s, m) => s + (c.interne.parrains.get(m) ?? 0), 0) : null }));
     }
     rows.push(depRow);
-    out.tables.push({ id: tid, title: `${u.nom} — vote LFI, soutiens JLM2027 et abstention`, theme: "strategie", columns: colsPol, rows, highlight: [0], sources: [...src, ...(hasParrains ? [interneSrc] : [])], note: "Nombre de voix (ou de parrains, ou d'inscrits qui n'ont pas voté) ; entre parenthèses, la part des électeurs inscrits." });
+    out.tables.push({ id: tid, title: `${u.nom} — vote LFI, soutiens JLM2027 et abstention`, theme: "strategie", columns: colsPol, rows, highlight: [0], sources: [...src, ...(hasParrains ? [interneSrc] : [])], note: "Nombre de voix (ou de soutiens JLM2027, ou d'inscrits qui n'ont pas voté) ; entre parenthèses, la part des électeurs inscrits." });
 
     const ev: string[] = [];
     const rang = ranked.indexOf(u) + 1;
@@ -372,11 +382,13 @@ export function buildCiblage(c: Collected): CiblageOutput {
       if (r >= 1.3) raisons.push(`Beaucoup de soutiens JLM2027 au regard des voix LFI (${fmtNumber(r, 1)} fois plus que la moyenne du département) : ${B("de bonnes chances de trouver de futurs militants")}.`);
       else if (r <= 0.7) raisons.push(`${B("Peu de soutiens JLM2027")} au regard des voix LFI (${fmtNumber(r, 1)} fois la moyenne du département) : il faudra surtout accompagner les nouveaux militants.`);
     }
-    if (u.kind === "commune" && collees.has(u.codes[0])) raisons.push(`Commune voisine de ${voisinDe(u.codes[0]) ?? "la grande ville"} : score abaissé, la ville proche rayonne déjà.`);
+    if (u.kind === "commune" && collees.has(u.codes[0])) raisons.push(`Commune voisine de ${voisinDe(u.codes[0]) ?? "la grande ville"} : score abaissé, la ville proche rayonne déjà${rang <= 2 ? ` ; elle reste malgré tout ${rang === 1 ? "en tête" : "dans les premières"}` : ""}.`);
     if (u.groupes.length) raisons.push(`Groupe${u.groupes.length > 1 ? "s" : ""} d'action : ${u.groupes.map((g) => `« ${g.nom} »${g.membres != null ? ` (${g.membres} membres)` : ""}`).join(", ")}.`);
     else if (u.ga) raisons.push(`${B(`${u.ga > 1 ? `${u.ga} groupes d'action actifs` : "Un groupe d'action actif"}`)} (5 actions ou plus, bilan LFI).`);
     else if (u.ga === 0 || groupesFournis) raisons.push(`${B("Aucun groupe d'action actif")} : territoire à implanter.`);
-    if (u.mairie) raisons.push(`Majorité municipale issue des élections de 2026 : ${(NUANCES[u.mairie.nuance] ?? u.mairie.nuance).toLowerCase()}${nuanceFamily(u.mairie.nuance) === "gauche" ? " (gauche)" : ""}.`);
+    // Nuance vide (Aubin : « : . ») : rien ; partis en toutes lettres (« Rassemblement national »), étiquettes génériques en minuscules.
+    const nu = u.mairie ? mairieTxt(u.mairie.nuance) : "";
+    if (nu) raisons.push(`Majorité municipale issue des élections de 2026 : ${nu}.`);
     targets.push({ code: u.codes[0], codes: u.codes, nom: u.nom, kind: u.kind, focus: u.kind === "groupement" ? u.focus : undefined, color: TARGET_COLORS[k], raisons, tableId: tid, evidence: ev });
   });
 
@@ -406,7 +418,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
       abst: pct(u.abst24),
       ratio: u.ratio != null ? fmtNumber(100 * u.ratio, 1) : "",
       groupe: u.groupes.length ? u.groupes.map((g) => `${g.nom}${g.membres != null ? ` (${g.membres})` : ""}`).join(", ") : u.ga ? `${u.ga} actif${u.ga > 1 ? "s" : ""}` : "—",
-      mairie: u.mairie ? (NUANCES[u.mairie.nuance] ?? u.mairie.nuance) : "",
+      mairie: u.mairie ? (NUANCES[u.mairie.nuance] ?? u.mairie.nuance) || "—" : "",
       score: score100(u),
     })),
     highlight: ranked.slice(0, 20).map((u, i) => (chosen.includes(u) ? i : -1)).filter((i) => i >= 0),

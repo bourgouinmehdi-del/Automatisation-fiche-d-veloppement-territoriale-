@@ -212,3 +212,13 @@ describe("retours Villefontaine", () => {
     expect(prettyBvLabel("Gs 18 Christophe Colomb")).toBe("Groupe scolaire Christophe Colomb");
   });
 });
+
+describe("fiches ciblage : majorité municipale", () => {
+  it("nuance lisible, vide ignorée", async () => {
+    const { mairieTxt } = await import("@/lib/report/ciblage");
+    expect(mairieTxt("LRN")).toBe("Rassemblement national");
+    expect(mairieTxt("LDVD")).toBe("divers droite");
+    expect(mairieTxt("LDIV")).toBe("sans étiquette (divers)");
+    expect(mairieTxt("")).toBe("");
+  });
+});
