@@ -726,7 +726,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     return joinFr(groupes.map((g) => `${joinFr(g.bvs.map((x) => dv(x)))}${g.lab ? ` (${g.lab})` : ""}`));
   };
   // Abstention par bureau : législatives 2024 (forte participation) quand tous les bureaux s'apparient.
-  const ranked: BvRow[] = bvRef ? rankBureaux(bvRef.results, bvSecond?.results ?? null, labels, c.bureaux.find((b) => b.election.id === "LG24T1")?.results) : [];
+  const ranked: BvRow[] = bvRef ? rankBureaux(bvRef.results, bvSecond?.results ?? null, labels, c.bureaux.find((b) => b.election.id === "LG24T1")?.results, new Set((c.bvGeo?.features ?? []).map((f) => String(f.properties?.bv)))) : [];
   const abstBvLabel = ranked[0]?.abstSrc === "LG24T1" ? "législatives 2024" : "2024";
   const prio = ranked.filter((b) => b.priorite === 1);
   // Bureau de vote contenant un point (contours des bureaux).
@@ -2219,9 +2219,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const hlmTop = ruesRank.filter((r) => r.logements >= 20).slice(0, 2);
   const deVoie = (v: string) => {
     const low = v.charAt(0).toLowerCase() + v.slice(1);
-    if (!/^(rue|avenue|allée|boulevard|place|chemin|impasse|square|cours|quai|route|résidence|cité|mail|esplanade|passage|sente|villa)\b/i.test(v)) return `de ${v}`;
+    if (!/^(rue|avenue|allée|boulevard|place|chemin|impasse|square|cours|quai|route|résidence|cité|mail|esplanade|passage|sente|villa|promenade|montée|traverse|voie|parvis|ruelle|cour|lotissement|hameau|clos|domaine|rond-point|sentier|ancienne route)\b/i.test(v)) return `de ${v}`;
     if (/^[aeiouyéèh]/i.test(v)) return `de l'${low}`;
-    return `${/^(rue|place|résidence|cité|route|sente|villa)\b/i.test(v) ? "de la" : "du"} ${low}`;
+    return `${/^(rue|place|résidence|cité|route|sente|villa|promenade|montée|traverse|voie|ruelle|cour|ancienne route)\b/i.test(v) ? "de la" : "du"} ${low}`;
   };
   // Ordre du porte-à-porte (retour d'Elia) : résidences étudiantes et foyers, logements sociaux, puis les
   // bureaux prioritaires, seulement s'il reste peu de portes ailleurs (moins de 500).

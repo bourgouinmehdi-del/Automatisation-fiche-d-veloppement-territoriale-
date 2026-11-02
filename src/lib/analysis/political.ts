@@ -146,6 +146,7 @@ export function prettyBvLabel(raw: string): string {
     [/\bcite\b/gi, "cité"],
     [/\bsalle polyvalente\b/gi, "salle polyvalente"],
     [/\bgr(p)?\b\.?\s+scol(aire)?\b\.?/gi, "groupe scolaire"],
+    [/\bgs\b\.?(?=\s)/gi, "groupe scolaire"],
     [/\bscol\b\.?/gi, "scolaire"],
     [/\bsco\b\.?/gi, "scolaire"],
     [/\bbat\b\.?(?=\s)/gi, "bât."],
@@ -163,7 +164,7 @@ export function prettyBvLabel(raw: string): string {
     [/\bmaison des associations\b/gi, "maison des associations"],
   ];
   // Numéro du bureau répété en tête du libellé (« 22 école… », « BV 3 - … »).
-  let s = raw.trim().replace(/\s+/g, " ").replace(/^(bv|bureau( de vote)?)?\s*n?°?\s*\d{1,4}\s*[-–:.]?\s+(?=\D)/i, "");
+  let s = raw.trim().replace(/\s+/g, " ").replace(/^(bv|b|bureau( de vote)?)?\s*n?°?\s*\d{1,4}\s*[-–:.]?\s+(?=\D)/i, "");
   for (const [re, rep] of abbr) s = s.replace(re, rep);
   const small = new Set(["de", "du", "des", "la", "le", "les", "l", "d", "et", "à", "au", "aux", "sur", "en"]);
   const lowerWords = new Set(["école", "maternelle", "primaire", "élémentaire", "groupe", "scolaire", "bibliothèque", "collège", "lycée", "salle", "salles", "mairie", "gymnase", "centre", "espace", "maison", "rencontres", "professionnel", "polyvalente", "social", "quartier", "hôtel", "ville", "médiathèque", "bât.", "marché", "couvert", "fêtes", "halle", "sports", "foyer", "rural", "associations"]);
@@ -215,7 +216,11 @@ function profilOf(lfi: number, abst: number, t1: number, t2: number, mA: number)
  * les effectifs d'inscrits restent proches (±25 %), faute de quoi le découpage
  * est présumé avoir changé.
  */
-export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, labels: Map<string, string>, abstRef?: BureauResult[] | null): BvRow[] {
+/**
+ * `connus` : bureaux situés sur la carte (contours). Un bureau absent des contours (créé depuis, ex.
+ * Villefontaine 9) n'est pas proposé en priorité 1 : la fiche ne saurait ni le situer ni dire où frapper.
+ */
+export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, labels: Map<string, string>, abstRef?: BureauResult[] | null, connus?: Set<string>): BvRow[] {
   const eid = ref[0]?.election.id;
   const sid = second?.[0]?.election.id;
   // Abstention d'un autre scrutin (législatives 2024, forte participation) si chaque bureau
@@ -285,7 +290,14 @@ export function rankBureaux(ref: BureauResult[], second: BureauResult[] | null, 
   const p1 = n <= 3 ? 1 : n <= 8 ? 2 : n <= 20 ? 3 : n <= 40 ? 4 : n <= 70 ? 5 : 6;
   const p2 = Math.max(p1, Math.ceil(n / 2));
   return [
-    ...sorted.map((b, i) => ({ ...b, priorite: (i < p1 ? 1 : i < p2 ? 2 : 3) as 1 | 2 | 3 })),
+    ...(() => {
+      let k1 = 0;
+      return sorted.map((b, i) => {
+        const situe = !connus?.size || connus.has(b.bv);
+        const prio = (situe && k1 < p1 ? (k1++, 1) : i < p2 ? 2 : 3) as 1 | 2 | 3;
+        return { ...b, priorite: prio };
+      });
+    })(),
     ...small.map((b) => {
       const type: BvType = b.lfiPctExp >= mL ? (b.abstPct >= mA ? "bastion_a_mobiliser" : "bastion") : b.abstPct >= mA ? "reservoir_abstention" : "terrain_difficile";
       return { ...b, potentiel: Number.NEGATIVE_INFINITY, type, profil: profilOf(b.lfiPctExp, b.abstPct, t1, t2, mA), priorite: 3 as const };

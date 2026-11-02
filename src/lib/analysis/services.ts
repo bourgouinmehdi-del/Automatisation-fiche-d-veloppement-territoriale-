@@ -219,7 +219,8 @@ export function servicesAccess(code: string, communes: { code: string; at: Pt; p
           surPlace: val === 0,
           score,
           faible,
-          txt: `${val === 0 ? "dans la commune" : `à ${km(val)}`} (${refTxt})`,
+          // Dans la commune : rien de mieux possible, la comparaison (« France : sur place ») n'apporte rien.
+          txt: val === 0 ? "dans la commune" : `à ${km(val)} (${refTxt})`,
           txtFaible: `le plus proche à ${km(val)}, contre ${km(ref)} pour l'habitant moyen ${ref === fr ? `en France${Number.isFinite(dep) ? ` (département : ${km(dep)})` : ""}` : "du département"}`,
         };
       };

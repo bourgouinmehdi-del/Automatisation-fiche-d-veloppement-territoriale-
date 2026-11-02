@@ -192,3 +192,17 @@ describe("numéros de voie des logements sociaux", () => {
     expect(fixAdr("Bâtiment B Rue")).toBe("Bâtiment B Rue");
   });
 });
+
+describe("retours avant envoi (L'Isle-d'Abeau, Villefontaine)", () => {
+  it("libellé : numéro du bureau « B3 » retiré, « Gs » développé", () => {
+    expect(prettyBvLabel("B3 groupe scolaire les Fauvettes")).toBe("Groupe scolaire les Fauvettes");
+    expect(prettyBvLabel("Gs Jean Moulin")).toBe("Groupe scolaire Jean Moulin");
+  });
+  it("un bureau absent de la carte n'est pas proposé en priorité 1", () => {
+    // Bureau 9 : le plus fort, mais absent des contours.
+    const ref = [bv("1", 1000, 500, 180, 320), bv("2", 1000, 600, 100, 500), bv("3", 1000, 650, 80, 570), bv("4", 1000, 700, 60, 640), bv("9", 1000, 450, 200, 250)];
+    const r = rankBureaux(ref, null, new Map(), null, new Set(["1", "2", "3", "4"]));
+    expect(r.find((b) => b.bv === "9")!.priorite).not.toBe(1);
+    expect(r.filter((b) => b.priorite === 1).map((b) => b.bv)).toContain("1");
+  });
+});
