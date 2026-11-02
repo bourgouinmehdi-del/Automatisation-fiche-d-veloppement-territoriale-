@@ -134,7 +134,7 @@ const sortNums = (xs: string[]) => [...new Set(xs)].sort((a, b) => parseInt(a) -
 export function numVoie(numvoie: string, indrep = ""): string {
   // « 0 », « 0 - », « S/N » : pas de numéro.
   if (!/[1-9]/.test(numvoie)) return "";
-  const IND: Record<string, string> = { B: "bis", BIS: "bis", T: "ter", TER: "ter", Q: "quater", QUATER: "quater", C: "quinquies" };
+  const IND: Record<string, string> = { B: "bis", BIS: "bis", T: "ter", TER: "ter", Q: "quater", QUATER: "quater" };
   const m = numvoie.trim().match(/^0*(\d+)\s*([A-Za-z]*)(?:\s+([A-Za-z]+))?$/);
   if (!m) return [numvoie.trim(), indrep.trim().toLowerCase()].filter(Boolean).join(" ");
   const suf = (m[2] || m[3] || indrep.trim()).toUpperCase();
@@ -324,7 +324,7 @@ async function fetchRows(http: TrackedHttp, code: string): Promise<{ rows: Recor
 export function collectRpls(http: TrackedHttp, code: string, opts: { parent?: string; contour?: GeoJSON.Geometry | null } = {}): Promise<RplsResult> {
   return cachedExtract(
     // Version de la mise en forme (abréviations, accents, noms mal encodés) : à changer quand elle évolue.
-    `rpls5|${code}`,
+    `rpls6|${code}`,
     24 * 30,
     async () => {
       let f = await fetchRows(http, code);

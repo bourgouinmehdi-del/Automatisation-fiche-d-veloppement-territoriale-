@@ -334,9 +334,15 @@ export async function ciblageAcces(
     }
     return v ? `${pre}${viaTxt(v)}${jusqua}` : "";
   };
+  // Même temps que le tableau (retour L'Isle-d'Abeau : « 3 min en train » dans le texte, « 4 min direct » dans le tableau) :
+  // le train direct, sauf correspondance plus rapide d'au moins un quart d'heure.
   const trainMin = (h: string, t: string) => {
-    const m = Math.min(train.get([h, t].sort().join("|"))?.minutes ?? Infinity, trainVia.get(`${h}|${t}`)?.minutes ?? Infinity);
-    return utile(h, t, m) ? m : Infinity;
+    const r = train.get([h, t].sort().join("|"));
+    const v = trainVia.get(`${h}|${t}`);
+    const rm = r && utile(h, t, r.minutes) ? r.minutes : Infinity;
+    const vm = v && utile(h, t, v.minutes) ? v.minutes : Infinity;
+    if (Number.isFinite(rm)) return v && v.changes.length && vm + 15 <= rm ? vm : rm;
+    return vm;
   };
 
   // Carte : villes militantes, territoires visés, liaisons (fiche commune et ciblage).
