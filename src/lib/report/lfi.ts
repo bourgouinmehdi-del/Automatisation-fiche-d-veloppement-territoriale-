@@ -2892,13 +2892,20 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const GROUPES: Record<string, string> = { "LFI-NFP": "La France insoumise", LFI: "La France insoumise", RN: "Rassemblement national", SOC: "socialiste", EPR: "Ensemble pour la République", DR: "Droite républicaine", "EcoS": "écologiste", DEM: "Les Démocrates", Dem: "Les Démocrates", HOR: "Horizons", LIOT: "LIOT", GDR: "Gauche démocrate et républicaine", UDR: "Union des droites pour la République", NI: "non inscrit" };
     const grp = (g: string) => GROUPES[g] ?? g;
     const loc = c.deputes.local;
-    const lfiTxt = c.deputes.list
-      .filter((d) => !(loc && d.dep === loc.dep && d.circo === loc.circo))
-      .slice(0, 6)
+    // Les plus proches : jusqu'à 3 à moins de 40 km ; sinon le plus proche (120 km au plus) et ceux
+    // qui ne sont pas beaucoup plus loin que lui (15 km de plus), 3 au plus (retour Farébersviller).
+    const autres = c.deputes.list.filter((d) => !(loc && d.dep === loc.dep && d.circo === loc.circo));
+    const pres = autres.filter((d) => d.km <= 40);
+    const choisis = pres.length ? pres.slice(0, 3) : autres.filter((d) => d.km <= autres[0].km + 15).slice(0, 3);
+    const lfiTxt = choisis
       .map((d) => `${d.nom} (${circoLabel(d.circo, d.depNom)}, à ${fmtNumber(Math.max(1, Math.round(d.km)))} km)`);
     const parts = [
       loc ? `${B("Député·e de la circonscription")} : ${loc.nom}${loc.lfi ? ` (${B("La France insoumise")})` : ` (groupe ${grp(loc.groupe)})`}, ${circoLabel(loc.circo, loc.depNom)}.` : "",
-      lfiTxt.length ? `${B(loc?.lfi ? "Autres député·es LFI à proximité" : "Député·es LFI à proximité")} : ${lfiTxt.join(" ; ")}.` : loc?.lfi ? "" : `${B("Pas de député·e LFI")} à moins de 40 km.`,
+      lfiTxt.length
+        ? `${B(loc?.lfi ? `Autres député·es LFI ${pres.length ? "à proximité" : "les plus proches"}` : pres.length ? "Député·es LFI à proximité" : choisis.length > 1 ? "Plus proches député·es LFI" : "Plus proche député·e LFI")} : ${lfiTxt.join(" ; ")}.`
+        : loc?.lfi
+          ? ""
+          : `${B("Pas de député·e LFI")} à moins de 120 km.`,
     ].filter(Boolean);
     if (parts.length) blocks.push({ type: "paragraph", text: parts.join(" ") });
   }
