@@ -4,7 +4,7 @@ import { fitAspect, type Bbox } from "../collectors/carto";
 import { collectIdfmIndex, collectRailIndex, directTrains, collectUrbanIndex, pickUrbanGtfs, railStations, RAIL_CHANGE_MIN, routeRail, routeTc, TC_BOARD_MIN, TC_TRANSFER_MIN, TRANSPORT_API, type TcIndex, type TrainGroup } from "../collectors/gtfs";
 import { SNCF } from "../collectors/public-apis";
 import { fmtDuration, OSRM_URL } from "../collectors/routes";
-import { dansDep, deDep, fmtNumber } from "../format";
+import { dansDep, fmtNumber } from "../format";
 
 const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
 const joinList = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} et ${xs[xs.length - 1]}`);
@@ -471,10 +471,10 @@ export async function ciblageAcces(
           ? `**Qui peut venir aider** : la ville militante la plus proche est **${first.h.l.nom}**, à ${fmtDuration(first.car!)} en voiture${Number.isFinite(trainMin(first.h.l.code, t.at.code)) ? ` (${fmtDuration(trainMin(first.h.l.code, t.at.code))} en train${first.tr && first.tr.minutes === trainMin(first.h.l.code, t.at.code) ? " direct" : ""})` : tc.get(`${first.h.l.code}|${t.at.code}`) ? ` (${fmtDuration(tc.get(`${first.h.l.code}|${t.at.code}`)!.minutes)} en ${tc.get(`${first.h.l.code}|${t.at.code}`)!.ligne})` : ""}.${rowsF.length > 1 ? " La carte et le tableau donnent les temps de trajet depuis les autres villes où LFI a des militants." : ""}`
           : "**Qui peut venir aider** : villes où LFI a des militants, avec les temps de trajet.",
       },
-      // Département d'abord (retour de Menal) : les convois passent par la boucle départementale.
+      // Département d'abord (retour de Menal). Pas de phrase sur la boucle départementale : c'est elle qui lit la fiche.
       {
         type: "paragraph",
-        text: `**${cap(dansDep(depNom))}** : ${dansDepRows.length ? `${joinList(dansDepRows.slice(0, 5).map((x) => `${x.h.l.nom}${x.car != null ? ` (${fmtDuration(x.car)})` : ""}`))} ; ` : "pas de ville militante proche dans le département ; "}le convoi s'organise avec la boucle départementale ${deDep(depNom)}.`,
+        text: `**${cap(dansDep(depNom))}** : ${dansDepRows.length ? `${joinList(dansDepRows.slice(0, 5).map((x) => `${x.h.l.nom}${x.car != null ? ` (${fmtDuration(x.car)})` : ""}`))}.` : "pas d'autre ville militante proche dans le département."}`,
       },
       { type: "map", mapId: mapF.id },
       { type: "table", tableId: tableF.id },
