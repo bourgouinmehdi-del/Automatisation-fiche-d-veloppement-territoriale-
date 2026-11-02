@@ -473,7 +473,8 @@ export async function ciblageAcces(
       },
       sources: sourcesF,
     });
-    const first = rowsF.find((x) => x.car != null);
+    // La plus proche en voiture, tous départements confondus (Chabanais : Saint-Junien à 16 min, pas Angoulême à 56 min).
+    const first = rowsF.filter((x) => x.car != null).sort((a, b) => a.car! - b.car!)[0];
     const depNom = c.commune.departement.nom;
     const dansDepRows = rowsF.filter((x) => inDep(x.h.l.code));
     const blocksF: Block[] = [

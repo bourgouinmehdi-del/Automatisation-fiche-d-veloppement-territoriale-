@@ -2143,8 +2143,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     });
   }
   const lieuxMsg = [markets.length ? "au marché" : "", gares.length ? "à la gare (départs et retours de week-end)" : ""].filter(Boolean);
+  // Commune à un seul bureau (Chabanais) : « le bureau 1 », c'est toute la commune.
+  const bureauUnique = ranked.length === 1;
   const porteMsg = prio.length
-    ? `porte-à-porte dans ${prio.length > 1 ? "les bureaux" : "le bureau"} ${joinFr(prio.map((p) => dv(p.bv)))} (${fmtNumber(prio.reduce((n, p) => n + p.abstN, 0))} électeurs inscrits qui n'ont pas voté)`
+    ? `porte-à-porte dans ${bureauUnique ? "le reste de la commune" : `${prio.length > 1 ? "les bureaux" : "le bureau"} ${joinFr(prio.map((p) => dv(p.bv)))}`} (${fmtNumber(prio.reduce((n, p) => n + p.abstN, 0))} électeurs inscrits qui n'ont pas voté)`
     : "";
   /* Résidences HLM (RPLS) : d'abord celles des bureaux prioritaires, puis les plus grandes. */
   const prioBvSet = new Set(prio.map((p) => p.bv));
@@ -2260,8 +2262,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
 
   /* ================================================================ accessibilité */
   const access: string[] = [];
-  if (c.stations?.stations.length) {
-    const s = c.stations.stations;
+  // Gares sans aucun train dans les horaires SNCF (ligne fermée aux voyageurs, ex. Chabanais) : pas citées.
+  const desservie = (nom: string) => !c.timetables || c.timetables.stations.some((t) => t.nom === nom && t.departs > 0);
+  if (c.stations?.stations.some((x) => desservie(x.nom))) {
+    const s = c.stations.stations.filter((x) => desservie(x.nom));
     const names = s.map((x) => (/^gare\b/i.test(x.nom) ? x.nom : `gare ${deNom(x.nom)}`));
     access.push(joinFr(names));
   }
@@ -2315,7 +2319,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const ref = (n: number) => {
       if (!tr) return undefined;
       const v = (n / tr.inscrits) * bilan!.inscrits;
-      return `moyenne à taille égale : ${v < 10 ? fmtNumber(Math.round(v * 10) / 10, 1) : fmtNumber(Math.round(v))}`;
+      // « 0,0 » ne dit rien : « moins de 0,1 ».
+      return `moyenne à taille égale : ${v > 0 && v < 0.05 ? "moins de 0,1" : v < 10 ? fmtNumber(Math.round(v * 10) / 10, 1) : fmtNumber(Math.round(v))}`;
     };
     const ga = bilan ? Math.round(bilan.ga) : groupes.length;
     if (bilan || groupes.length) glance.push({ label: ga > 1 ? "Groupes d'action actifs" : "Groupe d'action actif", value: fmtNumber(ga), detail: tr ? ref(tr.ga) : undefined, tone: "militant" });
@@ -2842,7 +2847,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
       });
     if (avecBureaux || (prio.length && !items.length))
       items.push({
-        label: "Porte-à-porte (bureaux prioritaires)",
+        label: bureauUnique ? "Porte-à-porte (toute la commune, un seul bureau de vote)" : "Porte-à-porte (bureaux prioritaires)",
         count: n(prio.length, "bureau", "bureaux"),
         details: prio.map((p) => `Bureau ${dv(p.bv)}${labels.has(p.bv) ? ` (${labels.get(p.bv)})` : ""} : ${fmtNumber(p.abstN)} inscrits n'ont pas voté, vote LFI à ${pp(p.lfiPctExp)}`),
       });

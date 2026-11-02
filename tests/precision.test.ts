@@ -206,3 +206,9 @@ describe("retours avant envoi (L'Isle-d'Abeau, Villefontaine)", () => {
     expect(r.filter((b) => b.priorite === 1).map((b) => b.bv)).toContain("1");
   });
 });
+
+describe("retours Villefontaine", () => {
+  it("« Gs 18 Christophe Colomb » → « Groupe scolaire Christophe Colomb »", () => {
+    expect(prettyBvLabel("Gs 18 Christophe Colomb")).toBe("Groupe scolaire Christophe Colomb");
+  });
+});
