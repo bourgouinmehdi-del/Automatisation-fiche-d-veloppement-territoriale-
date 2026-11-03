@@ -29,6 +29,12 @@ const KINDS: { id: string; title: string; help: string; xlsx?: boolean }[] = [
     help: "Classeur de synthèse des municipales (Excel, un onglet par situation : liste LFI, union de la gauche menée par LFI, tête de liste d'une autre organisation avec LFI…). Seules les lignes « Ok » comptent comme listes LFI ; « En attente » et « Planté » sont ignorées. Remplace la nuance officielle dans la ligne « Municipales 2026 » des fiches.",
     xlsx: true,
   },
+  {
+    id: "deputations",
+    title: "Historique des député·es par circonscription",
+    help: "Classeur « historique_deputations » (.xlsx, onglets 1988-2007 et 2012-2026) ou l'un des deux CSV (un CSV ne remplace que sa période). Ajoute au profil politique l'historique de la circonscription et, dans « Qui mobiliser », les député·es précédent·es.",
+    xlsx: true,
+  },
 ];
 
 type StmtMeta = { rows: number; communes: number; first: string; last: string; updatedAt: string };
