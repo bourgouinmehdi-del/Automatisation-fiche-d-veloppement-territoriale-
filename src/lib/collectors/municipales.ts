@@ -318,3 +318,35 @@ export async function collectMunicipales2020(http: TrackedHttp, codeInsee: strin
   if (!round?.listes.length) throw new Error("Pas de résultat municipal 2020 par liste pour la commune (moins de 1 000 habitants en 2020 ?)");
   return { round, url, retrievedAt };
 }
+
+/**
+ * Liste des résultats officiels correspondant au classeur interne, du plus sûr au moins sûr (« score non
+ * retrouvé » revenait souvent : co-têtes de liste, tête officielle différente, nom composé, prénom abrégé) :
+ * 1. prénom et nom de l'une des têtes de liste ; 2. nom de famille seul (une seule liste) ; 3. libellé
+ * « insoumis » / « LFI » (une seule liste) ; 4. nuance LFI (liste LFI) ou union de la gauche (liste d'union),
+ * s'il n'y en a qu'une.
+ */
+export function listeDuClasseur(ls: MunicipalList[], soutien: { situation: string; tdl: string[] }): MunicipalList | undefined {
+  const nn = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
+  const mots = (t: string) => nn(t).split(" ").filter(Boolean);
+  const has = (l: MunicipalList, w: string) => ` ${nn(l.tete)} `.includes(` ${w} `);
+  const complet = ls.find((l) =>
+    soutien.tdl.some((t) => {
+      const w = mots(t);
+      return w.length > 1 && has(l, w[w.length - 1]) && (has(l, w[0]) || w.slice(1).every((x) => has(l, x)));
+    }),
+  );
+  if (complet) return complet;
+  // Nom de famille : mots en capitales du classeur (« Isabelle D'ARTAGNAN » → « artagnan »), sinon le dernier mot.
+  const noms = soutien.tdl.flatMap((t) => {
+    const caps = t.split(/\s+/).filter((x) => x.length > 1 && x === x.toUpperCase() && /[A-Z]/.test(x));
+    return (caps.length ? caps.flatMap(mots) : mots(t).slice(-1)).filter((x) => x.length >= 3);
+  });
+  const parNom = ls.filter((l) => noms.some((n) => has(l, n)));
+  if (parNom.length === 1) return parNom[0];
+  const parLib = ls.filter((l) => /insoumis|\blfi\b/.test(nn(l.libelle)));
+  if (parLib.length === 1) return parLib[0];
+  const parNuance = (n: string) => ls.filter((l) => l.nuance === n);
+  for (const n of /union/i.test(soutien.situation) ? ["LUG", "LFI"] : /LFI/.test(soutien.situation) ? ["LFI"] : []) if (parNuance(n).length === 1) return parNuance(n)[0];
+  return undefined;
+}
