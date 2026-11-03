@@ -3,6 +3,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { INTERNAL_FILES, bilanToCsv, internalDir, internalSummary, investie, listesLfiToCsv, parseCsv, parseGroupes, parseMunicipalesLfi, splitSheetsText } from "@/lib/collectors/interne";
 import { readXlsx, sheetObjects } from "@/lib/collectors/xlsx";
+import { deputationsRows, deputationsToCsv } from "@/lib/collectors/deputations";
 
 export const runtime = "nodejs";
 
@@ -40,6 +41,33 @@ export async function POST(req: Request) {
     await fs.mkdir(internalDir(), { recursive: true });
     await fs.writeFile(path.join(internalDir(), name), csv);
     return NextResponse.json({ ok: true, info: `${n.toLocaleString("fr-FR")} communes`, summary: await internalSummary() });
+  }
+  if (kind === "deputations") {
+    // Classeur « historique_deputations » (onglets 1988-2007 et 2012-2026) ou l'un des deux CSV : un CSV
+    // ne remplace que sa période, l'autre est gardée.
+    let rows: Record<string, string>[] = [];
+    if (buf[0] === 0x50 && buf[1] === 0x4b) {
+      try {
+        rows = [...readXlsx(new Uint8Array(buf)).values()].flatMap((sheet) => sheetObjects(sheet, /^circo$/i));
+      } catch {
+        return NextResponse.json({ error: "Classeur illisible : fichier Excel (.xlsx) ou CSV attendu" }, { status: 400 });
+      }
+    } else rows = parseCsv(buf.toString("utf8"));
+    const neuf = deputationsRows(rows);
+    if (!neuf.length) return NextResponse.json({ error: "Aucune ligne lue : colonnes circo, election, groupe, depute attendues" }, { status: 400 });
+    const periode = (e: number) => (e < 2012 ? "avant" : "apres");
+    const periodes = new Set(neuf.map((x) => periode(x.d.election)));
+    let anciens: ReturnType<typeof deputationsRows> = [];
+    try {
+      anciens = deputationsRows(parseCsv(await fs.readFile(path.join(internalDir(), name), "utf8"))).filter((x) => !periodes.has(periode(x.d.election)));
+    } catch {
+      /* premier dépôt */
+    }
+    const tout = [...anciens, ...neuf];
+    await fs.mkdir(internalDir(), { recursive: true });
+    await fs.writeFile(path.join(internalDir(), name), deputationsToCsv(tout));
+    const ys = [...new Set(tout.map((x) => x.d.election))].sort();
+    return NextResponse.json({ ok: true, info: `${new Set(tout.map((x) => x.circo)).size.toLocaleString("fr-FR")} circonscriptions, élections ${ys[0]} à ${ys[ys.length - 1]}`, summary: await internalSummary() });
   }
   if (kind === "municipales-lfi") {
     // Classeur de synthèse (un onglet par situation) : Excel, ou texte « ## Sheet name: … » exporté du tableur.

@@ -4,6 +4,7 @@ import Papa from "papaparse";
 import { config } from "../config";
 import { referentiel, searchCommunes } from "./admin";
 import { detectDelimiter, findCol } from "./elections";
+import { parseDeputations, type Deputation } from "./deputations";
 
 /**
  * Données militantes internes, FACULTATIVES, fournies par l'utilisateur
@@ -61,6 +62,8 @@ export interface InternalData {
   /** Municipales 2026 : listes soutenues par LFI, par commune (classeur interne). */
   listesLfi?: Map<string, ListeLfi[]>;
   files: string[];
+  /** Historique des député·es par circonscription (« 57-06 »), 1988-2024. */
+  deputations?: Map<string, Deputation[]>;
   /** Lignes non rattachées à une commune (export Action Populaire). */
   unmatched?: number;
 }
@@ -75,7 +78,7 @@ export const BILAN_TRANCHES: [number, number][] = [
   [100000, Infinity],
 ];
 
-export const INTERNAL_FILES = ["parrains.csv", "groupes.csv", "action-populaire.csv", "bilan.csv", "municipales-lfi.csv"] as const;
+export const INTERNAL_FILES = ["parrains.csv", "groupes.csv", "action-populaire.csv", "bilan.csv", "municipales-lfi.csv", "deputations.csv"] as const;
 
 export const internalDir = () => path.join(config.dataDir, "interne");
 
@@ -397,6 +400,13 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
     }
     if (m.size) out.listesLfi = m;
     out.files.push("municipales-lfi.csv");
+  } catch {
+    /* fichier absent */
+  }
+  try {
+    const m = parseDeputations(await readCsv(path.join(dir, "deputations.csv")));
+    if (m.size) out.deputations = m;
+    out.files.push("deputations.csv");
   } catch {
     /* fichier absent */
   }

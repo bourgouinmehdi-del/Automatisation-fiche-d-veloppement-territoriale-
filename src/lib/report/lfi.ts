@@ -20,6 +20,7 @@ import { investie } from "../collectors/interne";
 import { ecartParts, ecartRatio } from "./gradation";
 import { BPE_VINTAGE, BPE_TYPES } from "../collectors/bpe";
 import { circoLabel } from "../collectors/carto";
+import { circoKey, deputationsPhrase, precedents } from "../collectors/deputations";
 import { fmtDuration } from "../collectors/routes";
 import { hlmByStreet, numsLabel } from "../collectors/rpls";
 import { nearestStation } from "../collectors/carto";
@@ -2613,6 +2614,12 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const intro = politiqueIntro(parcours, zonesInfo, { nom: plm ? undefined : commune.nom, bvRange: lfiBv.length >= 4 ? { min: Math.min(...lfiBv), max: Math.max(...lfiBv) } : null });
     if (intro) blocks.push({ type: "paragraph", text: intro });
   }
+  // Historique de la circonscription (fichier interne des députations) : à qui elle a donné son siège depuis 1988.
+  const histo = c.deputes?.local && c.interne.deputations ? c.interne.deputations.get(circoKey(c.deputes.local.dep, c.deputes.local.circo)) : undefined;
+  if (histo && c.deputes?.local) {
+    const ph = deputationsPhrase(histo, circoLabel(c.deputes.local.circo, c.deputes.local.depNom));
+    if (ph) blocks.push({ type: "paragraph", text: ph });
+  }
   // Liste LFI aux municipales (2026, comparée à 2020) : avec les autres résultats, pas dans l'organisation.
   if (municipalLfi) blocks.push({ type: "paragraph", text: municipalLfi });
   // Présence militante : après les résultats (du général au particulier).
@@ -2905,7 +2912,13 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const lfiTxt = choisis
       .map((d) => `${d.nom} (${circoLabel(d.circo, d.depNom)}, à ${fmtNumber(Math.max(1, Math.round(d.km)))} km)`);
     const parts = [
-      loc ? `${B("Député·e de la circonscription")} : ${loc.nom}${loc.lfi ? ` (${B("La France insoumise")})` : ` (groupe ${grp(loc.groupe)})`}, ${circoLabel(loc.circo, loc.depNom)}.` : "",
+      loc
+        ? `${B("Député·e de la circonscription")} : ${loc.nom}${loc.lfi ? ` (${B("La France insoumise")})` : ` (groupe ${grp(loc.groupe)})`}, ${circoLabel(loc.circo, loc.depNom)}.${(() => {
+            // Précédent·es (fichier interne des députations) : « Avant : Christophe Arend (LREM, 2017), Laurent Kalinowski (PS, 2012). »
+            const pr = histo ? precedents(histo, loc.nom) : [];
+            return pr.length ? ` Avant : ${pr.map((d) => `${d.depute} (${d.groupe}, ${d.election})`).join(", ")}.` : "";
+          })()}`
+        : "",
       lfiTxt.length
         ? `${B(loc?.lfi ? `Autres député·es LFI ${pres.length ? "à proximité" : "les plus proches"}` : pres.length ? "Député·es LFI à proximité" : choisis.length > 1 ? "Plus proches député·es LFI" : "Plus proche député·e LFI")} : ${lfiTxt.join(" ; ")}.`
         : loc?.lfi
