@@ -34,3 +34,20 @@ describe("municipales 2026 : classeur des listes soutenues par LFI", () => {
     expect(arrondissementsOf("Paris 1, 2, 3 et 4")).toEqual(["75101", "75102", "75103", "75104"]);
   });
 });
+
+describe("liste du classeur retrouvée dans les résultats officiels", () => {
+  const L = (tete: string, nuance: string, libelle: string) => ({ tete, nuance, libelle, voix: 100, pctExprimes: 10, sieges: null, elu: false });
+  const ls = [L("Alice DURAND", "LDVD", "Ensemble"), L("Paul LEROY-MOREAU", "LDVG", "Vivre ici"), L("Jeanne ROUX", "LUG", "La gauche unie")];
+  it("nom de famille seul (prénom différent, nom composé)", async () => {
+    const { listeDuClasseur } = await import("@/lib/collectors/municipales");
+    expect(listeDuClasseur(ls, { situation: "liste LFI", tdl: ["Paulo LEROY-MOREAU"] })?.libelle).toBe("Vivre ici");
+  });
+  it("co-tête de liste qui n'est pas la tête officielle : nuance d'union", async () => {
+    const { listeDuClasseur } = await import("@/lib/collectors/municipales");
+    expect(listeDuClasseur(ls, { situation: "liste d'union de la gauche menée par LFI", tdl: ["Marc ZED", "Lou D'ARTOIS"] })?.libelle).toBe("La gauche unie");
+  });
+  it("rien de sûr : pas de liste", async () => {
+    const { listeDuClasseur } = await import("@/lib/collectors/municipales");
+    expect(listeDuClasseur(ls, { situation: "liste LFI", tdl: ["Marc ZED"] })).toBeUndefined();
+  });
+});

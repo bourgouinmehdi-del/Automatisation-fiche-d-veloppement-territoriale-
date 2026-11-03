@@ -15,7 +15,7 @@ import { communePoster, GARE_MIN_JOUR, gareNom, marcheWeekend, openWeekend, perD
 import { buildInscription } from "./inscription";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
-import { NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
+import { listeDuClasseur, NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
 import { investie } from "../collectors/interne";
 import { ecartParts, ecartRatio } from "./gradation";
 import { BPE_VINTAGE, BPE_TYPES } from "../collectors/bpe";
@@ -2560,14 +2560,11 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     const interneOn = !!c.interne.listesLfi;
     const soutiens = (c.interne.listesLfi?.get(commune.code) ?? (plm ? c.interne.listesLfi?.get(plm.parent) : undefined) ?? []).filter(investie);
     const soutien = soutiens[0];
-    // Liste des résultats officiels menée par la tête de liste du classeur (nom de famille retrouvé).
-    const byTdl = soutien && t1
-      ? t1.listes.find((l) => soutien.tdl.some((t) => {
-          const w = nn(t).split(" ");
-          const tete = ` ${nn(l.tete)} `;
-          return w.length > 1 && tete.includes(` ${w[w.length - 1]} `) && (tete.includes(` ${w[0]} `) || w.slice(1).every((x) => tete.includes(` ${x} `)));
-        }))
-      : undefined;
+    // Liste des résultats officiels correspondant au classeur, du plus sûr au moins sûr (« score non retrouvé »
+    // revenait souvent : co-têtes de liste, tête officielle différente, nom composé ou prénom abrégé) :
+    // 1. prénom et nom de l'une des têtes de liste ; 2. nom de famille seul ; 3. libellé « insoumis » / « LFI » ;
+    // 4. nuance LFI (liste LFI) ou union de la gauche (liste d'union), s'il n'y en a qu'une.
+    const byTdl = soutien && t1 ? listeDuClasseur(t1.listes, soutien) : undefined;
     const lfiL = interneOn ? byTdl : top(t1, "LFI");
     const l20 = top(r20, "LFI");
     const ug20 = top(r20, "LUG");
@@ -2588,13 +2585,18 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         : has26
           ? ` Pas de liste étiquetée LFI en 2020${ug20 ? ` (union de la gauche « ${ug20.libelle} », ${p0(ug20.pctExprimes)})` : ""}.`
           : ` Pas de liste étiquetée LFI non plus en 2020${ug20 ? ` (union de la gauche « ${ug20.libelle} », ${p0(ug20.pctExprimes)})` : ""}.`;
+    // Liste introuvable : les listes de gauche du 1er tour, pour que le lecteur s'y retrouve.
+    const gaucheT1 = (() => {
+      const g = (t1?.listes ?? []).filter((l) => nuanceFamily(l.nuance) === "gauche").slice(0, 3);
+      return g.length ? joinFr(g.map((l) => `« ${l.libelle || l.tete} »${l.tete && l.libelle ? ` (${l.tete})` : ""}, ${pct(l.pctExprimes, 0)}`)) : "";
+    })();
     if (m && t1?.listes.length) {
       const t2 = m.rounds.find((r) => r.tour === 2);
       const auT2 = lfiL && t2?.listes.some((l) => sameList(l, lfiL));
       const score = lfiL ? `« ${lfiL.libelle} »${lfiL.tete.trim() ? ` (tête de liste : ${lfiL.tete})` : ""}, ${p0(lfiL.pctExprimes)} au 1er tour${auT2 ? ", présente au 2nd tour" : ""}${lfiL.elu ? " ; élus au conseil municipal" : ""}` : "";
       if (interneOn)
         municipalLfi = soutien
-          ? `${B("Municipales 2026")}${ville} : ${soutien.situation}${score ? `, ${score}` : soutien.tdl.length ? ` (tête de liste : ${joinFr(soutien.tdl)}) ; score non retrouvé dans les résultats officiels` : ""}.${txt20}`
+          ? `${B("Municipales 2026")}${ville} : ${soutien.situation}${score ? `, ${score}` : `${soutien.tdl.length ? ` (tête de liste : ${joinFr(soutien.tdl)})` : ""}${gaucheT1 ? ` ; liste non identifiée dans les résultats officiels du 1er tour, où la gauche présentait ${gaucheT1}` : " ; liste non identifiée dans les résultats officiels du 1er tour"}`}.${txt20}`
           : `${B("Municipales 2026")}${ville} : pas de liste soutenue par LFI.${txt20}`;
       else {
         const ug = top(t1, "LUG");
