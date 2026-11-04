@@ -1,5 +1,5 @@
 import * as turf from "@turf/turf";
-import { GEO_API } from "../collectors/admin";
+import { GEO_API, referentiel } from "../collectors/admin";
 import { fitAspect, type Bbox } from "../collectors/carto";
 import { collectIdfmIndex, collectRailIndex, directBetween, directTrains, collectUrbanIndex, pickUrbanGtfs, railStations, RAIL_CHANGE_MIN, routeRail, routeTc, TC_BOARD_MIN, TC_TRANSFER_MIN, TRANSPORT_API, type TcIndex, type TrainGroup } from "../collectors/gtfs";
 import { SNCF } from "../collectors/public-apis";
@@ -41,6 +41,18 @@ const GRANDE_TOLERANCE_KM = 20;
 const LOCAL_GA_KM = 25;
 /** … et au moins 25 parrains : un groupe déclaré actif dans une commune presque sans soutiens ne fera pas venir de monde. */
 const LOCAL_MIN_PARRAINS = 25;
+/** Départements listés : temps en voiture au plus (retour de Menal : contacter les boucles départementales). */
+const DEP_MAX_MIN = 120;
+/** Département d'une commune (« Haute-Vienne »), pour l'écrire à côté du nom des villes. */
+export function depNomOf(code: string): string {
+  const r = referentiel();
+  const d = r.byCode.get(code)?.departement ?? (code.startsWith("97") ? code.slice(0, 3) : code.slice(0, 2));
+  return r.departements.get(d)?.nom ?? "";
+}
+const avecDep = (code: string, nom: string) => {
+  const d = depNomOf(code);
+  return d && d !== nom ? `${nom} (${d})` : nom;
+};
 const parrainsTxt = (n: number) => `${fmtNumber(Math.round(n))} soutien${Math.round(n) > 1 ? "s" : ""} JLM2027`;
 
 interface Lieu {
@@ -182,6 +194,47 @@ export async function ciblageAcces(
     r.data.durations.forEach((row, i) => row.forEach((d, j) => d != null && car.set(`${hubs[i].l.code}|${tgt[j].at.code}`, Math.round(d / 60))));
     osrmSrc = ctx.ref("osrm", url, r.retrievedAt);
   });
+
+  // 3 bis. Départements à moins de 2 h en voiture (retour de Menal) : pour chaque département, ses villes militantes
+  // les plus proches (groupe d'action actif, 25 soutiens au moins), puis le meilleur temps en voiture (une matrice OSRM).
+  const depsProches = new Map<string, { dep: string; nom: string; ville: string; min: number }[]>();
+  await ctx
+    .step("osrm", "acces:departements", async (http) => {
+      const pool = [...withVilles(bilan)]
+        .filter(([code, b]) => !targetCodes.has(code) && b.ga >= 1 && b.parrains >= LOCAL_MIN_PARRAINS)
+        .map(([code]) => at(code))
+        .filter((l): l is Lieu => !!l)
+        .map((l) => ({ l, dep: depNomOf(l.code), km: Math.min(...tgt.map((t) => turf.distance([l.lon, l.lat], [t.at.lon, t.at.lat]))) }))
+        .filter((x) => x.dep && x.km <= 190);
+      // Trois villes par département au plus (les plus proches), 90 points au plus pour la matrice.
+      const parDep = new Map<string, typeof pool>();
+      for (const x of [...pool].sort((a, b) => a.km - b.km)) {
+        const xs = parDep.get(x.dep) ?? [];
+        if (xs.length < 3) parDep.set(x.dep, [...xs, x]);
+      }
+      const src = [...parDep.values()].flat().sort((a, b) => a.km - b.km).slice(0, 90);
+      if (!src.length) return;
+      const pts = [...src.map((x) => x.l), ...tgt.map((t) => t.at)];
+      const url = `${OSRM_URL}/table/v1/driving/${pts.map((p) => `${p.lon.toFixed(5)},${p.lat.toFixed(5)}`).join(";")}?sources=${src.map((_, i) => i).join(";")}&destinations=${tgt.map((_, j) => src.length + j).join(";")}&annotations=duration`;
+      const r = await http.json<{ code?: string; durations?: (number | null)[][] }>(url, { minIntervalMs: 1100, ttlHours: 24 * 30 });
+      if (r.data?.code !== "Ok" || !r.data.durations) throw new Error("Matrice OSRM indisponible");
+      tgt.forEach((t, j) => {
+        const best = new Map<string, { dep: string; nom: string; ville: string; min: number }>();
+        src.forEach((x, i) => {
+          const d = r.data!.durations![i][j];
+          if (d == null) return;
+          const m = Math.round(d / 60);
+          const prev = best.get(x.dep);
+          if (m <= DEP_MAX_MIN && (!prev || m < prev.min)) best.set(x.dep, { dep: x.dep, nom: x.dep, ville: x.l.nom, min: m });
+        });
+        depsProches.set(t.at.code, [...best.values()].sort((a, b) => a.min - b.min));
+      });
+    })
+    .catch(() => undefined);
+  const depsTxt = (t: { at: Lieu }) => {
+    const xs = depsProches.get(t.at.code) ?? [];
+    return xs.length ? joinList(xs.map((x) => `${x.nom} (${fmtDuration(x.min)} depuis ${x.ville})`)) : "";
+  };
 
   // 4. Train direct un samedi (gares SNCF des villes et des territoires).
   const train = new Map<string, { minutes: number; trains: number }>();
@@ -409,7 +462,7 @@ export async function ciblageAcces(
           id: g.id,
           label: g.label,
           kind: "points" as const,
-          data: turf.featureCollection(g.hs.map((h) => turf.point([h.l.lon, h.l.lat], { nom: h.l.nom, sub: o.subHub(h) }))),
+          data: turf.featureCollection(g.hs.map((h) => turf.point([h.l.lon, h.l.lat], { nom: avecDep(h.l.code, h.l.nom), sub: o.subHub(h) }))),
           style: { fill: g.fill, stroke: "#ffffff", symbol: "diamond" as const, size: 15 },
           labelMode: "callout" as const,
           labelProperty: "nom",
@@ -452,7 +505,7 @@ export async function ciblageAcces(
         ...(tc.size ? [{ key: "tc", label: "Métro, RER, tram", align: "right" as const }] : []),
       ],
       rows: rowsF.map(({ h, car: v, tr: r }) => ({
-        ville: h.l.nom,
+        ville: avecDep(h.l.code, h.l.nom),
         militants: [h.b.ga ? `${fmtNumber(h.b.ga)} groupe${h.b.ga > 1 ? "s" : ""} actif${h.b.ga > 1 ? "s" : ""}` : "", parrainsTxt(h.b.parrains)].filter(Boolean).join(", "),
         voiture: v != null ? fmtDuration(v) : "—",
         train: trainTxt(h.l.code, t.at.code).replace(/ jusqu'à .*$/, "") || "—",
@@ -481,7 +534,7 @@ export async function ciblageAcces(
       {
         type: "paragraph",
         text: first
-          ? `**Qui peut venir aider** : la ville militante la plus proche est **${first.h.l.nom}**, à ${fmtDuration(first.car!)} en voiture${Number.isFinite(trainMin(first.h.l.code, t.at.code)) ? ` (${fmtDuration(trainMin(first.h.l.code, t.at.code))} en train${first.tr && first.tr.minutes === trainMin(first.h.l.code, t.at.code) ? " direct" : ""})` : tc.get(`${first.h.l.code}|${t.at.code}`) ? ` (${fmtDuration(tc.get(`${first.h.l.code}|${t.at.code}`)!.minutes)} en ${tc.get(`${first.h.l.code}|${t.at.code}`)!.ligne})` : ""}.`
+          ? `**Qui peut venir aider** : la ville militante la plus proche est **${avecDep(first.h.l.code, first.h.l.nom)}**, à ${fmtDuration(first.car!)} en voiture${Number.isFinite(trainMin(first.h.l.code, t.at.code)) ? ` (${fmtDuration(trainMin(first.h.l.code, t.at.code))} en train${first.tr && first.tr.minutes === trainMin(first.h.l.code, t.at.code) ? " direct" : ""})` : tc.get(`${first.h.l.code}|${t.at.code}`) ? ` (${fmtDuration(tc.get(`${first.h.l.code}|${t.at.code}`)!.minutes)} en ${tc.get(`${first.h.l.code}|${t.at.code}`)!.ligne})` : ""}.`
           : "**Qui peut venir aider** : villes où LFI a des militants, avec les temps de trajet.",
       },
       // Département d'abord (retour de Menal). Pas de phrase sur la boucle départementale : c'est elle qui lit la fiche.
@@ -489,6 +542,8 @@ export async function ciblageAcces(
         type: "paragraph",
         text: `**${cap(dansDep(depNom))}** : ${dansDepRows.length ? `${joinList(dansDepRows.slice(0, 5).map((x) => `${x.h.l.nom}${x.car != null ? ` (${fmtDuration(x.car)})` : ""}`))}.` : "pas d'autre ville militante proche dans le département."}`,
       },
+      // Départements à contacter (boucles départementales) : ceux qui ont une ville militante à moins de 2 h.
+      ...(depsTxt(t) ? [{ type: "paragraph" as const, text: `**Départements à moins de 2 h en voiture** (ville militante la plus proche) : ${depsTxt(t)}.` }] : []),
       { type: "map", mapId: mapF.id },
       { type: "table", tableId: tableF.id },
     ];
@@ -518,7 +573,7 @@ export async function ciblageAcces(
     theme: "strategie",
     columns: [
       { key: "territoire", label: "Territoire proposé", wide: true },
-      ...hubs.map((h) => ({ key: `h${h.l.code}`, label: `Depuis ${h.l.nom}` })),
+      ...hubs.map((h) => ({ key: `h${h.l.code}`, label: `Depuis ${avecDep(h.l.code, h.l.nom)}` })),
       { key: "moyenne", label: "Moyenne en voiture", align: "right" as const },
     ],
     rows,
@@ -550,6 +605,10 @@ export async function ciblageAcces(
       : []),
     { type: "map", mapId: map.id },
     { type: "table", tableId: table.id },
+    // Départements à contacter pour chaque territoire (ville militante à moins de 2 h en voiture).
+    ...(tgt.some((t) => depsTxt(t))
+      ? [{ type: "list" as const, title: "Départements à moins de 2 h en voiture (ville militante la plus proche)", items: tgt.filter((t) => depsTxt(t)).map((t) => ({ text: `${t.nom} : ${depsTxt(t)}` })) }]
+      : []),
   ];
   return { tables: [table], maps: [map], blocks };
 }
