@@ -315,7 +315,9 @@ describe("chaîne de génération (API simulées)", () => {
     }
     // Temps de trajet depuis les villes militantes proches (Choisy-au-Bac : 2 groupes actifs).
     const accT = report.tables.find((t) => t.id === "commune_acces");
-    expect(accT?.rows[0]).toMatchObject({ ville: "Choisy-au-Bac" });
+    expect(accT?.rows[0]).toMatchObject({ ville: "Choisy-au-Bac (Oise)" });
+    // Départements à contacter (ville militante à moins de 2 h en voiture).
+    expect(report.sections[0].blocks.some((b) => b.type === "paragraph" && /^\*\*Départements à moins de 2 h en voiture\*\*.*Oise \(/.test(b.text))).toBe(true);
     expect(String(accT?.rows[0].voiture)).toMatch(/min|h/);
     const lfiB = report.sections.find((x) => x.id === "LFI")!.blocks;
     expect(lfiB.some((b) => b.type === "paragraph" && /^\*\*Qui peut venir aider\*\*/.test(b.text))).toBe(true);
