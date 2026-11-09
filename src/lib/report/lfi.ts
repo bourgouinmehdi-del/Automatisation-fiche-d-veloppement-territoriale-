@@ -2662,6 +2662,8 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   }
   // (Sans données internes : rien dans la fiche, qui s'adresse aux élus ; le signalement figure dans le journal de collecte.)
   if (out.charts.some((x) => x.id === "lfi_chart_eu24")) blocks.push({ type: "chart", chartId: "lfi_chart_eu24" });
+  // Présidentielle 2022 à côté des européennes, même forme (retour de Menal : plus motivant).
+  if (out.charts.some((x) => x.id === "lfi_chart_pr22")) blocks.push({ type: "chart", chartId: "lfi_chart_pr22" });
   if (has("lfi_vote")) blocks.push({ type: "table", tableId: "lfi_vote" });
   const prose = (list: string[]) => list.length && blocks.push({ type: "findings", ids: list, style: "prose" });
   // Annexe : mairie, quartiers où LFI surperforme, parrainages.
@@ -2909,7 +2911,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     // Les plus proches : jusqu'à 3 à moins de 40 km ; sinon le plus proche (120 km au plus) et ceux
     // qui ne sont pas beaucoup plus loin que lui (15 km de plus), 3 au plus (retour Farébersviller).
     const autres = c.deputes.list.filter((d) => !(loc && d.dep === loc.dep && d.circo === loc.circo));
-    const pres = autres.filter((d) => d.km <= 40);
+    // Député·es du département d'abord (liens avec la boucle départementale, retour Massy : Bérenger Cernon
+    // plutôt que des député·es de Paris), à 60 km au plus ; puis les autres à moins de 40 km.
+    const memeDep = (d: (typeof autres)[number]) => d.dep.replace(/^0/, "") === commune.departement.code.replace(/^0/, "");
+    const pres = [...autres.filter((d) => memeDep(d) && d.km <= 60), ...autres.filter((d) => !memeDep(d) && d.km <= 40)];
     const choisis = pres.length ? pres.slice(0, 3) : autres.filter((d) => d.km <= autres[0].km + 15).slice(0, 3);
     const lfiTxt = choisis
       .map((d) => `${d.nom} (${circoLabel(d.circo, d.depNom)}, à ${fmtNumber(Math.max(1, Math.round(d.km)))} km)`);
