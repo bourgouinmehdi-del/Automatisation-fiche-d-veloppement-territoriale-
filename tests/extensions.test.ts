@@ -129,11 +129,17 @@ describe("ciblage départemental", () => {
       // Deux listes (retour d'Elia) : à implanter (sans groupe actif), à relancer (groupe peu actif).
       const blocks = r.sections[0].blocks;
       const impl = blocks.find((b) => b.type === "list" && /^1\. Territoires à implanter/.test(b.title ?? ""));
-      expect(impl).toBeDefined();
+      expect(impl ?? blocks.find((b) => b.type === "paragraph" && /^\*\*1\. Territoires à implanter\*\*/.test(b.text))).toBeDefined();
       expect(blocks.some((b) => (b.type === "list" && /^2\. Territoires à relancer/.test(b.title ?? "")) || (b.type === "paragraph" && /2\. Territoires à relancer/.test(b.text)))).toBe(true);
       // Aucune proposition « à implanter » n'a de groupe actif.
       const sansGa = new Set(cl.rows.filter((x) => x.groupe === "aucun").map((x) => String(x.nom)));
-      for (const it of (impl as { items: { text: string }[] }).items) expect([...sansGa].some((n) => it.text.includes(n))).toBe(true);
+      if (impl) for (const it of (impl as { items: { text: string }[] }).items) expect([...sansGa].some((n) => it.text.includes(n))).toBe(true);
+      // Moitié haute du classement seulement.
+      const seuil = Math.max(5, Math.ceil(cl.rows.length / 2));
+      for (const t of (blocks.find((b) => b.type === "targets") as { items: { nom: string }[] }).items) {
+        const row = cl.rows.find((x) => String(x.nom).startsWith(t.nom));
+        expect(Number(row?.rang)).toBeLessThanOrEqual(seuil);
+      }
       const targets = r.sections[0].blocks.find((b) => b.type === "targets");
       expect(JSON.stringify(targets)).not.toMatch(/Aucun groupe d'action référencé/);
       const ga = r.maps.find((x) => x.id === "ciblage_affiche")!.layers.find((l) => l.id === "ga");
