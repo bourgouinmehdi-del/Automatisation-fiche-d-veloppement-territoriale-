@@ -607,6 +607,14 @@ export function buildCiblage(c: Collected): CiblageOutput {
     ...(deuxListes
       ? [
           ...(implanter.length ? [{ type: "list" as const, title: "1. Territoires à implanter (pas de groupe d'action actif)", items: implanter.map((u) => ({ text: `${B(`${chosen.indexOf(u) + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) }] : []),
+          // Pourquoi des territoires mieux classés manquent : en petit, sous la liste, regroupé par raison.
+          ...(() => {
+            const court = (xs: Unit[]) => (xs.length > 4 ? `${xs.slice(0, 3).map((u) => u.nom).join(", ")} et ${xs.length - 3} autres` : joinFr(xs.map((u) => u.nom)));
+            const ga = nonRetenus.filter((x) => x.pourquoi.startsWith("déjà")).map((x) => x.u);
+            const ic = nonRetenus.filter((x) => !x.pourquoi.startsWith("déjà")).map((x) => x.u);
+            const txt = [ga.length ? `Mieux classés, mais déjà dotés d'un groupe d'action actif : ${court(ga)}.` : "", ic.length ? `Écartés pour ne pas proposer plus de deux territoires d'une même intercommunalité : ${court(ic)}.` : ""].filter(Boolean).join(" ");
+            return txt ? [{ type: "note" as const, text: txt }] : [];
+          })(),
           ...(relancer.length
             ? [{ type: "list" as const, title: "2. Territoires à relancer (groupe d'action peu actif au regard du potentiel)", items: relancer.map((u) => ({ text: `${B(`${chosen.indexOf(u) + 1}. ${u.nom}`)} : ${fmtNumber(u.activite ?? 0, 1)} action${(u.activite ?? 0) >= 2 ? "s" : ""} pour 1 000 voix LFI (médiane : ${fmtNumber(medActivite ?? 0, 1)})` })) }]
             : [{ type: "paragraph" as const, text: `${B("2. Territoires à relancer")} : aucun territoire avec un groupe d'action nettement moins actif que les autres au regard de son nombre de voix LFI.` }]),
@@ -614,9 +622,6 @@ export function buildCiblage(c: Collected): CiblageOutput {
             type: "paragraph" as const,
             text: `${B("Comment ces territoires sont choisis")} : ${circo ? "toutes les communes de la circonscription" : interco ? "les communes de l'intercommunalité" : "les villes de 2 500 habitants et plus et les groupements de petites communes d'une même intercommunalité"} reçoivent un ${B("score de potentiel")} : le vote LFI comparé aux communes de même taille (${Math.round(w.o * 100)} %) ; l'abstention aux ${abstLabel} comparée au département (${Math.round(w.a * 100)} %) : des électeurs à aller chercher ; ${w.r ? `les soutiens JLM2027 au regard des voix LFI (${Math.round(w.r * 100)} %) : des soutiens déjà présents ; ` : ""}le nombre de voix LFI (${Math.round(w.v * 100)} %). ${B("À implanter")} : les territoires sans groupe d'action actif (bilan LFI) qui ont le meilleur potentiel ; les communes collées aux plus grandes villes sont un peu pénalisées. ${B("À relancer")} : les territoires qui ont un groupe actif mais moins de 60 % des actions habituelles pour leur nombre de voix LFI (médiane des territoires avec groupe), classés selon leur potentiel et cet écart. Deux propositions au plus par intercommunalité dans chaque liste. Le classement complet est en fin de partie.`,
           },
-          ...(nonRetenus.length
-            ? [{ type: "paragraph" as const, text: `${B("Pourquoi l'ordre diffère du classement")} : mieux classés que la dernière proposition à implanter, ${joinFr(nonRetenus.map(({ u, pourquoi }) => `${u.nom} (${ranked.indexOf(u) + 1}${ranked.indexOf(u) === 0 ? "er" : "e"}, ${pourquoi})`))}.` }]
-            : []),
         ]
       : [{ type: "list" as const, title: "Territoires proposés pour un ciblage militant", items: chosen.map((u, k) => ({ text: `${B(`${k + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) }]),
     ...(deuxListes
