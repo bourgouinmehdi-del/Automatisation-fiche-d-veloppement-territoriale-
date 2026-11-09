@@ -319,8 +319,11 @@ export function buildCiblage(c: Collected): CiblageOutput {
     const avecGa = units.filter((u) => (u.ga ?? 0) > 0);
     for (const u of avecGa) u.activite = (1000 * (u.actions ?? 0)) / Math.max(u.voix24, 1);
     medActivite = median(avecGa.map((u) => u.activite!)) ?? null;
+    const seuilRang = Math.max(5, Math.ceil(ranked.length / 2));
     const parGroupe = (xs: Unit[], u: Unit) => !interco && groupeOf(u) && xs.filter((x) => groupeOf(x) === groupeOf(u)).length >= 2;
-    for (const u of ranked) {
+    // Seuls les territoires de la moitié haute du classement de potentiel sont proposés : là où presque toutes
+    // les villes ont un groupe, la liste « à implanter » allait sinon chercher des communes du bas du classement.
+    for (const u of ranked.slice(0, seuilRang)) {
       if (implanter.length >= 4) break;
       const sansGa = (u.ga ?? 0) === 0 && !u.groupes.length;
       if (!sansGa) {
@@ -338,12 +341,13 @@ export function buildCiblage(c: Collected): CiblageOutput {
     const dernier = implanter.length ? ranked.indexOf(implanter[implanter.length - 1]) : -1;
     for (let k = nonRetenus.length - 1; k >= 0; k--) if (ranked.indexOf(nonRetenus[k].u) > dernier) nonRetenus.splice(k, 1);
     if (medActivite != null && medActivite > 0) {
-      const sous = avecGa.filter((u) => u.activite! < 0.6 * medActivite!);
-      const zP = zs(sous.map((u) => u.score));
-      const zS = zs(sous.map((u) => Math.log(medActivite! / Math.max(u.activite!, 0.1))));
-      const r2 = sous.map((u, i) => ({ u, s: 0.6 * zP[i] + 0.4 * zS[i] })).sort((a, b) => b.s - a.s);
-      for (const { u } of r2) {
-        if (relancer.length >= 3) break;
+      // Peu actifs (moins de 60 % de la médiane), dans la moitié haute du classement, pris dans l'ordre du
+      // classement de potentiel : l'ordre des propositions suit celui du tableau.
+      const haut = new Set(ranked.slice(0, seuilRang));
+      const r2 = ranked.filter((u) => haut.has(u) && u.activite != null && u.activite < 0.6 * medActivite!);
+      const maxR = Math.max(3, 5 - implanter.length);
+      for (const u of r2) {
+        if (relancer.length >= maxR) break;
         if (parGroupe(relancer, u)) continue;
         relancer.push(u);
       }
@@ -606,12 +610,16 @@ export function buildCiblage(c: Collected): CiblageOutput {
     },
     ...(deuxListes
       ? [
+          ...(implanter.length
+            ? []
+            : [{ type: "paragraph" as const, text: `${B("1. Territoires à implanter")} : aucun territoire sans groupe d'action actif dans la moitié haute du classement. Les territoires au meilleur potentiel ont déjà un groupe : la priorité est de les relancer.` }]),
           ...(implanter.length ? [{ type: "list" as const, title: "1. Territoires à implanter (pas de groupe d'action actif)", items: implanter.map((u) => ({ text: `${B(`${chosen.indexOf(u) + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) }] : []),
           // Pourquoi des territoires mieux classés manquent : en petit, sous la liste, regroupé par raison.
           ...(() => {
             const court = (xs: Unit[]) => (xs.length > 4 ? `${xs.slice(0, 3).map((u) => u.nom).join(", ")} et ${xs.length - 3} autres` : joinFr(xs.map((u) => u.nom)));
             const ga = nonRetenus.filter((x) => x.pourquoi.startsWith("déjà")).map((x) => x.u);
             const ic = nonRetenus.filter((x) => !x.pourquoi.startsWith("déjà")).map((x) => x.u);
+            if (!implanter.length) return [];
             const txt = [ga.length ? `Mieux classés, mais déjà dotés d'un groupe d'action actif : ${court(ga)}.` : "", ic.length ? `Écartés pour ne pas proposer plus de deux territoires d'une même intercommunalité : ${court(ic)}.` : ""].filter(Boolean).join(" ");
             return txt ? [{ type: "note" as const, text: txt }] : [];
           })(),
@@ -620,7 +628,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
             : [{ type: "paragraph" as const, text: `${B("2. Territoires à relancer")} : aucun territoire avec un groupe d'action nettement moins actif que les autres au regard de son nombre de voix LFI.` }]),
           {
             type: "paragraph" as const,
-            text: `${B("Comment ces territoires sont choisis")} : ${circo ? "toutes les communes de la circonscription" : interco ? "les communes de l'intercommunalité" : "les villes de 2 500 habitants et plus et les groupements de petites communes d'une même intercommunalité"} reçoivent un ${B("score de potentiel")} : le vote LFI comparé aux communes de même taille (${Math.round(w.o * 100)} %) ; l'abstention aux ${abstLabel} comparée au département (${Math.round(w.a * 100)} %) : des électeurs à aller chercher ; ${w.r ? `les soutiens JLM2027 au regard des voix LFI (${Math.round(w.r * 100)} %) : des soutiens déjà présents ; ` : ""}le nombre de voix LFI (${Math.round(w.v * 100)} %). ${B("À implanter")} : les territoires sans groupe d'action actif (bilan LFI) qui ont le meilleur potentiel ; les communes collées aux plus grandes villes sont un peu pénalisées. ${B("À relancer")} : les territoires qui ont un groupe actif mais moins de 60 % des actions habituelles pour leur nombre de voix LFI (médiane des territoires avec groupe), classés selon leur potentiel et cet écart. Deux propositions au plus par intercommunalité dans chaque liste. Le classement complet est en fin de partie.`,
+            text: `${B("Comment ces territoires sont choisis")} : ${circo ? "toutes les communes de la circonscription" : interco ? "les communes de l'intercommunalité" : "les villes de 2 500 habitants et plus et les groupements de petites communes d'une même intercommunalité"} reçoivent un ${B("score de potentiel")} : le vote LFI comparé aux communes de même taille (${Math.round(w.o * 100)} %) ; l'abstention aux ${abstLabel} comparée au département (${Math.round(w.a * 100)} %) : des électeurs à aller chercher ; ${w.r ? `les soutiens JLM2027 au regard des voix LFI (${Math.round(w.r * 100)} %) : des soutiens déjà présents ; ` : ""}le nombre de voix LFI (${Math.round(w.v * 100)} %). Seule la moitié haute de ce classement est proposée. ${B("À implanter")} : les territoires sans groupe d'action actif (bilan LFI) les mieux classés ; les communes collées aux plus grandes villes sont un peu pénalisées. ${B("À relancer")} : les territoires les mieux classés qui ont un groupe actif mais moins de 60 % des actions habituelles pour leur nombre de voix LFI (médiane des territoires avec groupe). Deux propositions au plus par intercommunalité dans chaque liste. Le classement complet est en fin de partie.`,
           },
         ]
       : [{ type: "list" as const, title: "Territoires proposés pour un ciblage militant", items: chosen.map((u, k) => ({ text: `${B(`${k + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) }]),
