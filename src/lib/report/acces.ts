@@ -231,9 +231,18 @@ export async function ciblageAcces(
       });
     })
     .catch(() => undefined);
-  const depsTxt = (t: { at: Lieu }) => {
-    const xs = depsProches.get(t.at.code) ?? [];
-    return xs.length ? joinList(xs.map((x) => `${x.nom} (${fmtDuration(x.min)} depuis ${x.ville})`)) : "";
+  // Lisible (retour : « beaucoup trop brouillon ») : noms seuls, en deux tranches de temps.
+  const bandes = (xs: { nom: string; min: number }[]) => {
+    const a = xs.filter((x) => x.min < 60).map((x) => x.nom);
+    const b = xs.filter((x) => x.min >= 60).map((x) => x.nom);
+    return [a.length ? `moins d'1 h : ${joinList(a)}` : "", b.length ? `1 à 2 h : ${joinList(b)}` : ""].filter(Boolean).join(" ; ");
+  };
+  const depsTxt = (t: { at: Lieu }) => bandes(depsProches.get(t.at.code) ?? []);
+  // Ciblage : une seule liste pour tous les territoires proposés (meilleur temps vers l'un d'eux).
+  const depsTous = () => {
+    const best = new Map<string, number>();
+    for (const xs of depsProches.values()) for (const x of xs) best.set(x.nom, Math.min(best.get(x.nom) ?? Infinity, x.min));
+    return bandes([...best].map(([nom, min]) => ({ nom, min })).sort((a, b) => a.min - b.min));
   };
 
   // 4. Train direct un samedi (gares SNCF des villes et des territoires).
@@ -543,7 +552,7 @@ export async function ciblageAcces(
         text: `**${cap(dansDep(depNom))}** : ${dansDepRows.length ? `${joinList(dansDepRows.slice(0, 5).map((x) => `${x.h.l.nom}${x.car != null ? ` (${fmtDuration(x.car)})` : ""}`))}.` : "pas d'autre ville militante proche dans le département."}`,
       },
       // Départements à contacter (boucles départementales) : ceux qui ont une ville militante à moins de 2 h.
-      ...(depsTxt(t) ? [{ type: "paragraph" as const, text: `**Départements à moins de 2 h en voiture** (ville militante la plus proche) : ${depsTxt(t)}.` }] : []),
+      ...(depsTxt(t) ? [{ type: "paragraph" as const, text: `**Départements à moins de 2 h en voiture** (depuis leur ville militante la plus proche) : ${depsTxt(t)}.` }] : []),
       { type: "map", mapId: mapF.id },
       { type: "table", tableId: tableF.id },
     ];
@@ -606,8 +615,8 @@ export async function ciblageAcces(
     { type: "map", mapId: map.id },
     { type: "table", tableId: table.id },
     // Départements à contacter pour chaque territoire (ville militante à moins de 2 h en voiture).
-    ...(tgt.some((t) => depsTxt(t))
-      ? [{ type: "list" as const, title: "Départements à moins de 2 h en voiture (ville militante la plus proche)", items: tgt.filter((t) => depsTxt(t)).map((t) => ({ text: `${t.nom} : ${depsTxt(t)}` })) }]
+    ...(depsTous()
+      ? [{ type: "paragraph" as const, text: `**Départements à moins de 2 h en voiture** d'au moins un territoire proposé (depuis leur ville militante la plus proche) : ${depsTous()}.` }]
       : []),
   ];
   return { tables: [table], maps: [map], blocks };
