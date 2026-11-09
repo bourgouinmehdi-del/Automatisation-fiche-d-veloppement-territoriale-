@@ -125,7 +125,15 @@ describe("ciblage départemental", () => {
       const r = await buildReport({ codeInsee: "60159", scope: "departement" });
       const cl = r.tables.find((t) => t.id === "ciblage_classement")!;
       expect(cl.columns.find((c) => c.key === "groupe")?.label).toBe("Groupes d'action");
-      expect(cl.rows.some((x) => x.groupe === "1 actif")).toBe(true);
+      expect(cl.rows.some((x) => /^1 actif, 10 actions/.test(String(x.groupe)))).toBe(true);
+      // Deux listes (retour d'Elia) : à implanter (sans groupe actif), à relancer (groupe peu actif).
+      const blocks = r.sections[0].blocks;
+      const impl = blocks.find((b) => b.type === "list" && /^1\. Territoires à implanter/.test(b.title ?? ""));
+      expect(impl).toBeDefined();
+      expect(blocks.some((b) => (b.type === "list" && /^2\. Territoires à relancer/.test(b.title ?? "")) || (b.type === "paragraph" && /2\. Territoires à relancer/.test(b.text)))).toBe(true);
+      // Aucune proposition « à implanter » n'a de groupe actif.
+      const sansGa = new Set(cl.rows.filter((x) => x.groupe === "aucun").map((x) => String(x.nom)));
+      for (const it of (impl as { items: { text: string }[] }).items) expect([...sansGa].some((n) => it.text.includes(n))).toBe(true);
       const targets = r.sections[0].blocks.find((b) => b.type === "targets");
       expect(JSON.stringify(targets)).not.toMatch(/Aucun groupe d'action référencé/);
       const ga = r.maps.find((x) => x.id === "ciblage_affiche")!.layers.find((l) => l.id === "ga");
