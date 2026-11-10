@@ -99,7 +99,7 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
   const findingsOf = (b: Extract<Block, { type: "findings" }>): Finding[] =>
     b.ids ? b.ids.map((id) => r.findings.find((f) => f.id === id)).filter((f): f is Finding => !!f) : r.findings.filter((f) => (!b.kinds || b.kinds.includes(f.kind)) && (!b.themes || b.themes.includes(f.theme)));
 
-  const renderBlock = (b: Block, key: number) => {
+  const renderBlock = (b: Block, key: number, all?: Block[]) => {
     switch (b.type) {
       case "paragraph": {
         const n = refs(b.evidence);
@@ -341,6 +341,9 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
         if (!c) return null;
         // Graphiques alternatifs (même groupe) : onglets, le graphique cité par le bloc ouvert par défaut.
         const group = c.group ? r.charts.filter((x) => x.group === c.group) : [];
+        // Sur le site, un groupe déjà affiché en onglets (européennes 2024) n'est pas répété : le graphique de la
+        // présidentielle placé à côté vaut pour le PDF, où il n'y a pas d'onglets.
+        if (group.length > 1 && all?.slice(0, key).some((x) => x.type === "chart" && r.charts.find((y) => y.id === x.chartId)?.group === c.group)) return null;
         if (group.length > 1) return <ChartTabs key={key} charts={group} initial={c.id} cite={(s) => cit.cite(s)} />;
         return <ChartFigure key={key} c={c} src={c.sources.map((s) => cit.cite(s))} />;
       }
