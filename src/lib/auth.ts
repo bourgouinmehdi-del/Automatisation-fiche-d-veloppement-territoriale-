@@ -120,6 +120,8 @@ export const can = (login: string | null, need: Role) => RANK[roleOf(login)] >= 
 export function requiredRole(method: string, pathname: string): Role | null {
   const write = !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
   if (pathname.startsWith("/donnees-internes")) return "admin";
+  // Classement national : croise le bilan militant, réservé aux administrateurs comme la page.
+  if (pathname.startsWith("/api/interne/classement")) return "admin";
   if (pathname.startsWith("/api/interne")) return write ? "admin" : null;
   if (pathname.startsWith("/api/reports") && write) return "editeur";
   if (pathname.startsWith("/generation")) return "editeur";

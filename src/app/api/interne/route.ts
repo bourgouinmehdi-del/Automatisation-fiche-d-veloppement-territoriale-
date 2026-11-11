@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { INTERNAL_FILES, bilanToCsv, internalDir, internalSummary, investie, listesLfiToCsv, parseCsv, parseGroupes, parseMunicipalesLfi, splitSheetsText } from "@/lib/collectors/interne";
 import { readXlsx, sheetObjects } from "@/lib/collectors/xlsx";
 import { deputationsRows, deputationsToCsv } from "@/lib/collectors/deputations";
+import { parseNegos } from "@/lib/national/score";
 
 export const runtime = "nodejs";
 
@@ -41,6 +42,23 @@ export async function POST(req: Request) {
     await fs.mkdir(internalDir(), { recursive: true });
     await fs.writeFile(path.join(internalDir(), name), csv);
     return NextResponse.json({ ok: true, info: `${n.toLocaleString("fr-FR")} communes`, summary: await internalSummary() });
+  }
+  if (kind === "negos") {
+    // Projections des négos : une ligne par circonscription (« 57-06 », ou département + numéro) et un écart
+    // projeté en points (colonne écart, marge, diff…). Enregistré en CSV compact circo;ecart.
+    let rows: Record<string, string>[] = [];
+    if (buf[0] === 0x50 && buf[1] === 0x4b) {
+      try {
+        rows = [...readXlsx(new Uint8Array(buf)).values()].flatMap((sheet) => sheetObjects(sheet, /circo|^dep/i));
+      } catch {
+        return NextResponse.json({ error: "Classeur illisible : fichier Excel (.xlsx) ou CSV attendu" }, { status: 400 });
+      }
+    } else rows = parseCsv(buf.toString("utf8"));
+    const m = parseNegos(rows);
+    if (!m.size) return NextResponse.json({ error: "Aucune ligne lue : une colonne circonscription (ex. 57-06) et une colonne écart (en points) sont attendues" }, { status: 400 });
+    await fs.mkdir(internalDir(), { recursive: true });
+    await fs.writeFile(path.join(internalDir(), name), ["circo;ecart", ...[...m].map(([k, v]) => `${k};${v}`)].join("\n") + "\n");
+    return NextResponse.json({ ok: true, info: `${m.size.toLocaleString("fr-FR")} circonscriptions`, summary: await internalSummary() });
   }
   if (kind === "deputations") {
     // Classeur « historique_deputations » (onglets 1988-2007 et 2012-2026) ou l'un des deux CSV : un CSV
