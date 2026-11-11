@@ -466,21 +466,30 @@ export async function collectElection(http: TrackedHttp, e: ElectionConfig, code
   const agg = aggregateRows(comRows);
   if (!agg) throw new Error(`Aucun résultat pour la commune (${e.label})`);
   const out: ElectionResult[] = [{ election: e, level: "commune", code: codeInsee, ...agg, sourceUrl: d.url, retrievedAt: d.retrievedAt }];
-  const a2 = aggregateRows(d.rows);
-  if (a2) {
-    const groups = new Map<string, Record<string, unknown>[]>();
-    for (const r of d.rows) {
-      const k = rowCode(r, d.c, dep);
-      if (!groups.has(k)) groups.set(k, []);
-      groups.get(k)!.push(r);
-    }
-    const byCommune = [...groups.entries()]
-      .map(([code, rows]) => ({ code, a: aggregateRows(rows) }))
-      .filter((x) => x.a)
-      .map((x) => ({ code: x.code, inscrits: x.a!.inscrits, votants: x.a!.votants, exprimes: x.a!.exprimes, candidates: x.a!.candidates }));
-    out.push({ election: e, level: "departement", code: dep, ...a2, byCommune, sourceUrl: d.url, retrievedAt: d.retrievedAt });
-  }
+  const dr = departementResult(e, dep, d);
+  if (dr) out.push(dr);
   return out;
+}
+
+/** Résultats du département seul, avec le détail par commune (classement national). */
+export async function collectDepartementElection(http: TrackedHttp, e: ElectionConfig, dep: string): Promise<ElectionResult | null> {
+  return departementResult(e, dep, await departmentRows(http, e, dep, "commune"));
+}
+
+function departementResult(e: ElectionConfig, dep: string, d: Awaited<ReturnType<typeof departmentRows>>): ElectionResult | null {
+  const a2 = aggregateRows(d.rows);
+  if (!a2) return null;
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const r of d.rows) {
+    const k = rowCode(r, d.c, dep);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k)!.push(r);
+  }
+  const byCommune = [...groups.entries()]
+    .map(([code, rows]) => ({ code, a: aggregateRows(rows) }))
+    .filter((x) => x.a)
+    .map((x) => ({ code: x.code, inscrits: x.a!.inscrits, votants: x.a!.votants, exprimes: x.a!.exprimes, candidates: x.a!.candidates }));
+  return { election: e, level: "departement", code: dep, ...a2, byCommune, sourceUrl: d.url, retrievedAt: d.retrievedAt };
 }
 
 export interface BureauResult {

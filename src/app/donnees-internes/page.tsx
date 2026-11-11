@@ -35,6 +35,12 @@ const KINDS: { id: string; title: string; help: string; xlsx?: boolean }[] = [
     help: "Classeur « historique_deputations » (.xlsx, onglets 1988-2007 et 2012-2026) ou l'un des deux CSV (un CSV ne remplace que sa période). Ajoute au profil politique l'historique de la circonscription et, dans « Qui mobiliser », les député·es précédent·es.",
     xlsx: true,
   },
+  {
+    id: "negos",
+    title: "Projections des négos par circonscription",
+    help: "Une ligne par circonscription (code « 57-06 », ou colonnes département et numéro) et une colonne d'écart projeté en points (écart, marge, diff…). Sert au facteur « circonscription serrée » du classement national.",
+    xlsx: true,
+  },
 ];
 
 type StmtMeta = { rows: number; communes: number; first: string; last: string; updatedAt: string };
@@ -137,6 +143,11 @@ export default function DonneesInternes() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="mb-2 text-3xl font-bold text-[var(--accent-strong)]">Données internes</h1>
+      <p className="mb-2 text-sm">
+        <a href="/donnees-internes/classement" className="underline">
+          Classement national des communes (version de travail)
+        </a>
+      </p>
       <p className="mb-6 text-[var(--ink-2)]">
         Fichiers facultatifs qui complètent les fiches : implantation militante (groupes d&apos;action), soutiens JLM2027 et demandeurs d&apos;emploi. Ils restent sur le serveur
         (dossier <code>data/interne/</code>) et ne sont jamais publiés ; placez l&apos;application derrière une authentification si elle est en ligne.
