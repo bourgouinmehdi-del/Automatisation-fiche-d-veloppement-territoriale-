@@ -194,7 +194,7 @@ function blockDocx(r: Report, b: Block, cit: Citations): (Paragraph | Table)[] {
       return [caption(`Localisation du département ${r.commune.departement.nom}`), image(locatorSvg(r.commune.departement.code, r.commune.departement.nom, 500), 280), small(`Fond : [${cit.cite(s)}] (CC BY 4.0)`)];
     }
     case "note":
-      return [new Paragraph({ spacing: { after: 140 }, shading: { type: ShadingType.CLEAR, color: "auto", fill: "F6F6F4" }, children: runs(b.text, { size: 18, color: "52514E" }) })];
+      return [new Paragraph({ spacing: { after: 140 }, shading: { type: ShadingType.CLEAR, color: "auto", fill: "F6F6F4" }, children: runs(b.title ? `**${b.title}** : ${b.text}` : b.text, { size: 18, color: "52514E" }) })];
     case "callout": {
       const color = b.tone === "accent" ? "C0503A" : b.tone === "info" ? "B7D3F6" : "0B0B0B";
       const side = { style: BorderStyle.SINGLE, size: b.tone === "warning" ? 12 : 8, color, space: 6 };

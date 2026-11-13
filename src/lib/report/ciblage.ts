@@ -379,7 +379,19 @@ export function buildCiblage(c: Collected): CiblageOutput {
       }
     }
     // Dédoubler : communes de 8 000 inscrits et plus, 3 km² au moins, groupe de plus d'un an.
-    const cands = units.filter((u) => !relancer.includes(u) && u.kind === "commune" && (u.gaHors ?? 0) >= 1 && !u.gaRecent && ins(u) >= 8000 && (u.surface ?? 0) >= 3);
+    // Seuils absolus (retour : 3 groupes à Tarbes ou 2 à Guéret, c'est déjà beaucoup) : 15 000 inscrits par
+    // groupe au moins, 4 km² par groupe, et 250 soutiens JLM2027 par groupe quand on les connaît (« un seul
+    // groupe qui rassemble 500 personnes »). Sinon, aucune proposition.
+    const cands = units.filter(
+      (u) =>
+        !relancer.includes(u) &&
+        u.kind === "commune" &&
+        (u.gaHors ?? 0) >= 1 &&
+        !u.gaRecent &&
+        ins(u) / u.gaHors! >= 15000 &&
+        (u.surface ?? 0) / u.gaHors! >= 4 &&
+        (!hasParrains || (u.parrains ?? 0) / u.gaHors! >= 250),
+    );
     if (cands.length) {
       const zA = zs(cands.map((u) => Math.log(ins(u) / u.gaHors!)));
       const zB = hasParrains ? zs(cands.map((u) => (u.parrains ?? 0) / Math.max(ins(u), 1))) : cands.map(() => 0);
@@ -387,8 +399,8 @@ export function buildCiblage(c: Collected): CiblageOutput {
       const zD = zs(cands.map((u) => Math.log((u.surface ?? 1) / u.gaHors!)));
       const wB = hasParrains ? 0.25 : 0;
       const d2 = cands.map((u, i) => ({ u, s: (0.3 * zA[i] + wB * zB[i] + 0.2 * zC[i] + 0.25 * zD[i]) / (0.75 + wB) })).sort((a, b) => b.s - a.s);
-      for (const { u, s: sc } of d2) {
-        if (dedoubler.length >= 3 || (sc <= 0 && dedoubler.length)) break;
+      for (const { u } of d2) {
+        if (dedoubler.length >= 3) break;
         if (parGroupe(dedoubler, u)) continue;
         dedoubler.push(u);
       }
@@ -693,11 +705,13 @@ export function buildCiblage(c: Collected): CiblageOutput {
             : [{ type: "paragraph" as const, text: `${B("2. Territoires à relancer")} : aucun territoire bien classé avec un groupe d'action nettement moins actif que les autres au regard de son nombre de voix LFI.` }]),
           ...(dedoubler.length
             ? [{ type: "list" as const, title: "3. Où dédoubler un groupe d'action", items: dedoubler.map((u) => ({ text: `${B(`${chosen.indexOf(u) + 1}. ${u.nom}`)} : ${u.gaHors} groupe${u.gaHors! > 1 ? "s" : ""} pour ${fmtNumber(ins(u))} inscrits et ${fmtNumber(u.surface ?? 0)} km²` })) }]
-            : [{ type: "paragraph" as const, text: `${B("3. Où dédoubler un groupe d'action")} : aucune commune de 8 000 inscrits et plus avec un groupe de plus d'un an pour beaucoup d'électeurs.` }]),
+            : [{ type: "paragraph" as const, text: `${B("3. Où dédoubler un groupe d'action")} : aucune commune où un groupe couvre plus de 15 000 électeurs et 4 km².` }]),
           ...(ajoutes.length ? [{ type: "list" as const, title: "Ajoutés à la main", items: ajoutes.map((u) => ({ text: B(`${chosen.indexOf(u) + 1}. ${u.nom}`) })) }] : []),
           {
-            type: "paragraph" as const,
-            text: `${B("Comment ces territoires sont choisis")} : ${circo ? "toutes les communes de la circonscription" : interco ? "les communes de l'intercommunalité" : "les villes de 2 500 habitants et plus et les groupements de petites communes d'une même intercommunalité"} reçoivent un ${B("score de potentiel")} : le vote LFI comparé aux communes de même taille (${Math.round(w.o * 100)} %) ; l'abstention aux ${abstLabel} comparée au département (${Math.round(w.a * 100)} %) : des électeurs à aller chercher ; ${w.r ? `les soutiens JLM2027 au regard des voix LFI (${Math.round(w.r * 100)} %) : des soutiens déjà présents ; ` : ""}le nombre de voix LFI (${Math.round(w.v * 100)} %). Seule la moitié haute de ce classement est proposée. ${B("À implanter")} : les territoires sans groupe d'action actif (bilan LFI) les mieux classés ; les communes collées aux plus grandes villes sont un peu pénalisées. ${B("À relancer")} : les territoires les mieux classés qui ont un groupe actif mais moins de 60 % des actions habituelles pour leur nombre de voix LFI (médiane des territoires avec groupe). ${B("Où dédoubler un groupe")} : communes de 8 000 inscrits et plus, 3 km² au moins, dont les groupes ont plus d'un an ; on y regarde les électeurs par groupe (30 %), la superficie par groupe (25 %), les soutiens JLM2027 rapportés aux inscrits (25 %) et le peu d'actions rapporté aux inscrits (20 %). Les groupes étudiants et thématiques ne comptent pas. Deux propositions au plus par intercommunalité dans chaque liste. Le classement complet est en fin de partie.`,
+            type: "note" as const,
+            title: "Comment ces territoires sont choisis",
+            fold: true,
+            text: `${circo ? "Toutes les communes de la circonscription" : interco ? "Les communes de l'intercommunalité" : "Les villes de 2 500 habitants et plus et les groupements de petites communes d'une même intercommunalité"} reçoivent un ${B("score de potentiel")} : le vote LFI comparé aux communes de même taille (${Math.round(w.o * 100)} %) ; l'abstention aux ${abstLabel} comparée au département (${Math.round(w.a * 100)} %) : des électeurs à aller chercher ; ${w.r ? `les soutiens JLM2027 au regard des voix LFI (${Math.round(w.r * 100)} %) : des soutiens déjà présents ; ` : ""}le nombre de voix LFI (${Math.round(w.v * 100)} %). Seule la moitié haute de ce classement est proposée. ${B("À implanter")} : les territoires sans groupe d'action actif (bilan LFI) les mieux classés ; les communes collées aux plus grandes villes sont un peu pénalisées. ${B("À relancer")} : les territoires les mieux classés qui ont un groupe actif mais moins de 60 % des actions habituelles pour leur nombre de voix LFI (médiane des territoires avec groupe). ${B("Où dédoubler un groupe")} : communes où chaque groupe d'action (de plus d'un an) couvre au moins 15 000 électeurs, 4 km²${hasParrains ? " et 250 soutiens JLM2027" : ""} ; on les classe selon les électeurs par groupe (30 %), la superficie par groupe (25 %), les soutiens JLM2027 rapportés aux inscrits (25 %) et le peu d'actions rapporté aux inscrits (20 %). Les groupes étudiants et thématiques ne comptent pas. Deux propositions au plus par intercommunalité dans chaque liste. Le classement complet est en fin de partie.`,
           },
         ]
       : [{ type: "list" as const, title: "Territoires proposés pour un ciblage militant", items: chosen.map((u, k) => ({ text: `${B(`${k + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) }]),

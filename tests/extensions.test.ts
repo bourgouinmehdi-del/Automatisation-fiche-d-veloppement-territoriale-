@@ -132,6 +132,10 @@ describe("ciblage départemental", () => {
       expect(impl ?? blocks.find((b) => b.type === "paragraph" && /^\*\*1\. Territoires à implanter\*\*/.test(b.text))).toBeDefined();
       expect(blocks.some((b) => (b.type === "list" && /^2\. Territoires à relancer/.test(b.title ?? "")) || (b.type === "paragraph" && /2\. Territoires à relancer/.test(b.text)))).toBe(true);
       expect(blocks.some((b) => (b.type === "list" && /^3\. Où dédoubler/.test(b.title ?? "")) || (b.type === "paragraph" && /3\. Où dédoubler/.test(b.text)))).toBe(true);
+      // Seuils absolus : 50 soutiens par groupe, loin des 250 demandés : rien à dédoubler.
+      expect(blocks.some((b) => b.type === "paragraph" && /3\. Où dédoubler un groupe d'action\*\* : aucune commune/.test(b.text))).toBe(true);
+      // Méthode repliée (menu à dérouler).
+      expect(blocks.some((b) => b.type === "note" && b.fold && b.title === "Comment ces territoires sont choisis")).toBe(true);
       // Aucune proposition « à implanter » n'a de groupe actif.
       const sansGa = new Set(cl.rows.filter((x) => x.groupe === "aucun").map((x) => String(x.nom)));
       if (impl) for (const it of (impl as { items: { text: string }[] }).items) expect([...sansGa].some((n) => it.text.includes(n))).toBe(true);
