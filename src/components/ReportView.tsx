@@ -387,7 +387,14 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
           </Figure>
         ) : null;
       case "note":
-        return (
+        return b.fold ? (
+          <details key={key} className="my-3 rounded-lg bg-[var(--fiche-soft)] p-3 text-sm text-[var(--ink-2)]">
+            <summary className="cursor-pointer font-semibold text-[var(--ink)]">{b.title ?? "En savoir plus"}</summary>
+            <div className="mt-2">
+              <Rich text={b.text} />
+            </div>
+          </details>
+        ) : (
           <div key={key} className="my-3 rounded-lg bg-[var(--fiche-soft)] p-3 text-sm text-[var(--ink-2)]">
             <Rich text={b.text} />
           </div>

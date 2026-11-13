@@ -258,7 +258,7 @@ export function blockHtml(r: Report, b: Block, cit: Citations, style: FicheStyle
         .join("")}</div><div class="src">Sources : ${[...new Set(srcs.map((s) => `[${cit.cite(s)}]`))].join(" ")}${ms[0].note ? ` — ${esc(ms[0].note)}` : ""}</div></figure>`;
     }
     case "note":
-      return `<div class="note">${inline(b.text)}</div>`;
+      return `<div class="note">${b.title ? `<b>${esc(b.title)}</b> : ` : ""}${inline(b.text)}</div>`;
     case "callout":
       return `<div class="callout ${b.tone ?? "info"}">${b.title ? `<div class="callout-t">${esc(b.title)}</div>` : ""}${inline(b.text)}</div>`;
     case "heading":

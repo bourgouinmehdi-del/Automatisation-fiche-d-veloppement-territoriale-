@@ -270,7 +270,8 @@ export type Block =
    * en paragraphes rédigés (sans étiquette), comme dans une fiche rédigée.
    */
   | { type: "findings"; kinds?: FindingKind[]; themes?: ThemeId[]; ids?: string[]; title?: string; style?: "tags" | "prose" }
-  | { type: "note"; text: string }
+  /** `fold` : repliée sur le site (menu à dérouler, titre `title`) ; en petit dans le PDF et le Word. */
+  | { type: "note"; text: string; title?: string; fold?: boolean }
   /** Encadré (avertissement, implantation militante, accessibilité…). */
   | { type: "callout"; text: string; title?: string; tone?: "warning" | "info" | "accent" }
   /** Intertitre à l'intérieur d'une partie. */
