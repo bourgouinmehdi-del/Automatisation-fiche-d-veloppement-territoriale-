@@ -32,6 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </span>
             </a>
             <nav className="site-nav flex items-center gap-3 text-right text-xs sm:gap-5 sm:text-sm">
+              {roleOf(user) !== "lecteur" && <a href="/classement">Classement national</a>}
               {roleOf(user) === "admin" && <a href="/donnees-internes">Données internes</a>}
               <a href="/methodologie">
                 Méthodologie et sources
