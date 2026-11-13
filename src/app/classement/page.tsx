@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { scoreOf } from "@/lib/national/score";
+import { useRole } from "@/components/useRole";
 
 type Ligne = {
   code: string;
@@ -53,6 +54,11 @@ export default function ClassementNational() {
   const [reg, setReg] = useState("");
   const [dep, setDep] = useState("");
   const [top, setTop] = useState(50);
+  // Outre-mer : abstention très forte et vote Mélenchon élevé en 2022, sans groupe d'action recensé ; ils
+  // montent mécaniquement en tête. Masqués par défaut.
+  const [metro, setMetro] = useState(true);
+  const admin = useRole() === "admin";
+  const estMetro = (dep: string) => !/^(97|98)/.test(dep);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -79,20 +85,20 @@ export default function ClassementNational() {
 
   const poids = { p: w.p, m: data?.bilan ? w.m : 0, c: w.c };
   const tot = poids.p + poids.m + poids.c || 1;
-  const regions = useMemo(() => [...new Map((data?.lignes ?? []).map((l) => [l.reg, l.regNom])).entries()].sort((a, b) => a[1].localeCompare(b[1])), [data]);
+  const regions = useMemo(() => [...new Map((data?.lignes ?? []).filter((l) => !metro || estMetro(l.dep)).map((l) => [l.reg, l.regNom])).entries()].sort((a, b) => a[1].localeCompare(b[1])), [data]);
   const deps = useMemo(
-    () => [...new Map((data?.lignes ?? []).filter((l) => !reg || l.reg === reg).map((l) => [l.dep, l.depNom])).entries()].sort((a, b) => a[0].localeCompare(b[0])),
-    [data, reg],
+    () => [...new Map((data?.lignes ?? []).filter((l) => (!metro || estMetro(l.dep)) && (!reg || l.reg === reg)).map((l) => [l.dep, l.depNom])).entries()].sort((a, b) => a[0].localeCompare(b[0])),
+    [data, reg, metro],
   );
   const classees = useMemo(
     () =>
       (data?.lignes ?? [])
-        .filter((l) => (!reg || l.reg === reg) && (!dep || l.dep === dep))
+        .filter((l) => (!metro || estMetro(l.dep)) && (!reg || l.reg === reg) && (!dep || l.dep === dep))
         .map((l) => ({ l, s: scoreOf(l, poids) }))
         .sort((a, b) => b.s - a.s)
         .slice(0, top),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data, reg, dep, top, poids.p, poids.m, poids.c],
+    [data, reg, dep, top, metro, poids.p, poids.m, poids.c],
   );
 
   const exporter = () => {
@@ -111,7 +117,7 @@ export default function ClassementNational() {
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
       <h1 className="mb-1 text-3xl font-bold text-[var(--accent-strong)]">Classement national des communes</h1>
-      <p className="mb-6 text-sm text-[var(--ink-2)]">Version de travail, réservée aux administrateurs. Les poids se règlent ci-dessous ; le classement se recalcule aussitôt.</p>
+      <p className="mb-6 text-sm text-[var(--ink-2)]">Les poids se règlent ci-dessous ; le classement se recalcule aussitôt.</p>
       {err && <p className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{err}</p>}
 
       <section className="mb-6 rounded-lg border border-[var(--line)] p-4 text-sm">
@@ -123,17 +129,25 @@ export default function ClassementNational() {
         ) : data?.builtAt ? (
           <p>
             Données du {new Date(data.builtAt).toLocaleDateString("fr-FR")} : {fr(data.communes ?? 0)} communes de 1 000 inscrits et plus. Bilan militant : {data.bilan ? "oui" : "absent (facteur 2 désactivé)"}. Fichier des négos : {data.negos ? "oui" : "absent (écart des législatives 2024 à la place)"}. Modèle de Damien : {data.mobilisables ? `${fr(data.mobilisables)} communes (seules celles-ci sont classées)` : "absent (potentiel provisoire)"}.{" "}
-            <button className="underline" onClick={construire}>
-              Reconstruire
-            </button>
+            {admin && (
+              <button className="underline" onClick={construire}>
+                Reconstruire
+              </button>
+            )}
           </p>
         ) : (
           <p>
             Pas encore de jeu de données national.{" "}
-            <button className="rounded bg-[var(--accent)] px-3 py-1 font-semibold text-white" onClick={construire}>
-              Construire
-            </button>{" "}
-            (résultats de toutes les communes et circonscriptions : une à deux heures la première fois).
+            {admin ? (
+              <>
+                <button className="rounded bg-[var(--accent)] px-3 py-1 font-semibold text-white" onClick={construire}>
+                  Construire
+                </button>{" "}
+                (résultats de toutes les communes et circonscriptions : une à deux heures la première fois).
+              </>
+            ) : (
+              "Un administrateur doit le construire."
+            )}
           </p>
         )}
         {!!job?.errors.length && <p className="mt-2 text-xs text-[var(--ink-3)]">Avertissements : {job.errors.join(" · ")}</p>}
@@ -161,6 +175,18 @@ export default function ClassementNational() {
           </section>
 
           <section className="mb-4 flex flex-wrap items-center gap-3 text-sm">
+            <label className="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={metro}
+                onChange={(e) => {
+                  setMetro(e.target.checked);
+                  setReg("");
+                  setDep("");
+                }}
+              />
+              France métropolitaine seulement
+            </label>
             <select value={min} onChange={(e) => setMin(Number(e.target.value))} className="rounded border border-[var(--line)] px-2 py-1">
               {[2000, 3500, 5000, 10000, 20000].map((v) => (
                 <option key={v} value={v}>
