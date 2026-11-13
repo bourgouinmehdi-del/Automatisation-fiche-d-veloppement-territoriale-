@@ -199,7 +199,7 @@ export async function buildReport(
 }
 
 export function reportId(q: ReportQuery) {
-  const key = [q.codeInsee, q.scope, ...(q.scope === "circonscription" ? [`circo${q.circo}`] : []), ...(q.customCommunes ?? []).sort()].join(
+  const key = [q.codeInsee, q.scope, ...(q.scope === "circonscription" ? [`circo${q.circo}`] : []), ...(q.customCommunes ?? []).sort(), ...(q.ajouts ?? []).map((k) => `+${k}`).sort(), ...(q.retraits ?? []).map((k) => `-${k}`).sort()].join(
     "|",
   );
   return `${q.codeInsee}-${q.scope}-${crypto.createHash("sha1").update(key).digest("hex").slice(0, 6)}`;

@@ -131,15 +131,26 @@ describe("ciblage départemental", () => {
       const impl = blocks.find((b) => b.type === "list" && /^1\. Territoires à implanter/.test(b.title ?? ""));
       expect(impl ?? blocks.find((b) => b.type === "paragraph" && /^\*\*1\. Territoires à implanter\*\*/.test(b.text))).toBeDefined();
       expect(blocks.some((b) => (b.type === "list" && /^2\. Territoires à relancer/.test(b.title ?? "")) || (b.type === "paragraph" && /2\. Territoires à relancer/.test(b.text)))).toBe(true);
+      expect(blocks.some((b) => (b.type === "list" && /^3\. Où dédoubler/.test(b.title ?? "")) || (b.type === "paragraph" && /3\. Où dédoubler/.test(b.text)))).toBe(true);
       // Aucune proposition « à implanter » n'a de groupe actif.
       const sansGa = new Set(cl.rows.filter((x) => x.groupe === "aucun").map((x) => String(x.nom)));
       if (impl) for (const it of (impl as { items: { text: string }[] }).items) expect([...sansGa].some((n) => it.text.includes(n))).toBe(true);
       // Moitié haute du classement seulement.
       const seuil = Math.max(5, Math.ceil(cl.rows.length / 2));
-      for (const t of (blocks.find((b) => b.type === "targets") as { items: { nom: string }[] }).items) {
-        const row = cl.rows.find((x) => String(x.nom).startsWith(t.nom));
-        expect(Number(row?.rang)).toBeLessThanOrEqual(seuil);
-      }
+      if (impl)
+        for (const it of (impl as { items: { text: string }[] }).items) {
+          const row = cl.rows.find((x) => it.text.includes(String(x.nom)));
+          expect(Number(row?.rang)).toBeLessThanOrEqual(seuil);
+        }
+      // Ajouts et retraits à la main (retour de Louise).
+      const ref = (await import("@/lib/collectors/admin")).referentiel();
+      const t1 = (blocks.find((b) => b.type === "targets") as { items: { nom: string }[] }).items[0].nom;
+      const code1 = ref.communes.find((x) => x.nom === t1 && x.departement === "60")?.code;
+      const r2 = await buildReport({ codeInsee: "60159", scope: "departement", ajouts: ["60612"], retraits: code1 ? [code1] : [] });
+      const b2 = r2.sections[0].blocks;
+      const aj = b2.find((b) => b.type === "list" && b.title === "Ajoutés à la main") as { items: { text: string }[] } | undefined;
+      expect(aj?.items[0].text).toContain(ref.byCode.get("60612")!.nom);
+      if (code1) expect((b2.find((b) => b.type === "targets") as { items: { nom: string }[] }).items.map((x) => x.nom)).not.toContain(t1);
       const targets = r.sections[0].blocks.find((b) => b.type === "targets");
       expect(JSON.stringify(targets)).not.toMatch(/Aucun groupe d'action référencé/);
       const ga = r.maps.find((x) => x.id === "ciblage_affiche")!.layers.find((l) => l.id === "ga");

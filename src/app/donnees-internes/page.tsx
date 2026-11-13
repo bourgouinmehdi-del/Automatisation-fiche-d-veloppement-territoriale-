@@ -36,6 +36,12 @@ const KINDS: { id: string; title: string; help: string; xlsx?: boolean }[] = [
     xlsx: true,
   },
   {
+    id: "mobilisables",
+    title: "Électeurs mobilisables par commune (modèle de Damien)",
+    help: "Export « communes par gisement de mobilisation » du dépôt elections_predictions_src (colonnes commune, dept, mobilisables, ou code_insee et mobilisables). Remplace le potentiel provisoire du classement national ; seules les communes du fichier sont classées.",
+    xlsx: true,
+  },
+  {
     id: "negos",
     title: "Projections des négos par circonscription",
     help: "Une ligne par circonscription (code « 57-06 », ou colonnes département et numéro) et une colonne d'écart projeté en points (écart, marge, diff…). Sert au facteur « circonscription serrée » du classement national.",

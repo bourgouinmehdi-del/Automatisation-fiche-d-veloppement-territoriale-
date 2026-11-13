@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { INTERNAL_FILES, bilanToCsv, internalDir, internalSummary, investie, listesLfiToCsv, parseCsv, parseGroupes, parseMunicipalesLfi, splitSheetsText } from "@/lib/collectors/interne";
 import { readXlsx, sheetObjects } from "@/lib/collectors/xlsx";
 import { deputationsRows, deputationsToCsv } from "@/lib/collectors/deputations";
-import { parseNegos } from "@/lib/national/score";
+import { nomCle, parseMobilisables, parseNegos } from "@/lib/national/score";
+import { referentiel } from "@/lib/collectors/admin";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,26 @@ export async function POST(req: Request) {
     await fs.mkdir(internalDir(), { recursive: true });
     await fs.writeFile(path.join(internalDir(), name), csv);
     return NextResponse.json({ ok: true, info: `${n.toLocaleString("fr-FR")} communes`, summary: await internalSummary() });
+  }
+  if (kind === "mobilisables") {
+    // Export de Damien (électeurs mobilisables par commune) : CSV du dépôt elections_predictions_src.
+    let rows: Record<string, string>[] = [];
+    if (buf[0] === 0x50 && buf[1] === 0x4b) {
+      try {
+        rows = [...readXlsx(new Uint8Array(buf)).values()].flatMap((sheet) => sheetObjects(sheet, /mobilisable/i));
+      } catch {
+        return NextResponse.json({ error: "Classeur illisible : fichier Excel (.xlsx) ou CSV attendu" }, { status: 400 });
+      }
+    } else rows = parseCsv(buf.toString("utf8"));
+    const ref = referentiel();
+    const index = new Map<string, string>();
+    for (const c of ref.communes) if (c.type === "commune-actuelle" && c.departement) index.set(`${c.departement}|${nomCle(c.nom)}`, c.code);
+    const m = parseMobilisables(rows, (nom, dep) => index.get(`${dep.padStart(2, "0")}|${nomCle(nom)}`) ?? null);
+    if (!m.size) return NextResponse.json({ error: "Aucune ligne lue : colonnes commune et dept (ou code_insee) et mobilisables attendues" }, { status: 400 });
+    await fs.mkdir(internalDir(), { recursive: true });
+    await fs.writeFile(path.join(internalDir(), name), ["code_insee;mobilisables", ...[...m].map(([k, v]) => `${k};${Math.round(v)}`)].join("\n") + "\n");
+    const nonTrouvees = rows.length - m.size;
+    return NextResponse.json({ ok: true, info: `${m.size.toLocaleString("fr-FR")} communes${nonTrouvees > 0 ? ` (${nonTrouvees} non retrouvées)` : ""}`, summary: await internalSummary() });
   }
   if (kind === "negos") {
     // Projections des négos : une ligne par circonscription (« 57-06 », ou département + numéro) et un écart

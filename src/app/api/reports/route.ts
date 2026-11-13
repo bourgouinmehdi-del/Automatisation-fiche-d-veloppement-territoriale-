@@ -28,6 +28,18 @@ export async function POST(req: Request) {
   const custom = Array.isArray(body.customCommunes) ? body.customCommunes.map(String).filter((c) => communeFromReferentiel(c.toUpperCase())).slice(0, 40) : undefined;
   const circo = Number(body.circo);
   if (scope === "circonscription" && !(Number.isInteger(circo) && circo >= 1 && circo <= 40)) return NextResponse.json({ error: "Numéro de circonscription manquant" }, { status: 400 });
-  const id = startJob({ codeInsee: code, codePostal: body.codePostal, scope, customCommunes: scope === "custom" ? custom : undefined, circo: scope === "circonscription" ? circo : undefined });
+  // Ciblage : communes ajoutées ou écartées à la main (codes INSEE connus, 10 au plus).
+  const codes = (v: unknown) => (Array.isArray(v) ? [...new Set(v.map((x) => String(x).toUpperCase()).filter((x) => communeFromReferentiel(x)))].slice(0, 10) : []);
+  const ajouts = scope !== "commune" && scope !== "custom" ? codes(body.ajouts) : [];
+  const retraits = scope !== "commune" && scope !== "custom" ? codes(body.retraits) : [];
+  const id = startJob({
+    codeInsee: code,
+    codePostal: body.codePostal,
+    scope,
+    customCommunes: scope === "custom" ? custom : undefined,
+    circo: scope === "circonscription" ? circo : undefined,
+    ...(ajouts.length ? { ajouts } : {}),
+    ...(retraits.length ? { retraits } : {}),
+  });
   return NextResponse.json({ id });
 }

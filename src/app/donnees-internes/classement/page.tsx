@@ -29,7 +29,7 @@ type Ligne = {
   f3: number | null;
 };
 type Job = { running: boolean; done: number; total: number; current: string | null; errors: string[]; startedAt: string | null; finishedAt: string | null };
-type Data = { job: Job; builtAt: string | null; communes?: number; bilan?: boolean; negos?: boolean; lignes: Ligne[] };
+type Data = { job: Job; builtAt: string | null; communes?: number; bilan?: boolean; negos?: boolean; mobilisables?: number; lignes: Ligne[] };
 
 const fr = (v: number, d = 0) => v.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const signe = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${fr(Math.abs(v), 1)}`;
@@ -122,7 +122,7 @@ export default function ClassementNational() {
           </p>
         ) : data?.builtAt ? (
           <p>
-            Données du {new Date(data.builtAt).toLocaleDateString("fr-FR")} : {fr(data.communes ?? 0)} communes de 1 000 inscrits et plus. Bilan militant : {data.bilan ? "oui" : "absent (facteur 2 désactivé)"}. Fichier des négos : {data.negos ? "oui" : "absent (écart des législatives 2024 à la place)"}.{" "}
+            Données du {new Date(data.builtAt).toLocaleDateString("fr-FR")} : {fr(data.communes ?? 0)} communes de 1 000 inscrits et plus. Bilan militant : {data.bilan ? "oui" : "absent (facteur 2 désactivé)"}. Fichier des négos : {data.negos ? "oui" : "absent (écart des législatives 2024 à la place)"}. Modèle de Damien : {data.mobilisables ? `${fr(data.mobilisables)} communes (seules celles-ci sont classées)` : "absent (potentiel provisoire)"}.{" "}
             <button className="underline" onClick={construire}>
               Reconstruire
             </button>
@@ -144,7 +144,7 @@ export default function ClassementNational() {
           <section className="mb-6 grid gap-4 md:grid-cols-3">
             {(
               [
-                ["p", "Potentiel de progression (présidentielle)", "Réservoir de voix : abstentionnistes de 2022 qui ressemblent aux votants de la commune, et moitié des voix de gauche hors LFI."],
+                ["p", "Potentiel de progression (présidentielle)", data.mobilisables ? "Électeurs mobilisables (modèle de Damien) : abstentionnistes conjoncturels × part de gauche du votant marginal." : "Provisoire : abstentionnistes de 2022 qui ressemblent aux votants de la commune, et moitié des voix de gauche hors LFI."],
                 ["m", "Disponibilité militante", data.bilan ? "Peu d'actions et de soutiens JLM2027 au regard du réservoir, pas de groupe d'action actif." : "Bilan militant absent : facteur désactivé."],
                 ["c", "Circonscription serrée", data.negos ? "Écart projeté (fichier des négos) : plus il est faible, plus la note est haute." : "Provisoire : écart du 1er tour des législatives 2024 entre l'union de la gauche et le premier adversaire."],
               ] as const
@@ -213,7 +213,7 @@ export default function ClassementNational() {
                   <th className="pr-2">Potentiel</th>
                   <th className="pr-2">Militant</th>
                   <th className="pr-2">Circo</th>
-                  <th className="pr-2 text-right">Réservoir de voix</th>
+                  <th className="pr-2 text-right">{data.mobilisables ? "Mobilisables" : "Réservoir de voix"}</th>
                   <th className="pr-2 text-right">Mélenchon 2022</th>
                   <th className="pr-2 text-right">GA · actions · soutiens</th>
                   <th className="text-right">Écart circo</th>
@@ -256,7 +256,7 @@ export default function ClassementNational() {
               Chaque facteur est une note de 0 à 100 : le rang de la commune parmi les communes classées (50 = au milieu). Le score est la moyenne des notes pondérée par les curseurs ; un facteur sans données ne compte pas.
             </p>
             <p>
-              <b>Potentiel de progression</b> (provisoire, en attendant la méthode de Damien) : abstentionnistes de la présidentielle 2022 × part de Mélenchon chez les votants de la commune, plus la moitié des voix Roussel, Hidalgo et Jadot. Note : moitié volume de voix (échelle logarithmique, pour ne pas laisser gagner toujours les plus grandes villes), moitié part des inscrits.
+              <b>Potentiel de progression</b> : si l&apos;export de Damien est déposé, ses électeurs mobilisables (abstentionnistes conjoncturels prédits × part de gauche du votant marginal, modèle de Devoirs maison). Sinon, à titre provisoire : abstentionnistes de la présidentielle 2022 × part de Mélenchon chez les votants de la commune, plus la moitié des voix Roussel, Hidalgo et Jadot. Note : moitié volume de voix (échelle logarithmique, pour ne pas laisser gagner toujours les plus grandes villes), moitié part des inscrits.
             </p>
             <p>
               <b>Disponibilité militante</b> : actions de l&apos;année (50 %) et soutiens JLM2027 (30 %) pour 1 000 voix du réservoir, moins il y en a plus la note est haute ; pas de groupe d&apos;action actif (20 %).

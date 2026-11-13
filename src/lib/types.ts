@@ -380,6 +380,9 @@ export interface ReportQuery {
   customCommunes?: string[];
   /** Numéro de la circonscription législative (périmètre « circonscription »). */
   circo?: number;
+  /** Ciblage : communes ajoutées ou écartées à la main (codes INSEE). */
+  ajouts?: string[];
+  retraits?: string[];
 }
 
 export interface Report {

@@ -102,17 +102,21 @@ export interface Options {
   minInscrits: number;
   bilan?: Map<string, Militant> | null;
   negos?: Map<string, number> | null;
+  /** Électeurs mobilisables par commune (modèle de Damien, Devoirs maison) : remplace le réservoir provisoire. */
+  mobilisables?: Map<string, number> | null;
 }
 
 export function classer(cs: NatCommune[], o: Options): Ligne[] {
   const proxy = ecartsLg24(cs);
+  const mob = o.mobilisables?.size ? o.mobilisables : null;
   const base = cs
-    .filter((c) => c.pr22 && c.pr22.inscrits >= o.minInscrits && c.pr22.exprimes > 0)
+    .filter((c) => c.pr22 && c.pr22.inscrits >= o.minInscrits && c.pr22.exprimes > 0 && (!mob || mob.has(c.code)))
     .map((c) => {
       const p = c.pr22!;
       const abst = Math.max(0, p.inscrits - p.votants);
       const melPartVotants = p.lfi / p.exprimes;
-      const reservoir = abst * melPartVotants + 0.5 * p.gauche;
+      // Modèle de Damien quand il est déposé : abstentionnistes conjoncturels × part de gauche du votant marginal.
+      const reservoir = mob ? mob.get(c.code)! : abst * melPartVotants + 0.5 * p.gauche;
       const m = o.bilan ? (o.bilan.get(c.code) ?? { ga: 0, actions: 0, soutiens: 0 }) : null;
       const neg = c.circo ? o.negos?.get(c.circo) : undefined;
       const prox = c.circo ? proxy.get(c.circo) : undefined;
@@ -193,3 +197,31 @@ export function parseNegos(rows: Record<string, string>[]): Map<string, number> 
   }
   return out;
 }
+
+const sansAccent = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * Export de Damien (« communes par gisement de mobilisation ») : colonnes commune, dept, mobilisables (CSV du
+ * dépôt elections_predictions_src), ou code_insee, mobilisables. Les communes sans code INSEE sont retrouvées
+ * par leur nom dans le département (`nomVersCode`).
+ */
+export function parseMobilisables(rows: Record<string, string>[], nomVersCode: (nom: string, dep: string) => string | null): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!rows.length) return out;
+  const cols = Object.keys(rows[0]);
+  const find = (re: RegExp) => cols.find((c) => re.test(sansAccent(c)));
+  const cCode = find(/code( |_)?(insee|commune)|^insee$|^code$/);
+  const cNom = find(/^(commune|libelle commune|nom)$/);
+  const cDep = find(/^(dept|dep|departement|code departement)$/);
+  const cMob = find(/^mobilisables?$/);
+  if (!cMob || !(cCode || (cNom && cDep))) return out;
+  for (const r of rows) {
+    const v = Number(String(r[cMob] ?? "").replace(",", "."));
+    if (!Number.isFinite(v)) continue;
+    const code = cCode && /^\w{5}$/.test(String(r[cCode]).trim()) ? String(r[cCode]).trim().toUpperCase() : cNom && cDep ? nomVersCode(String(r[cNom]), String(r[cDep])) : null;
+    if (code) out.set(code, (out.get(code) ?? 0) + v);
+  }
+  return out;
+}
+
+export const nomCle = sansAccent;
