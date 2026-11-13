@@ -126,26 +126,30 @@ describe("ciblage départemental", () => {
       const cl = r.tables.find((t) => t.id === "ciblage_classement")!;
       expect(cl.columns.find((c) => c.key === "groupe")?.label).toBe("Groupes d'action");
       expect(cl.rows.some((x) => /^1 actif, 10 actions/.test(String(x.groupe)))).toBe(true);
-      // Deux listes (retour d'Elia) : à implanter (sans groupe actif), à relancer (groupe peu actif).
+      // Score de priorité : une seule liste dans l'ordre du classement, avec la catégorie de chaque territoire.
       const blocks = r.sections[0].blocks;
-      const impl = blocks.find((b) => b.type === "list" && /^1\. Territoires à implanter/.test(b.title ?? ""));
-      expect(impl ?? blocks.find((b) => b.type === "paragraph" && /^\*\*1\. Territoires à implanter\*\*/.test(b.text))).toBeDefined();
-      expect(blocks.some((b) => (b.type === "list" && /^2\. Territoires à relancer/.test(b.title ?? "")) || (b.type === "paragraph" && /2\. Territoires à relancer/.test(b.text)))).toBe(true);
-      expect(blocks.some((b) => (b.type === "list" && /^3\. Où dédoubler/.test(b.title ?? "")) || (b.type === "paragraph" && /3\. Où dédoubler/.test(b.text)))).toBe(true);
+      expect(cl.columns.find((c) => c.key === "score")?.label).toBe("Priorité (0 à 100)");
+      expect(cl.columns.some((c) => c.key === "potentiel")).toBe(true);
+      const prop = blocks.find((b) => b.type === "list" && b.title === "Territoires proposés, par ordre de priorité") as { items: { text: string }[] } | undefined;
+      expect(prop ?? blocks.find((b) => b.type === "paragraph" && /^\*\*Territoires proposés\*\*/.test(b.text))).toBeDefined();
       // Seuils absolus : 50 soutiens par groupe, loin des 250 demandés : rien à dédoubler.
-      expect(blocks.some((b) => b.type === "paragraph" && /3\. Où dédoubler un groupe d'action\*\* : aucune commune/.test(b.text))).toBe(true);
+      expect(blocks.some((b) => b.type === "paragraph" && /Où dédoubler un groupe d'action\*\* : aucune commune/.test(b.text))).toBe(true);
       // Méthode repliée (menu à dérouler).
       expect(blocks.some((b) => b.type === "note" && b.fold && b.title === "Comment ces territoires sont choisis")).toBe(true);
-      // Aucune proposition « à implanter » n'a de groupe actif.
-      const sansGa = new Set(cl.rows.filter((x) => x.groupe === "aucun").map((x) => String(x.nom)));
-      if (impl) for (const it of (impl as { items: { text: string }[] }).items) expect([...sansGa].some((n) => it.text.includes(n))).toBe(true);
-      // Moitié haute du classement seulement.
-      const seuil = Math.max(5, Math.ceil(cl.rows.length / 2));
-      if (impl)
-        for (const it of (impl as { items: { text: string }[] }).items) {
-          const row = cl.rows.find((x) => it.text.includes(String(x.nom)));
-          expect(Number(row?.rang)).toBeLessThanOrEqual(seuil);
+      if (prop) {
+        // Catégorie juste, propositions dans l'ordre du classement, moitié haute seulement.
+        const seuil = Math.max(5, Math.ceil(cl.rows.length / 2));
+        let prev = 0;
+        for (const it of prop.items) {
+          const nom = it.text.match(/\*\*\d+\. (.+?)\*\*/)![1];
+          const row = cl.rows.find((x) => String(x.nom) === nom || String(x.nom).startsWith(`${nom} (`))!;
+          expect(Number(row.rang)).toBeGreaterThan(prev);
+          expect(Number(row.rang)).toBeLessThanOrEqual(seuil);
+          prev = Number(row.rang);
+          if (/à implanter/.test(it.text)) expect(String(row.groupe)).toMatch(/^aucun/);
+          else expect(String(row.groupe)).toMatch(/à relancer/);
         }
+      }
       // Ajouts et retraits à la main (retour de Louise).
       const ref = (await import("@/lib/collectors/admin")).referentiel();
       const t1 = (blocks.find((b) => b.type === "targets") as { items: { nom: string }[] }).items[0].nom;
