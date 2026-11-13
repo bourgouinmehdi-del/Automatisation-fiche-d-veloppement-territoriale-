@@ -691,14 +691,30 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const parrains = multi ? [...codesTerr].reduce<number | null>((t, k) => (c.interne.parrains.has(k) ? (t ?? 0) + c.interne.parrains.get(k)! : t), null) : (c.interne.parrains.get(commune.code) ?? null);
   const depParrains = [...c.interne.parrains.entries()].filter(([k]) => k.startsWith(commune.departement.code)).reduce((s, [, v]) => s + v, 0);
   const elecSources: SourceRef[] = c.elections.map((e) => e.source);
-  // Bilan militant (actions, groupes d'action actifs, parrains) ; Paris, Lyon, Marseille : chiffres de la ville entière.
+  // Bilan militant (actions, groupes d'action actifs, parrains) ; arrondissements de Paris, Lyon, Marseille : voir plus bas.
   const bilanUn = (k: string) => c.interne.bilan?.get(k);
+  // Arrondissement de Paris, Lyon ou Marseille sans ligne propre dans le bilan : les chiffres de la ville entière
+  // étaient affichés comme ceux de l'arrondissement (retour Paris 11e). On compte plutôt les groupes d'action
+  // rattachés à l'arrondissement et ses soutiens ; sans eux, pas de chiffres militants.
+  const bilanArrondissement = () => {
+    const gs = c.interne.groupes.filter((g) => g.code === commune.code);
+    const soutiens = c.interne.parrains.get(commune.code);
+    if (!gs.length && soutiens == null) return undefined;
+    const inscrits = com(e24)?.inscrits ?? com(p22)?.inscrits ?? 0;
+    return {
+      actions: gs.reduce((t, g) => t + (g.actions ?? 0), 0),
+      ga: gs.filter((g) => (g.actions != null ? g.actions >= 5 : !/inactif|ferm|archiv/i.test(g.statut))).length,
+      parrains: soutiens ?? 0,
+      inscrits,
+      estime: false,
+    };
+  };
   const bilan = multi
     ? (() => {
         const xs = [...codesTerr].map(bilanUn).filter((x): x is NonNullable<typeof x> => !!x);
         return xs.length ? { actions: xs.reduce((t, x) => t + x.actions, 0), ga: xs.reduce((t, x) => t + x.ga, 0), parrains: xs.reduce((t, x) => t + x.parrains, 0), inscrits: xs.reduce((t, x) => t + x.inscrits, 0), estime: xs.some((x) => x.estime) } : undefined;
       })()
-    : (bilanUn(commune.code) ?? (plm ? c.interne.bilan?.get(plm.parent) : undefined));
+    : (bilanUn(commune.code) ?? (plm ? bilanArrondissement() : undefined));
 
   const bvRef = c.bureaux.find((b) => b.election.id === "EU24") ?? c.bureaux.find((b) => b.election.id === "PR22T1");
   const bvSecond = c.bureaux.find((b) => b.election.id === "PR22T1" && b !== bvRef);
