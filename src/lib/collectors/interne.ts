@@ -78,7 +78,7 @@ export const BILAN_TRANCHES: [number, number][] = [
   [100000, Infinity],
 ];
 
-export const INTERNAL_FILES = ["parrains.csv", "groupes.csv", "action-populaire.csv", "bilan.csv", "municipales-lfi.csv", "deputations.csv", "negos.csv"] as const;
+export const INTERNAL_FILES = ["parrains.csv", "groupes.csv", "action-populaire.csv", "bilan.csv", "municipales-lfi.csv", "deputations.csv", "negos.csv", "mobilisables.csv"] as const;
 
 export const internalDir = () => path.join(config.dataDir, "interne");
 

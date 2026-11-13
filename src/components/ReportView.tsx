@@ -481,7 +481,10 @@ export default function ReportView({ report: r, locator, freshness, catalog }: {
             Version {r.version}, générée le {fmtDate(r.updatedAt)}. Fraîcheur des données : {freshness}
           </div>
         </div>
-        <div className="p-5 md:p-8">{s.blocks.map(renderBlock)}</div>
+        <div className="p-5 md:p-8">
+          {s.blocks.map(renderBlock)}
+          {s.id === "CIBLAGE" && <CiblageManuel r={r} />}
+        </div>
       </section>
     ) : (
       <section key={s.id} id={`part-${s.id}`} className="card mb-6 scroll-mt-20 p-5 md:p-7">
@@ -979,5 +982,78 @@ function GenerateButtonInner({ codes, kind }: { codes: string[]; kind: "commune"
     <button className="btn no-print" onClick={go} disabled={busy}>
       {busy ? "Lancement…" : "Générer la fiche"}
     </button>
+  );
+}
+
+/**
+ * Ciblage : ajouter ou écarter une commune à la main (retour de Louise : une commune connue du terrain qui
+ * passe sous les radars des données, ou une proposition qui n'est pas pertinente). Relance la génération.
+ */
+function CiblageManuel({ r }: { r: Report }) {
+  return useRole() === "lecteur" ? null : <CiblageManuelInner r={r} />;
+}
+
+function CiblageManuelInner({ r }: { r: Report }) {
+  type C = { code: string; nom: string; departement?: string };
+  const [ajouts, setAjouts] = useState<C[]>([]);
+  const [retraits, setRetraits] = useState<C[]>([]);
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState<C[]>([]);
+  const [busy, setBusy] = useState(false);
+  const dep = r.commune.departement?.code;
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (q.trim().length < 2) return setRes([]);
+      fetch(`/api/communes?q=${encodeURIComponent(q.trim())}`)
+        .then((x) => x.json())
+        .then((d) => setRes(((d.communes ?? []) as C[]).filter((c) => !dep || c.departement === dep || String(c.code).startsWith(dep)).slice(0, 6)))
+        .catch(() => setRes([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q, dep]);
+  const deja = [...(r.query.ajouts ?? []), ...(r.query.retraits ?? [])];
+  async function go() {
+    setBusy(true);
+    const body = { ...r.query, ajouts: [...new Set([...(r.query.ajouts ?? []), ...ajouts.map((c) => c.code)])], retraits: [...new Set([...(r.query.retraits ?? []), ...retraits.map((c) => c.code)])] };
+    const x = await fetch("/api/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await x.json();
+    if (x.ok) window.location.href = `/generation/${d.id}`;
+    else setBusy(false);
+  }
+  return (
+    <details className="no-print mt-6 rounded-lg border border-[var(--line)] p-4 text-sm">
+      <summary className="cursor-pointer font-semibold">Ajouter ou écarter une commune à la main</summary>
+      <p className="mt-2 text-[var(--ink-2)]">
+        Pour une commune que le terrain connaît mais que les données ne font pas ressortir, ou une proposition à écarter. La fiche est régénérée avec ces choix.
+        {deja.length ? ` Déjà appliqué : ${deja.length} choix.` : ""}
+      </p>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nom de la commune" className="mt-3 w-full rounded border border-[var(--line)] px-2 py-1" />
+      {!!res.length && (
+        <ul className="mt-1">
+          {res.map((c) => (
+            <li key={c.code} className="flex items-center justify-between gap-2 py-0.5">
+              <span>{c.nom}</span>
+              <span className="flex gap-2">
+                <button className="underline" onClick={() => (setAjouts((xs) => [...xs.filter((x) => x.code !== c.code), c]), setQ(""))}>
+                  Ajouter
+                </button>
+                <button className="underline" onClick={() => (setRetraits((xs) => [...xs.filter((x) => x.code !== c.code), c]), setQ(""))}>
+                  Écarter
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {(!!ajouts.length || !!retraits.length) && (
+        <p className="mt-3">
+          {ajouts.length ? `À ajouter : ${ajouts.map((c) => c.nom).join(", ")}. ` : ""}
+          {retraits.length ? `À écarter : ${retraits.map((c) => c.nom).join(", ")}.` : ""}{" "}
+          <button className="btn" onClick={go} disabled={busy}>
+            {busy ? "Lancement…" : "Régénérer le ciblage"}
+          </button>
+        </p>
+      )}
+    </details>
   );
 }

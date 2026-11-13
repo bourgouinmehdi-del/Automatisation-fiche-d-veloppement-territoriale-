@@ -77,3 +77,21 @@ describe("jeu de données national (API simulées)", () => {
     expect(c.circo).toMatch(/^60-\d{2}$/);
   }, 120000);
 });
+
+describe("export de Damien (mobilisables)", () => {
+  it("lu par code INSEE ou par nom et département ; seules ces communes sont classées", async () => {
+    const { parseMobilisables, classer, nomCle } = await import("@/lib/national/score");
+    const idx = new Map([["99|ville 99001", "99001"]]);
+    const m = parseMobilisables(
+      [
+        { rang: "1", commune: "Ville 99001", dept: "99", mobilisables: "500" },
+        { rang: "2", commune: "Inconnue", dept: "99", mobilisables: "40" },
+      ],
+      (n, d) => idx.get(`${d}|${nomCle(n)}`) ?? null,
+    );
+    expect([...m]).toEqual([["99001", 500]]);
+    const l = classer(cs, { minInscrits: 1000, mobilisables: m });
+    expect(l.map((x) => x.code)).toEqual(["99001"]);
+    expect(l[0].reservoir).toBe(500);
+  });
+});
