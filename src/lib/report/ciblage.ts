@@ -306,7 +306,11 @@ export function buildCiblage(c: Collected): CiblageOutput {
   // Score lisible de 0 à 100 : 100 pour le territoire le mieux placé, 0 pour le moins bien placé.
   const sMax = ranked[0]?.score ?? 0;
   const sMin = ranked[ranked.length - 1]?.score ?? 0;
-  const score100 = (u: Unit) => (sMax > sMin ? Math.round((100 * (u.score - sMin)) / (sMax - sMin)) : 100);
+  const potentiel100 = (u: Unit) => (sMax > sMin ? Math.round((100 * (u.score - sMin)) / (sMax - sMin)) : 100);
+  // Avec le bilan : score de priorité = potentiel (60 %) + manque de militants (40 %) ; le classement suit cet ordre.
+  const prio = new Map<Unit, number>();
+  const manque = new Map<Unit, number>();
+  const score100 = (u: Unit) => (prio.has(u) ? Math.round(prio.get(u)!) : potentiel100(u));
 
   // Sélection : cinq cibles au plus, deux au plus par intercommunalité. Les deux plus grandes
   // villes (souvent chefs-lieux, déjà couvertes) restent hors ciblage, comme dans les fiches de référence,
@@ -347,37 +351,35 @@ export function buildCiblage(c: Collected): CiblageOutput {
     const avecGa = units.filter((u) => (u.gaHors ?? 0) > 0);
     for (const u of avecGa) u.activite = (1000 * (u.actions ?? 0)) / Math.max(ins(u), 1);
     medActivite = median(avecGa.map((u) => u.activite!)) ?? null;
+    // Manque de militants (0 à 100) : 100 sans groupe actif ; sinon, d'autant plus haut que le groupe fait peu
+    // d'actions pour le nombre de voix LFI (rang parmi les territoires qui ont un groupe, plafonné à 80).
+    for (const u of avecGa) actVoix.set(u, (1000 * (u.actions ?? 0)) / Math.max(u.voix24, 1));
+    medVoix = median([...actVoix.values()]) ?? null;
+    const parAct = [...avecGa].sort((a, b) => actVoix.get(a)! - actVoix.get(b)!);
+    for (const u of units) manque.set(u, (u.gaHors ?? 0) === 0 ? 100 : parAct.length > 1 ? 80 * (1 - parAct.indexOf(u) / (parAct.length - 1)) : 40);
+    for (const u of units) prio.set(u, 0.6 * potentiel100(u) + 0.4 * manque.get(u)!);
+    ranked.sort((a, b) => prio.get(b)! - prio.get(a)!);
+    // Propositions : dans l'ordre du classement de priorité, moitié haute, cinq au plus, deux par intercommunalité ;
+    // un territoire dont le groupe agit normalement (« couvert ») est passé.
     const seuilRang = Math.max(5, Math.ceil(ranked.length / 2));
-    // Seuls les territoires de la moitié haute du classement de potentiel sont proposés : là où presque toutes
-    // les villes ont un groupe, la liste « à implanter » allait sinon chercher des communes du bas du classement.
+    const propos: Unit[] = [];
     for (const u of ranked.slice(0, seuilRang)) {
-      if (implanter.length >= 4) break;
+      if (propos.length >= 5) break;
       const sansGa = (u.gaHors ?? 0) === 0;
-      if (!sansGa) {
-        if (!implanter.length || u.score > implanter[implanter.length - 1].score) nonRetenus.push({ u, pourquoi: `déjà ${u.gaHors && u.gaHors > 1 ? `${u.gaHors} groupes d'action actifs` : "un groupe d'action actif"}` });
+      const peuActif = !sansGa && medVoix != null && medVoix > 0 && actVoix.get(u)! < 0.6 * medVoix;
+      if (!sansGa && !peuActif) {
+        nonRetenus.push({ u, pourquoi: "déjà un groupe d'action actif" });
         continue;
       }
-      if (parGroupe(implanter, u)) {
+      if (parGroupe(propos, u)) {
         nonRetenus.push({ u, pourquoi: "deux propositions déjà dans la même intercommunalité" });
         continue;
       }
-      if (u.score <= 0 && implanter.length >= 2) break;
-      implanter.push(u);
+      propos.push(u);
+      (sansGa ? implanter : relancer).push(u);
     }
-    const dernier = implanter.length ? ranked.indexOf(implanter[implanter.length - 1]) : -1;
+    const dernier = propos.length ? ranked.indexOf(propos[propos.length - 1]) : -1;
     for (let k = nonRetenus.length - 1; k >= 0; k--) if (ranked.indexOf(nonRetenus[k].u) > dernier) nonRetenus.splice(k, 1);
-    // À relancer : groupe actif mais moins de 60 % des actions habituelles pour le nombre de voix LFI, dans la
-    // moitié haute du classement de potentiel, pris dans l'ordre du classement.
-    for (const u of avecGa) actVoix.set(u, (1000 * (u.actions ?? 0)) / Math.max(u.voix24, 1));
-    medVoix = median([...actVoix.values()]) ?? null;
-    if (medVoix != null && medVoix > 0) {
-      const haut = new Set(ranked.slice(0, seuilRang));
-      for (const u of ranked) {
-        if (relancer.length >= 3) break;
-        if (!haut.has(u) || !actVoix.has(u) || actVoix.get(u)! >= 0.6 * medVoix || parGroupe(relancer, u)) continue;
-        relancer.push(u);
-      }
-    }
     // Dédoubler : communes de 8 000 inscrits et plus, 3 km² au moins, groupe de plus d'un an.
     // Seuils absolus (retour : 3 groupes à Tarbes ou 2 à Guéret, c'est déjà beaucoup) : 15 000 inscrits par
     // groupe au moins, 4 km² par groupe, et 250 soutiens JLM2027 par groupe quand on les connaît (« un seul
@@ -420,7 +422,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
   }
   if (deuxListes) {
     chosen.length = 0;
-    chosen.push(...implanter, ...relancer, ...dedoubler, ...ajoutes);
+    chosen.push(...ranked.filter((u) => implanter.includes(u) || relancer.includes(u)), ...dedoubler, ...ajoutes);
   } else chosen.push(...ajoutes);
 
   /* --------------------------------------------------------------- sorties */
@@ -498,7 +500,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
             ? [`${B("Pas de groupe d'action actif")} : territoire à implanter.`]
             : []),
       ...(rang
-        ? [`${B(`Score de ${deuxListes ? "potentiel" : "ciblage"} : ${score100(u)} sur 100`)} (${rang === 1 ? "1er" : `${rang}e`} territoire sur ${ranked.length} du classement).`]
+        ? [`${B(`Score de ${deuxListes ? "priorité" : "ciblage"} : ${score100(u)} sur 100`)} (${rang === 1 ? "1er" : `${rang}e`} territoire sur ${ranked.length} du classement)${deuxListes ? ` ; potentiel électoral : ${potentiel100(u)} sur 100` : ""}.`]
         : []),
     ];
     if (u.overperf != null) {
@@ -551,7 +553,8 @@ export function buildCiblage(c: Collected): CiblageOutput {
       ...(hasParrains ? [{ key: "ratio", label: "Soutiens JLM2027 pour 100 voix LFI", align: "right" as const }] : []),
       ...(groupesFournis || c.interne.bilan ? [{ key: "groupe", label: "Groupes d'action" }] : []),
       ...(c.municipalDep ? [{ key: "mairie", label: "Mairie (2026)" }] : []),
-      { key: "score", label: deuxListes ? "Potentiel (0 à 100)" : "Score (0 à 100)", bar: true },
+      ...(deuxListes ? [{ key: "potentiel", label: "Potentiel électoral (0 à 100)", align: "right" as const }] : []),
+      { key: "score", label: deuxListes ? "Priorité (0 à 100)" : "Score (0 à 100)", bar: true },
     ],
     rows: ranked.slice(0, 20).map((u, i) => ({
       rang: i + 1,
@@ -573,6 +576,7 @@ export function buildCiblage(c: Collected): CiblageOutput {
             ? `${u.ga} actif${u.ga > 1 ? "s" : ""}`
             : "—",
       mairie: u.mairie ? (NUANCES[u.mairie.nuance] ?? u.mairie.nuance) || "—" : "",
+      ...(deuxListes ? { potentiel: potentiel100(u) } : {}),
       score: score100(u),
     })),
     highlight: ranked.slice(0, 20).map((u, i) => (chosen.includes(u) ? i : -1)).filter((i) => i >= 0),
@@ -687,31 +691,37 @@ export function buildCiblage(c: Collected): CiblageOutput {
     },
     ...(deuxListes
       ? [
-          ...(implanter.length
-            ? []
-            : [{ type: "paragraph" as const, text: `${B("1. Territoires à implanter")} : aucun territoire sans groupe d'action actif dans la moitié haute du classement. Les territoires au meilleur potentiel ont déjà un groupe : voir plutôt les territoires à relancer et où dédoubler un groupe.` }]),
-          ...(implanter.length ? [{ type: "list" as const, title: "1. Territoires à implanter (pas de groupe d'action actif)", items: implanter.map((u) => ({ text: `${B(`${chosen.indexOf(u) + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) }] : []),
+          // Une seule liste, dans l'ordre du classement de priorité, avec la catégorie de chaque territoire.
+          ...(implanter.length || relancer.length
+            ? [
+                {
+                  type: "list" as const,
+                  title: "Territoires proposés, par ordre de priorité",
+                  items: chosen
+                    .filter((u) => implanter.includes(u) || relancer.includes(u))
+                    .map((u) => ({
+                      text: `${B(`${chosen.indexOf(u) + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""} : ${implanter.includes(u) ? "à implanter, pas de groupe d'action actif" : `à relancer, ${fmtNumber(actVoix.get(u) ?? 0, 1)} action${(actVoix.get(u) ?? 0) >= 2 ? "s" : ""} pour 1 000 voix LFI (médiane : ${fmtNumber(medVoix ?? 0, 1)})`}`,
+                    })),
+                },
+              ]
+            : [{ type: "paragraph" as const, text: `${B("Territoires proposés")} : dans la moitié haute du classement, tous les territoires ont déjà un groupe d'action qui agit normalement.` }]),
           // Pourquoi des territoires mieux classés manquent : en petit, sous la liste, regroupé par raison.
           ...(() => {
             const court = (xs: Unit[]) => (xs.length > 4 ? `${xs.slice(0, 3).map((u) => u.nom).join(", ")} et ${xs.length - 3} autres` : joinFr(xs.map((u) => u.nom)));
             const ga = nonRetenus.filter((x) => x.pourquoi.startsWith("déjà")).map((x) => x.u);
             const ic = nonRetenus.filter((x) => !x.pourquoi.startsWith("déjà")).map((x) => x.u);
-            if (!implanter.length) return [];
-            const txt = [ga.length ? `Mieux classés, mais déjà dotés d'un groupe d'action actif : ${court(ga)}.` : "", ic.length ? `Écartés pour ne pas proposer plus de deux territoires d'une même intercommunalité : ${court(ic)}.` : ""].filter(Boolean).join(" ");
+            const txt = [ga.length ? `Mieux classés, mais leur groupe d'action agit déjà normalement : ${court(ga)}.` : "", ic.length ? `Écartés pour ne pas proposer plus de deux territoires d'une même intercommunalité : ${court(ic)}.` : ""].filter(Boolean).join(" ");
             return txt ? [{ type: "note" as const, text: txt }] : [];
           })(),
-          ...(relancer.length
-            ? [{ type: "list" as const, title: "2. Territoires à relancer (groupe d'action peu actif au regard du potentiel)", items: relancer.map((u) => ({ text: `${B(`${chosen.indexOf(u) + 1}. ${u.nom}`)} : ${fmtNumber(actVoix.get(u) ?? 0, 1)} action${(actVoix.get(u) ?? 0) >= 2 ? "s" : ""} pour 1 000 voix LFI (médiane : ${fmtNumber(medVoix ?? 0, 1)})` })) }]
-            : [{ type: "paragraph" as const, text: `${B("2. Territoires à relancer")} : aucun territoire bien classé avec un groupe d'action nettement moins actif que les autres au regard de son nombre de voix LFI.` }]),
           ...(dedoubler.length
-            ? [{ type: "list" as const, title: "3. Où dédoubler un groupe d'action", items: dedoubler.map((u) => ({ text: `${B(`${chosen.indexOf(u) + 1}. ${u.nom}`)} : ${u.gaHors} groupe${u.gaHors! > 1 ? "s" : ""} pour ${fmtNumber(ins(u))} inscrits et ${fmtNumber(u.surface ?? 0)} km²` })) }]
-            : [{ type: "paragraph" as const, text: `${B("3. Où dédoubler un groupe d'action")} : aucune commune où un groupe couvre plus de 15 000 électeurs et 4 km².` }]),
+            ? [{ type: "list" as const, title: "Où dédoubler un groupe d'action", items: dedoubler.map((u) => ({ text: `${B(`${chosen.indexOf(u) + 1}. ${u.nom}`)} : ${u.gaHors} groupe${u.gaHors! > 1 ? "s" : ""} pour ${fmtNumber(ins(u))} inscrits et ${fmtNumber(u.surface ?? 0)} km²` })) }]
+            : [{ type: "paragraph" as const, text: `${B("Où dédoubler un groupe d'action")} : aucune commune où un groupe couvre plus de 15 000 électeurs et 4 km².` }]),
           ...(ajoutes.length ? [{ type: "list" as const, title: "Ajoutés à la main", items: ajoutes.map((u) => ({ text: B(`${chosen.indexOf(u) + 1}. ${u.nom}`) })) }] : []),
           {
             type: "note" as const,
             title: "Comment ces territoires sont choisis",
             fold: true,
-            text: `${circo ? "Toutes les communes de la circonscription" : interco ? "Les communes de l'intercommunalité" : "Les villes de 2 500 habitants et plus et les groupements de petites communes d'une même intercommunalité"} reçoivent un ${B("score de potentiel")} : le vote LFI comparé aux communes de même taille (${Math.round(w.o * 100)} %) ; l'abstention aux ${abstLabel} comparée au département (${Math.round(w.a * 100)} %) : des électeurs à aller chercher ; ${w.r ? `les soutiens JLM2027 au regard des voix LFI (${Math.round(w.r * 100)} %) : des soutiens déjà présents ; ` : ""}le nombre de voix LFI (${Math.round(w.v * 100)} %). Seule la moitié haute de ce classement est proposée. ${B("À implanter")} : les territoires sans groupe d'action actif (bilan LFI) les mieux classés ; les communes collées aux plus grandes villes sont un peu pénalisées. ${B("À relancer")} : les territoires les mieux classés qui ont un groupe actif mais moins de 60 % des actions habituelles pour leur nombre de voix LFI (médiane des territoires avec groupe). ${B("Où dédoubler un groupe")} : communes où chaque groupe d'action (de plus d'un an) couvre au moins 15 000 électeurs, 4 km²${hasParrains ? " et 250 soutiens JLM2027" : ""} ; on les classe selon les électeurs par groupe (30 %), la superficie par groupe (25 %), les soutiens JLM2027 rapportés aux inscrits (25 %) et le peu d'actions rapporté aux inscrits (20 %). Les groupes étudiants et thématiques ne comptent pas. Deux propositions au plus par intercommunalité dans chaque liste. Le classement complet est en fin de partie.`,
+            text: `${circo ? "Toutes les communes de la circonscription" : interco ? "Les communes de l'intercommunalité" : "Les villes de 2 500 habitants et plus et les groupements de petites communes d'une même intercommunalité"} sont classés selon un ${B("score de priorité")} : 60 % de potentiel électoral, 40 % de manque de militants. Le ${B("potentiel électoral")} combine le vote LFI comparé aux communes de même taille (${Math.round(w.o * 100)} %), l'abstention aux ${abstLabel} comparée au département (${Math.round(w.a * 100)} %), ${w.r ? `les soutiens JLM2027 au regard des voix LFI (${Math.round(w.r * 100)} %), ` : ""}le nombre de voix LFI (${Math.round(w.v * 100)} %) ; les communes collées aux plus grandes villes sont un peu pénalisées. Le ${B("manque de militants")} vaut 100 sans groupe d'action actif (bilan LFI), et baisse quand le groupe fait beaucoup d'actions pour son nombre de voix LFI. Les propositions suivent ce classement, dans sa moitié haute : ${B("à implanter")} sans groupe actif, ${B("à relancer")} quand le groupe fait moins de 60 % des actions habituelles pour son nombre de voix LFI (médiane des territoires avec groupe) ; les territoires dont le groupe agit normalement sont passés. ${B("Où dédoubler un groupe")} : communes où chaque groupe d'action (de plus d'un an) couvre au moins 15 000 électeurs, 4 km²${hasParrains ? " et 250 soutiens JLM2027" : ""} ; on les classe selon les électeurs par groupe (30 %), la superficie par groupe (25 %), les soutiens JLM2027 rapportés aux inscrits (25 %) et le peu d'actions rapporté aux inscrits (20 %). Les groupes étudiants et thématiques ne comptent pas. Deux propositions au plus par intercommunalité. Le classement complet est en fin de partie.`,
           },
         ]
       : [{ type: "list" as const, title: "Territoires proposés pour un ciblage militant", items: chosen.map((u, k) => ({ text: `${B(`${k + 1}. ${u.nom}`)}${u.kind === "groupement" ? ` (focus possibles : ${joinFr(u.focus)})` : ""}` })) }]),
