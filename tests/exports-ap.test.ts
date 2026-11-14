@@ -113,7 +113,14 @@ describe("fiche : groupes classés et moyenne à taille égale", () => {
       { nom: "petit actif", membres: 5, derniereAction: "2026-11-12", actions: 8 },
       { nom: "gros récent", membres: 60, derniereAction: "2026-10-01", actions: 40 },
     ];
-    expect(trierGroupes(gs, now).map((g) => g.nom)).toEqual(["gros récent", "moyen actif", "petit actif", "gros endormi"]);
+    // Les actions d'abord (pondérées par la récence) ; les membres départagent.
+    expect(trierGroupes(gs, now).map((g) => g.nom)).toEqual(["moyen actif", "gros récent", "petit actif", "gros endormi"]);
+    const egal = [
+      { nom: "petit", membres: 23, derniereAction: "2026-11-12", actions: 66 },
+      { nom: "grand", membres: 32, derniereAction: "2026-11-05", actions: 66 },
+      { nom: "gros peu actif", membres: 95, derniereAction: "2026-10-30", actions: 10 },
+    ];
+    expect(trierGroupes(egal, now).map((g) => g.nom)).toEqual(["grand", "petit", "gros peu actif"]);
   });
   it("moyenne à taille égale : les communes les plus proches en inscrits", async () => {
     const { bilanComparable } = await import("@/lib/collectors/interne");

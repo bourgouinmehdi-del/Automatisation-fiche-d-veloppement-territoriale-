@@ -280,9 +280,6 @@ export function voteCompare(c: number, d: number): { dir: "plus" | "moins" | "au
   return { dir: e.dir, words: e.words, net: e.net, level: e.level };
 }
 
-/** Groupes d'action affichés en clair sur la fiche ; les suivants vont dans un menu déroulant. */
-export const GROUPES_VISIBLES = 5;
-
 /** Poids de la dernière action : 1 dans le mois, puis de moins en moins (aucune action connue : 0,05). */
 export function poidsRecence(derniere: string | undefined, now = Date.now()): number {
   const t = derniere ? Date.parse(derniere) : NaN;
@@ -292,12 +289,14 @@ export function poidsRecence(derniere: string | undefined, now = Date.now()): nu
 }
 
 /**
- * Classement des groupes d'une fiche : taille du groupe (membres) × récence de la dernière action. Un gros
- * groupe qui n'agit plus passe après un groupe moyen qui a agi cette semaine ; à égalité, le plus d'actions.
+ * Classement des groupes d'une fiche : actions de l'année × récence de la dernière action. Le nombre de
+ * membres ne fait que départager : un gros groupe peu actif (10 actions) passait devant un groupe qui en
+ * compte 66 et agit chaque semaine. Un groupe très actif mais à l'arrêt depuis des mois descend.
  */
 export function trierGroupes<G extends { membres: number | null; derniereAction?: string; actions?: number | null }>(gs: G[], now = Date.now()): G[] {
-  const score = (g: G) => Math.max(1, g.membres ?? 1) * poidsRecence(g.derniereAction, now);
-  return [...gs].sort((a, b) => score(b) - score(a) || (b.actions ?? 0) - (a.actions ?? 0));
+  const score = (g: G) => (g.actions ?? 0) * poidsRecence(g.derniereAction, now);
+  const t = (g: G) => (g.derniereAction ? Date.parse(g.derniereAction) || 0 : 0);
+  return [...gs].sort((a, b) => score(b) - score(a) || (b.membres ?? 0) - (a.membres ?? 0) || t(b) - t(a));
 }
 
 /**
@@ -2690,27 +2689,14 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   // Présence militante : après les résultats (du général au particulier).
   const presenceBlocks: Block[] = [];
   if (groupes.length) {
-    // Les cinq premiers en clair, les autres dans un menu déroulant : une longue liste noyait la fiche.
+    // Toute la liste dans un seul menu déroulant, classée par activité : une longue liste noyait la fiche.
     const n = groupesTries.length;
     presenceBlocks.push({
-      type: "callout",
-      tone: "accent",
-      title: n > 1 ? `${n} groupes d'action, des plus actifs récemment aux moins actifs` : "Groupe d'action",
-      text: groupesTries
-        .slice(0, GROUPES_VISIBLES)
-        .map((g, k) => `${n > 1 ? `${k + 1}. ` : ""}${groupeText(g)}`)
-        .join("\n"),
+      type: "note",
+      fold: true,
+      title: n > 1 ? `${n} groupes d'action, des plus actifs aux moins actifs` : "1 groupe d'action",
+      text: groupesTries.map((g, k) => `${n > 1 ? `${k + 1}. ` : ""}${groupeText(g)}`).join("\n"),
     });
-    if (n > GROUPES_VISIBLES)
-      presenceBlocks.push({
-        type: "note",
-        fold: true,
-        title: `Les ${n - GROUPES_VISIBLES} autres groupes`,
-        text: groupesTries
-          .slice(GROUPES_VISIBLES)
-          .map((g, k) => `${k + GROUPES_VISIBLES + 1}. ${groupeText(g)}`)
-          .join("\n"),
-      });
   }
   else if (sansGroupe) presenceBlocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif")} dans la commune ni dans son intercommunalité.` });
   else if (gaAilleurs) presenceBlocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif dans la commune.")} Dans l'intercommunalité : ${voisinsTxt}.` });
