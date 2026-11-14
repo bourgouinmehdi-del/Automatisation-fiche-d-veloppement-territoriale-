@@ -23,7 +23,8 @@ import { parseDeputations, type Deputation } from "./deputations";
  *                          converti au dépôt) : actions, groupes d'action actifs,
  *                          parrains et inscrits ; complète parrains.csv.
  *
- *  actions.csv           — actions par commune (export « code_commune, nb_events »)
+ *  actions.csv           — actions et soutiens JLM2027 par commune (export
+ *                          « code_commune, nb_events, nb_signataires_2027 »)
  *  soutiens-cp.csv       — soutiens JLM2027 par code postal (export des personnes),
  *                          répartis entre les communes du code postal selon leur population.
  *  Ces deux fichiers et l'export des groupes (code INSEE, actions par année,
@@ -316,23 +317,33 @@ export function normCp(raw: unknown): string | null {
   return /^\d{5}$/.test(s) && s !== "00000" ? s : null;
 }
 
-/** Export « code_commune, nb_events » (ou nb_actions) → actions par commune actuelle. */
-export function parseActionsCommunes(rows: Record<string, string>[]): Map<string, number> {
-  const out = new Map<string, number>();
-  if (!rows.length) return out;
+/**
+ * Export par commune « code_commune, nb_events, nb_signataires_2027 » → actions et, si la colonne est là,
+ * soutiens JLM2027 (signataires) par commune actuelle.
+ */
+export function parseExportCommunes(rows: Record<string, string>[]): { actions: Map<string, number>; soutiens: Map<string, number> | null } {
+  const actions = new Map<string, number>();
+  if (!rows.length) return { actions, soutiens: null };
   const cols = Object.keys(rows[0]);
   const cCode = findCol(cols, /^code_?(commune|insee)$/i);
   const cN = findCol(cols, /^nb_?(events|actions|evenements)$/i, /^(actions|events)$/i);
-  if (!cCode || !cN) return out;
+  const cS = findCol(cols, /signataire|soutien|parrain/i);
+  const soutiens = cS ? new Map<string, number>() : null;
+  if (!cCode || (!cN && !cS)) return { actions, soutiens: null };
   for (const r of rows) {
     const raw = String(r[cCode] ?? "").trim().toUpperCase().padStart(5, "0");
-    const n = num(r[cN]);
-    if (!/^\d[\dAB]\d{3}$/.test(raw) || !n) continue;
+    if (!/^\d[\dAB]\d{3}$/.test(raw)) continue;
     const k = communeActuelle(raw);
-    out.set(k, (out.get(k) ?? 0) + n);
+    const n = cN ? num(r[cN]) : null;
+    if (n) actions.set(k, (actions.get(k) ?? 0) + n);
+    const s = cS ? num(r[cS]) : null;
+    if (s) soutiens!.set(k, (soutiens!.get(k) ?? 0) + s);
   }
-  return out;
+  return { actions, soutiens };
 }
+
+/** Export « code_commune, nb_events » (ou nb_actions) → actions par commune actuelle. */
+export const parseActionsCommunes = (rows: Record<string, string>[]) => parseExportCommunes(rows).actions;
 
 /** Export des personnes « code_postal, nombre » → soutiens JLM2027 par code postal. */
 export function parseSoutiensCp(rows: Record<string, string>[]): { parCp: Map<string, number>; ignores: number; actions?: boolean } {
@@ -612,22 +623,31 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
     /* fichier absent */
   }
   let actions: Map<string, number> | null = null;
+  let soutiens: ReturnType<typeof repartirSoutiens> | null = null;
   try {
     const m = new Map<string, number>();
+    const s = new Map<string, number>();
     for (const r of await readCsv(path.join(dir, "actions.csv"))) {
       const v = num(r.actions);
-      if (r.code_insee && v != null) m.set(String(r.code_insee).trim(), v);
+      const k = String(r.code_insee ?? "").trim();
+      if (k && v != null) m.set(k, v);
+      const w = num(r.soutiens);
+      if (k && w != null) s.set(k, w);
     }
     if (m.size) {
       actions = avecVillesPlm(m);
       out.actionsParCommune = actions;
       out.files.push("actions.csv");
     }
+    // Soutiens par commune (code INSEE exact) : priorité sur la répartition par code postal.
+    if (s.size) {
+      soutiens = { parCommune: avecVillesPlm(s), estimees: new Set() };
+      for (const [k, v] of soutiens.parCommune) out.parrains.set(k, Math.round(v));
+    }
   } catch {
     /* fichier absent */
   }
-  let soutiens: ReturnType<typeof repartirSoutiens> | null = null;
-  try {
+  if (!soutiens) try {
     const m = new Map<string, number>();
     for (const r of await readCsv(path.join(dir, "soutiens-cp.csv"))) {
       const v = num(r.soutiens);

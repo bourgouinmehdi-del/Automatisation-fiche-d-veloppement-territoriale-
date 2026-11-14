@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { INTERNAL_FILES, bilanToCsv, internalDir, internalSummary, investie, listesLfiToCsv, parseCsv, parseActionsCommunes, parseGroupes, parseSoutiensCp, parseMunicipalesLfi, splitSheetsText } from "@/lib/collectors/interne";
+import { INTERNAL_FILES, bilanToCsv, internalDir, internalSummary, investie, listesLfiToCsv, parseCsv, parseExportCommunes, parseGroupes, parseSoutiensCp, parseMunicipalesLfi, splitSheetsText } from "@/lib/collectors/interne";
 import { readXlsx, sheetObjects } from "@/lib/collectors/xlsx";
 import { deputationsRows, deputationsToCsv } from "@/lib/collectors/deputations";
 import { nomCle, parseMobilisables, parseNegos } from "@/lib/national/score";
@@ -46,12 +46,15 @@ export async function POST(req: Request) {
   }
   if (kind === "actions") {
     // Export des actions par commune (code_commune, commune, nb_events) : enregistré en code_insee;actions.
-    const m = parseActionsCommunes(parseCsv(buf.toString("utf8")));
-    if (!m.size) return NextResponse.json({ error: "Aucune ligne lue : colonnes code_commune et nb_events (ou nb_actions) attendues" }, { status: 400 });
+    // Avec la colonne nb_signataires_2027 : soutiens JLM2027 par commune, enregistrés dans le même fichier.
+    const { actions: m, soutiens: s } = parseExportCommunes(parseCsv(buf.toString("utf8")));
+    if (!m.size && !s?.size) return NextResponse.json({ error: "Aucune ligne lue : colonnes code_commune et nb_events (ou nb_actions), et éventuellement nb_signataires_2027, attendues" }, { status: 400 });
     await fs.mkdir(internalDir(), { recursive: true });
-    await fs.writeFile(path.join(internalDir(), name), ["code_insee;actions", ...[...m].map(([k, v]) => `${k};${v}`)].join("\n") + "\n");
-    const tot = [...m.values()].reduce((s, v) => s + v, 0);
-    return NextResponse.json({ ok: true, info: `${m.size.toLocaleString("fr-FR")} communes, ${tot.toLocaleString("fr-FR")} actions`, summary: await internalSummary() });
+    const codes = [...new Set([...m.keys(), ...(s?.keys() ?? [])])];
+    const head = s ? "code_insee;actions;soutiens" : "code_insee;actions";
+    await fs.writeFile(path.join(internalDir(), name), [head, ...codes.map((k) => [k, m.get(k) ?? 0, ...(s ? [s.get(k) ?? 0] : [])].join(";"))].join("\n") + "\n");
+    const tot = (x: Map<string, number>) => [...x.values()].reduce((a, v) => a + v, 0).toLocaleString("fr-FR");
+    return NextResponse.json({ ok: true, info: `${codes.length.toLocaleString("fr-FR")} communes, ${tot(m)} actions${s ? `, ${tot(s)} soutiens JLM2027` : ""}`, summary: await internalSummary() });
   }
   if (kind === "soutiens-cp") {
     // Export des soutiens par code postal (code_postal, nombre) : codes postaux nettoyés, adresses étrangères écartées.

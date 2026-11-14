@@ -23,8 +23,8 @@ const KINDS: { id: string; title: string; help: string; xlsx?: boolean }[] = [
   },
   {
     id: "actions",
-    title: "Actions par commune (export Action Populaire)",
-    help: "Export « code_commune, commune, nb_events » : nombre d'actions par commune (code INSEE). Remplace les actions du bilan dans les fiches, le ciblage et le classement.",
+    title: "Actions et soutiens JLM2027 par commune (export Action Populaire)",
+    help: "Export « code_commune, commune, nb_events, nb_signataires_2027 » (la dernière colonne est facultative) : actions et soutiens JLM2027 par commune (code INSEE). Remplace les actions et les soutiens du bilan dans les fiches, le ciblage et le classement.",
   },
   {
     id: "soutiens-cp",
