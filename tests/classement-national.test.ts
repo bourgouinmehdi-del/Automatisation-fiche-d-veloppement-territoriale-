@@ -44,7 +44,7 @@ describe("classement national", () => {
     const v1 = l.find((x) => x.code === "99001")!;
     expect(v1.ecartSource).toBe("negos");
     // Gros réservoir, aucun militant, circo serrée : premier (la circo seule départage 99001 et 99002).
-    for (const w of [{ p: 45, m: 35, c: 20 }, { p: 0, m: 100, c: 0 }, { p: 100, m: 0, c: 0 }]) {
+    for (const w of [{ p: 45, m: 35, c: 20 }, { p: 0, m: 100, c: 0 }]) {
       const best = [...l].sort((a, b) => scoreOf(b, w) - scoreOf(a, w))[0];
       expect(best.code).toBe("99001");
     }
@@ -53,6 +53,49 @@ describe("classement national", () => {
     const sans = classer(cs, { minInscrits: 1000 });
     expect(sans[0].f2).toBeNull();
     expect(scoreOf({ f1: 80, f2: null, f3: 40 }, { p: 50, m: 30, c: 20 })).toBeCloseTo((80 * 50 + 40 * 20) / 70);
+  });
+});
+
+describe("potentiel pour un convoi", () => {
+  // 99011 : grosse réserve de voix mais vote insoumis faible ; 99012 : vote insoumis fort, réserve moyenne.
+  const villes = [
+    C("99011", 6000, 5000, 400, 900, "99-03", 1200, 1500),
+    C("99012", 6000, 4000, 1300, 200, "99-03", 1200, 1500),
+    C("99013", 6000, 4500, 700, 300, "99-03", 1200, 1500),
+  ];
+  const mob = new Map([
+    ["99011", 400],
+    ["99012", 150],
+    ["99013", 60],
+  ]);
+  it("le vote LFI compte autant que la réserve : un terrain difficile ne passe plus en tête", () => {
+    const l = classer(villes, { minInscrits: 1000, mobilisables: mob });
+    const a = l.find((x) => x.code === "99011")!;
+    const b = l.find((x) => x.code === "99012")!;
+    expect(a.noteReserve).toBeGreaterThan(b.noteReserve);
+    expect(b.noteVote).toBeGreaterThan(a.noteVote);
+    expect(b.f1).toBeGreaterThanOrEqual(a.f1);
+    expect(a.raisons).toContain("vote LFI faible");
+    expect(a.raisons).toContain("beaucoup de mobilisables");
+    expect(b.raisons).toContain("vote LFI fort");
+    // Mélenchon en part des exprimés, comme sur les fiches.
+    expect(b.melExpPct).toBeCloseTo((100 * 1300) / 3900);
+  });
+  it("actions et soutiens rapportés aux voix Mélenchon, pas aux mobilisables", () => {
+    const bilan = new Map([["99012", { ga: 1, actions: 13, soutiens: 26 }]]);
+    const l = classer(villes, { minInscrits: 1000, mobilisables: mob, bilan });
+    const b = l.find((x) => x.code === "99012")!;
+    expect(b.actionsPour1000).toBeCloseTo(10);
+    expect(b.soutiensPour1000).toBeCloseTo(20);
+    expect(l.find((x) => x.code === "99011")!.raisons).toContain("aucun groupe d'action");
+  });
+  it("réserve de gauche signalée sur la fiche seulement quand elle est forte", async () => {
+    const { mobilisablesRepere } = await import("@/lib/report/lfi");
+    expect(mobilisablesRepere(320, 5500)).toEqual({ n: 320, pct: (100 * 320) / 5500, tres: true });
+    expect(mobilisablesRepere(140, 5000)).toMatchObject({ n: 140, tres: false });
+    expect(mobilisablesRepere(100, 10000)).toBeNull();
+    expect(mobilisablesRepere(80, 2000)).toBeNull();
+    expect(mobilisablesRepere(null, 2000)).toBeNull();
   });
 });
 

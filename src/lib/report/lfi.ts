@@ -280,6 +280,18 @@ export function voteCompare(c: number, d: number): { dir: "plus" | "moins" | "au
   return { dir: e.dir, words: e.words, net: e.net, level: e.level };
 }
 
+/**
+ * Réserve de voix de gauche (électeurs mobilisables, modèle de Damien) : signalée à partir de 2,5 % des inscrits
+ * (environ les 10 % de communes où elle pèse le plus ; médiane sous 1 %) et 100 électeurs ; « l'une des plus
+ * fortes » à partir de 3,3 % (5 % des communes). Nombre arrondi à la dizaine.
+ */
+export function mobilisablesRepere(mob: number | null, inscrits: number | null): { n: number; pct: number; tres: boolean } | null {
+  if (mob == null || !inscrits || mob < 100) return null;
+  const pct = (100 * mob) / inscrits;
+  if (pct < 2.5) return null;
+  return { n: Math.round(mob / 10) * 10, pct, tres: pct >= 3.3 };
+}
+
 /** Scores nationaux du vote LFI (% des exprimés), repère d'un « terrain favorable ». */
 /** Tractage devant les grandes surfaces : désactivé (parkings privés). */
 const SUPERMARCHES = false;
@@ -2382,6 +2394,15 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     })()} qu'ailleurs pour J.-L. Mélenchon en 2022 (${pp(m22.pctExprimes)}).` });
   else if (perfMain?.dir === "inferieur" || (l24 && dl24 && l24.pctExprimes < dl24.pctExprimes * 0.85))
     synth.push({ text: `${B("Un terrain difficile")} : on y vote moins pour la France insoumise que dans le reste du département ${l24 && dl24 ? `(${pp(l24.pctExprimes)} aux européennes 2024, contre ${pp(dl24.pctExprimes)}${m22 && dm22 ? ` ; ${pp(m22.pctExprimes)} pour J.-L. Mélenchon en 2022, contre ${pp(dm22.pctExprimes)}` : ""})` : ""}.` });
+  {
+    // Réserve de voix de gauche (modèle de Damien) : électeurs qui votent d'habitude, penchent à gauche et risquent
+    // de s'abstenir en 2027. Signalée quand elle est forte (parmi les 10 % des communes où elle pèse le plus), même
+    // sur un terrain difficile pour LFI : c'est ce qui fait ressortir ces communes dans le classement national.
+    const mob = c.interne.mobilisables?.get(commune.code);
+    const ins = c22?.inscrits ?? c24?.inscrits ?? null;
+    const r = mobilisablesRepere(mob ?? null, ins);
+    if (r) synth.push({ text: `${B("Des électeurs de gauche à remobiliser")} : environ ${fmtNumber(r.n)} électeurs qui votent d'habitude et penchent à gauche risquent de s'abstenir en 2027 (${pp(r.pct)} des inscrits${r.tres ? ", l'une des plus fortes proportions de France" : ""}, modèle du pôle études électorales).` });
+  }
   if (abstMain?.dir === "superieur")
     synth.push({ text: `${B("Des électeurs à aller chercher")} : ${oneInV(abstMain.c, "électeur", "n'a pas voté", "n'ont pas voté")} ${abstRef?.label ?? "aux européennes 2024"}${cL ? ", un scrutin pourtant très suivi" : ""} (${pp(abstMain.c)}, contre ${pp(abstMain.d)} dans le département).` });
   if (insc.ficheText && insc.commune) synth.push({ text: `${B(insc.ficheText.startsWith("**Des jeunes") ? "Des jeunes à inscrire" : "Des habitants à inscrire")} : environ ${fmtNumber(Math.round(insc.commune.ecart / 100) * 100)} adultes de nationalité française absents des listes de la commune.` });

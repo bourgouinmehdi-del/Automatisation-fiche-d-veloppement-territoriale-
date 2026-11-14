@@ -25,6 +25,10 @@ type Ligne = {
   soutiensPour1000: number | null;
   ecartCirco: number | null;
   ecartSource: "negos" | "lg24" | null;
+  melExpPct: number;
+  noteVote: number;
+  noteReserve: number;
+  raisons: string[];
   f1: number;
   f2: number | null;
   f3: number | null;
@@ -102,15 +106,28 @@ export default function ClassementNational() {
   );
 
   const exporter = () => {
-    const head = ["rang", "code_insee", "commune", "departement", "inscrits", "score", "note_potentiel", "note_militante", "note_circo", "reservoir_voix", "reservoir_pct_inscrits", "melenchon_2022_pct_inscrits", "ga_actifs", "actions", "soutiens", "circo", "ecart_circo_points", "ecart_source"];
+    const head = ["rang", "code_insee", "commune", "departement", "inscrits", "score", "note_potentiel", "note_militante", "note_circo", "note_vote_lfi", "note_reserve", "reservoir_voix", "reservoir_pct_inscrits", "melenchon_2022_pct_exprimes", "melenchon_2022_pct_inscrits", "ga_actifs", "actions", "soutiens", "circo", "ecart_circo_points", "ecart_source", "pourquoi"];
     const rows = classees.map(({ l, s }, i) =>
-      [i + 1, l.code, l.nom, l.depNom, l.inscrits, s.toFixed(1), l.f1.toFixed(0), l.f2?.toFixed(0) ?? "", l.f3?.toFixed(0) ?? "", l.reservoir, l.reservoirPct.toFixed(1), l.melPct.toFixed(1), l.ga ?? "", l.actions ?? "", l.soutiens ?? "", l.circo ?? "", l.ecartCirco?.toFixed(1) ?? "", l.ecartSource ?? ""].join(";"),
+      [i + 1, l.code, l.nom, l.depNom, l.inscrits, s.toFixed(1), l.f1.toFixed(0), l.f2?.toFixed(0) ?? "", l.f3?.toFixed(0) ?? "", l.noteVote.toFixed(0), l.noteReserve.toFixed(0), l.reservoir, l.reservoirPct.toFixed(1), l.melExpPct.toFixed(1), l.melPct.toFixed(1), l.ga ?? "", l.actions ?? "", l.soutiens ?? "", l.circo ?? "", l.ecartCirco?.toFixed(1) ?? "", l.ecartSource ?? "", l.raisons.join(", ")].join(";"),
     );
     const blob = new Blob(["﻿" + [head.join(";"), ...rows].join("\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `Classement national - top ${top}.csv`;
     a.click();
+  };
+
+  // Fiche d'action de la commune, en un clic depuis le classement.
+  const [fiche, setFiche] = useState<string | null>(null);
+  const ouvrirFiche = async (code: string) => {
+    setFiche(code);
+    const r = await fetch("/api/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ codeInsee: code, scope: "commune" }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.id) window.location.href = `/generation/${d.id}`;
+    else {
+      setErr(d.error ?? `HTTP ${r.status}`);
+      setFiche(null);
+    }
   };
 
   const job = data?.job;
@@ -158,8 +175,8 @@ export default function ClassementNational() {
           <section className="mb-6 grid gap-4 md:grid-cols-3">
             {(
               [
-                ["p", "Potentiel de progression (présidentielle)", data.mobilisables ? "Électeurs mobilisables (modèle de Damien) : abstentionnistes conjoncturels × part de gauche du votant marginal." : "Provisoire : abstentionnistes de 2022 qui ressemblent aux votants de la commune, et moitié des voix de gauche hors LFI."],
-                ["m", "Disponibilité militante", data.bilan ? "Peu d'actions et de soutiens JLM2027 au regard du réservoir, pas de groupe d'action actif." : "Bilan militant absent : facteur désactivé."],
+                ["p", "Potentiel électoral", `À parts égales : le vote insoumis (2022, 2024) et ${data.mobilisables ? "les électeurs mobilisables du modèle de Damien" : "une réserve de voix provisoire"}.`],
+                ["m", "Disponibilité militante", data.bilan ? "Peu d'actions et de soutiens JLM2027 pour 1 000 voix Mélenchon, pas de groupe d'action actif." : "Bilan militant absent : facteur désactivé."],
                 ["c", "Circonscription serrée", data.negos ? "Écart projeté (fichier des négos) : plus il est faible, plus la note est haute." : "Provisoire : écart du 1er tour des législatives 2024 entre l'union de la gauche et le premier adversaire."],
               ] as const
             ).map(([k, t, d]) => (
@@ -242,7 +259,8 @@ export default function ClassementNational() {
                   <th className="pr-2 text-right">{data.mobilisables ? "Mobilisables" : "Réservoir de voix"}</th>
                   <th className="pr-2 text-right">Mélenchon 2022</th>
                   <th className="pr-2 text-right">GA · actions · soutiens</th>
-                  <th className="text-right">Écart circo</th>
+                  <th className="pr-2 text-right">Écart circo</th>
+                  <th>Pourquoi</th>
                 </tr>
               </thead>
               <tbody>
@@ -250,10 +268,13 @@ export default function ClassementNational() {
                   <tr key={l.code} className="border-b border-[var(--line)] align-top">
                     <td className="py-1.5 pr-2 tabular-nums">{i + 1}</td>
                     <td className="pr-2">
-                      <span className="font-semibold">{l.nom}</span> <span className="text-xs text-[var(--ink-2)]">({l.depNom}, {fr(l.inscrits)} inscrits)</span>
+                      <span className="font-semibold">{l.nom}</span> <span className="text-xs text-[var(--ink-2)]">({l.depNom}, {fr(l.inscrits)} inscrits)</span>{" "}
+                      <button className="text-xs text-[var(--accent)] underline" disabled={!!fiche} onClick={() => ouvrirFiche(l.code)}>
+                        {fiche === l.code ? "fiche en cours…" : "fiche"}
+                      </button>
                     </td>
                     <td className="pr-2 text-right font-semibold tabular-nums">{fr(s, 1)}</td>
-                    <td className="pr-2">
+                    <td className="pr-2" title={`Vote insoumis : ${fr(l.noteVote)} · réserve de voix : ${fr(l.noteReserve)}`}>
                       <Note v={l.f1} />
                     </td>
                     <td className="pr-2">
@@ -265,11 +286,14 @@ export default function ClassementNational() {
                     <td className="pr-2 text-right tabular-nums">
                       {fr(l.reservoir)} <span className="text-xs text-[var(--ink-2)]">({fr(l.reservoirPct, 1)} %)</span>
                     </td>
-                    <td className="pr-2 text-right tabular-nums">{fr(l.melPct, 1)} %</td>
+                    <td className="pr-2 text-right tabular-nums" title={`${fr(l.melPct, 1)} % des inscrits`}>
+                      {fr(l.melExpPct, 1)} %
+                    </td>
                     <td className="pr-2 text-right tabular-nums">{l.ga == null ? "—" : `${l.ga} · ${l.actions} · ${l.soutiens}`}</td>
-                    <td className="text-right tabular-nums" title={l.ecartSource === "negos" ? "Fichier des négos" : "Législatives 2024, 1er tour"}>
+                    <td className="pr-2 text-right tabular-nums" title={l.ecartSource === "negos" ? "Fichier des négos" : "Législatives 2024, 1er tour"}>
                       {l.ecartCirco == null ? "—" : `${signe(l.ecartCirco)} pt${l.circo ? ` (${l.circo})` : ""}`}
                     </td>
+                    <td className="text-xs text-[var(--ink-2)]">{l.raisons.join(", ")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -282,10 +306,10 @@ export default function ClassementNational() {
               Chaque facteur est une note de 0 à 100 : le rang de la commune parmi les communes classées (50 = au milieu). Le score est la moyenne des notes pondérée par les curseurs ; un facteur sans données ne compte pas.
             </p>
             <p>
-              <b>Potentiel de progression</b> : si l&apos;export de Damien est déposé, ses électeurs mobilisables (abstentionnistes conjoncturels prédits × part de gauche du votant marginal, modèle de Devoirs maison). Sinon, à titre provisoire : abstentionnistes de la présidentielle 2022 × part de Mélenchon chez les votants de la commune, plus la moitié des voix Roussel, Hidalgo et Jadot. Note : moitié volume de voix (échelle logarithmique, pour ne pas laisser gagner toujours les plus grandes villes), moitié part des inscrits.
+              <b>Potentiel électoral</b>, à parts égales. D&apos;une part le vote insoumis : Mélenchon 2022 (60 %) et européennes 2024 (40 %), en part des exprimés, comme sur les fiches. D&apos;autre part la réserve de voix : si l&apos;export de Damien est déposé, ses électeurs mobilisables (électeurs qui votent d&apos;habitude et penchent à gauche, mais risquent de s&apos;abstenir en 2027) ; sinon, à titre provisoire, abstentionnistes de la présidentielle 2022 × part de Mélenchon chez les votants de la commune, plus la moitié des voix Roussel, Hidalgo et Jadot. La réserve compte pour 60 % en volume (échelle logarithmique : il faut assez de portes pour une journée de convoi, sans laisser gagner toujours les plus grandes villes) et 40 % en part des inscrits. Une commune où LFI est faible ne passe donc plus en tête sur sa seule réserve.
             </p>
             <p>
-              <b>Disponibilité militante</b> : actions de l&apos;année (50 %) et soutiens JLM2027 (30 %) pour 1 000 voix du réservoir, moins il y en a plus la note est haute ; pas de groupe d&apos;action actif (20 %).
+              <b>Disponibilité militante</b> : actions de l&apos;année (50 %) et soutiens JLM2027 (30 %) pour 1 000 voix Mélenchon 2022, moins il y en a plus la note est haute ; pas de groupe d&apos;action actif (20 %).
             </p>
             <p>
               <b>Circonscription serrée</b> : écart projeté par circonscription (fichier des négos, à déposer dans Données internes) ; à défaut, écart du 1er tour des législatives 2024 entre l&apos;union de la gauche et le premier adversaire. Une commune partagée entre plusieurs circonscriptions prend celle qui couvre la plus grande partie de son territoire. Deux communes proches se départagent ainsi selon leur circonscription.

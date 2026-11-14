@@ -1,12 +1,15 @@
 /**
  * Classement national des communes (commande de Menal) : trois facteurs notés sur 100, pondérables.
  *
- *  1. Potentiel de progression à la présidentielle (provisoire, en attendant la méthode de Damien) :
- *     réservoir de voix = abstentionnistes de 2022 × part de Mélenchon chez les votants (ils ressemblent aux
- *     votants de la commune) + la moitié des voix de gauche hors LFI en 2022 (Roussel, Hidalgo, Jadot).
- *     Note : moitié volume (log des voix), moitié taux (part des inscrits).
- *  2. Disponibilité militante (déficit) : peu d'actions et peu de soutiens JLM2027 au regard de ce réservoir,
- *     pas de groupe d'action actif. Plus la note est haute, plus il manque de militants.
+ *  1. Potentiel pour un convoi, à parts égales :
+ *     - vote insoumis : Mélenchon 2022 et européennes 2024, en part des exprimés (une commune où LFI est
+ *       faible ne doit pas finir en tête sur la seule réserve de voix, retour sur une petite commune
+ *       classée première mais « terrain difficile » sur sa fiche) ;
+ *     - réserve de voix : électeurs mobilisables du modèle de Damien, ou à défaut réservoir provisoire
+ *       (abstentionnistes de 2022 × part de Mélenchon chez les votants + moitié des voix Roussel, Hidalgo,
+ *       Jadot). 60 % volume (log des voix : des portes à frapper pour une journée de convoi), 40 % taux.
+ *  2. Disponibilité militante (déficit) : peu d'actions et peu de soutiens JLM2027 pour 1 000 voix
+ *     Mélenchon 2022, pas de groupe d'action actif. Plus la note est haute, plus il manque de militants.
  *  3. Circonscription serrée : écart projeté (fichier des négos) ou, à défaut, écart du 1er tour des
  *     législatives 2024 entre l'union de la gauche et le premier adversaire (provisoire).
  *
@@ -54,6 +57,13 @@ export interface Ligne {
   soutiensPour1000: number | null;
   ecartCirco: number | null;
   ecartSource: "negos" | "lg24" | null;
+  /** Mélenchon 2022 en part des exprimés. */
+  melExpPct: number;
+  /* Sous-notes du potentiel (0 à 100) */
+  noteVote: number;
+  noteReserve: number;
+  /** Pourquoi la commune ressort, en quelques mots. */
+  raisons: string[];
   /* Notes sur 100 */
   f1: number;
   f2: number | null;
@@ -138,27 +148,52 @@ export function classer(cs: NatCommune[], o: Options): Ligne[] {
           ga: m ? m.ga : null,
           actions: m ? m.actions : null,
           soutiens: m ? m.soutiens : null,
-          actionsPour1000: m ? (1000 * m.actions) / Math.max(reservoir, 1) : null,
-          soutiensPour1000: m ? (1000 * m.soutiens) / Math.max(reservoir, 1) : null,
+          // Pour 1 000 voix Mélenchon : comparable d'une source de réserve à l'autre (les mobilisables de
+          // Damien sont parfois très peu nombreux dans les grandes villes, ce qui gonflait le ratio).
+          actionsPour1000: m ? (1000 * m.actions) / Math.max(p.lfi, 1) : null,
+          soutiensPour1000: m ? (1000 * m.soutiens) / Math.max(p.lfi, 1) : null,
           ecartCirco: neg ?? prox ?? null,
           ecartSource: neg != null ? ("negos" as const) : prox != null ? ("lg24" as const) : null,
+          melExpPct: (100 * p.lfi) / p.exprimes,
+          noteVote: 0,
+          noteReserve: 0,
+          raisons: [],
           f1: 0,
           f2: null,
           f3: null,
         } as Ligne,
       };
     });
-  // Facteur 1 : volume (log) et taux du réservoir.
+  // Facteur 1 : vote insoumis (présidentielle 2022, européennes 2024) et réserve de voix (volume, taux).
+  const mel = centiles(base.map((b) => b.l.melExpPct));
+  const eu = centiles(base.map((b) => (b.c.eu24 && b.c.eu24.exprimes ? b.c.eu24.lfi / b.c.eu24.exprimes : null)));
+  const vote = centiles(base.map((_, i) => (eu[i] == null ? mel[i]! : 0.6 * mel[i]! + 0.4 * eu[i]!)));
   const vol = centiles(base.map((b) => Math.log1p(b.reservoir)));
   const taux = centiles(base.map((b) => b.l.reservoirPct));
-  const f1 = centiles(base.map((_, i) => 0.5 * vol[i]! + 0.5 * taux[i]!));
+  const reserve = centiles(base.map((_, i) => 0.6 * vol[i]! + 0.4 * taux[i]!));
+  const f1 = centiles(base.map((_, i) => 0.5 * vote[i]! + 0.5 * reserve[i]!));
   // Facteur 2 : déficit militant (moins d'actions, de soutiens, pas de groupe actif).
   const act = o.bilan ? centiles(base.map((b) => -Math.log1p(b.l.actionsPour1000!))) : null;
   const sou = o.bilan ? centiles(base.map((b) => -Math.log1p(b.l.soutiensPour1000!))) : null;
   const f2 = o.bilan ? centiles(base.map((b, i) => 0.5 * act![i]! + 0.3 * sou![i]! + 0.2 * (b.l.ga ? 0 : 100))) : null;
   // Facteur 3 : plus l'écart est faible, plus la note est haute.
   const f3 = centiles(base.map((b) => (b.l.ecartCirco == null ? null : -Math.abs(b.l.ecartCirco))));
-  return base.map((b, i) => ({ ...b.l, f1: f1[i]!, f2: f2 ? f2[i] : null, f3: f3[i] }));
+  return base.map((b, i) => {
+    const l: Ligne = { ...b.l, noteVote: vote[i]!, noteReserve: reserve[i]!, f1: f1[i]!, f2: f2 ? f2[i] : null, f3: f3[i] };
+    return { ...l, raisons: raisons(l, !!mob) };
+  });
+}
+
+/** Quelques mots sur ce qui fait ressortir (ou freine) la commune. */
+export function raisons(l: Ligne, mob: boolean): string[] {
+  const r: string[] = [];
+  if (l.noteVote >= 75) r.push("vote LFI fort");
+  else if (l.noteVote <= 30) r.push("vote LFI faible");
+  if (l.noteReserve >= 75) r.push(mob ? "beaucoup de mobilisables" : "grosse réserve de voix");
+  if (l.ga === 0) r.push("aucun groupe d'action");
+  else if (l.f2 != null && l.f2 >= 75) r.push("peu d'actions");
+  if (l.ecartCirco != null && Math.abs(l.ecartCirco) <= 5) r.push("circo serrée");
+  return r;
 }
 
 /** Score pondéré (0 à 100) ; un facteur absent ne compte pas, les autres poids sont rééchelonnés. */
