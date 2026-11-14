@@ -249,3 +249,15 @@ describe("convois : volume de voix, département, groupes à moins de 15 km", ()
     expect(pointWkb("")).toBeNull();
   });
 });
+
+describe("terrain difficile et circonscription inconnue", () => {
+  it("vote sous le département : score réduit de 15 %", () => {
+    expect(scoreOf({ f1: 80, f2: 80, f3: 80, sousDep: true }, { p: 1, m: 1, c: 1 })).toBeCloseTo(68);
+    expect(scoreOf({ f1: 80, f2: 80, f3: 80 }, { p: 1, m: 1, c: 1 })).toBeCloseTo(80);
+  });
+  it("sans circonscription connue : note circo neutre (50)", () => {
+    const v = [C("99071", 8000, 5000, 1500, 300, "99-18", 1000, 1050), C("99072", 8000, 5000, 1400, 300, "99-19", 1500, 1000), { ...C("99073", 8000, 5000, 1300, 300, "99-20", 1000, 1050), circo: null }];
+    const l = classer(v, { minInscrits: 1000 });
+    expect(l.find((x) => x.code === "99073")!.f3).toBe(50);
+  });
+});
