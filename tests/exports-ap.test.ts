@@ -98,3 +98,31 @@ describe("actions et signataires par commune", () => {
     expect(d.actionsParCommune!.get("75056")).toBe(60);
   });
 });
+
+describe("fiche : groupes classés et moyenne à taille égale", () => {
+  it("groupes : taille × récence de la dernière action", async () => {
+    const { trierGroupes, poidsRecence } = await import("@/lib/report/lfi");
+    const now = Date.parse("2026-11-14");
+    expect(poidsRecence("2026-11-10", now)).toBe(1);
+    expect(poidsRecence("2026-09-01", now)).toBe(0.6);
+    expect(poidsRecence("2025-01-01", now)).toBe(0.05);
+    expect(poidsRecence(undefined, now)).toBe(0.05);
+    const gs = [
+      { nom: "gros endormi", membres: 90, derniereAction: "2025-01-11", actions: 12 },
+      { nom: "moyen actif", membres: 30, derniereAction: "2026-11-12", actions: 65 },
+      { nom: "petit actif", membres: 5, derniereAction: "2026-11-12", actions: 8 },
+      { nom: "gros récent", membres: 60, derniereAction: "2026-10-01", actions: 40 },
+    ];
+    expect(trierGroupes(gs, now).map((g) => g.nom)).toEqual(["gros récent", "moyen actif", "petit actif", "gros endormi"]);
+  });
+  it("moyenne à taille égale : les communes les plus proches en inscrits", async () => {
+    const { bilanComparable } = await import("@/lib/collectors/interne");
+    const b = new Map<string, import("@/lib/collectors/interne").Bilan>();
+    for (let i = 0; i < 100; i++) b.set(`99${String(i).padStart(3, "0")}`, { actions: i < 50 ? 1 : 100, ga: 0, parrains: 10, inscrits: i < 50 ? 1000 + i : 50000 + i, estime: false });
+    const c = bilanComparable(b, 1020, 10)!;
+    expect(c.communes).toBe(10);
+    expect(c.max).toBeLessThan(2000);
+    expect(c.actions).toBe(10);
+    expect(bilanComparable(b, 50010, 10)!.min).toBeGreaterThan(40000);
+  });
+});
