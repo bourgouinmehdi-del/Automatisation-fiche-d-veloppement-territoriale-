@@ -61,6 +61,8 @@ export default function ClassementNational() {
   const [metro, setMetro] = useState(true);
   // Un convoi couvre plusieurs communes voisines : par défaut, la mieux classée de chaque circonscription.
   const [parCirco, setParCirco] = useState(true);
+  // Notes par critère : masquées par défaut pour un tableau plus lisible.
+  const [details, setDetails] = useState(false);
   const admin = useRole() === "admin";
   const estMetro = (dep: string) => !/^(97|98)/.test(dep);
   const [err, setErr] = useState<string | null>(null);
@@ -219,6 +221,10 @@ export default function ClassementNational() {
               <input type="checkbox" checked={parCirco} onChange={(e) => setParCirco(e.target.checked)} />
               Une commune par circonscription
             </label>
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={details} onChange={(e) => setDetails(e.target.checked)} />
+              Détail des notes
+            </label>
             <select value={min} onChange={(e) => setMin(Number(e.target.value))} className="rounded border border-[var(--line)] px-2 py-1">
               {[2000, 3500, 5000, 10000, 20000].map((v) => (
                 <option key={v} value={v}>
@@ -268,9 +274,13 @@ export default function ClassementNational() {
                   <th className="py-2 pr-2">#</th>
                   <th className="pr-2">Commune</th>
                   <th className="pr-2 text-right">Score</th>
-                  <th className="pr-2">Potentiel</th>
-                  <th className="pr-2">Militant</th>
-                  <th className="pr-2">Circo</th>
+                  {details && (
+                    <>
+                      <th className="pr-2">Potentiel</th>
+                      <th className="pr-2">Militant</th>
+                      <th className="pr-2">Circo</th>
+                    </>
+                  )}
                   <th className="pr-2 text-right">{data.mobilisables ? "Mobilisables" : "Réservoir de voix"}</th>
                   <th className="pr-2 text-right">Mélenchon 2022</th>
                   <th className="pr-2 text-right">GA · actions · soutiens</th>
@@ -282,7 +292,7 @@ export default function ClassementNational() {
                   <tr key={l.code} className="border-b border-[var(--line)] align-top">
                     <td className="py-1.5 pr-2 tabular-nums">{i + 1}</td>
                     <td className="pr-2">
-                      <span className="font-semibold">{l.nom}</span> <span className="text-xs text-[var(--ink-2)]">({l.depNom}, {fr(l.inscrits)} inscrits)</span>{" "}
+                      <span className="font-semibold">{l.nom}</span> <span className="text-xs text-[var(--ink-2)]">({l.depNom}, {fr(l.inscrits)} inscrits{l.circo ? `, circo ${l.circo}` : ""})</span>{" "}
                       <button className="text-xs text-[var(--accent)] underline" disabled={!!fiche} onClick={() => ouvrirFiche(l.code)}>
                         {fiche === l.code ? "fiche en cours…" : "fiche"}
                       </button>
@@ -294,16 +304,19 @@ export default function ClassementNational() {
                       )}
                     </td>
                     <td className="pr-2 text-right font-semibold tabular-nums">{fr(s, 1)}</td>
-                    <td className="pr-2" title={`Vote insoumis : ${fr(l.noteVote)} · réserve de voix : ${fr(l.noteReserve)}`}>
-                      <Note v={l.f1} />
-                    </td>
-                    <td className="pr-2">
-                      <Note v={data.bilan ? l.f2 : null} />
-                    </td>
-                    <td className="pr-2">
-                      <Note v={l.f3} />
-                      {l.circo && <span className="ml-1 text-xs text-[var(--ink-2)]">{l.circo}</span>}
-                    </td>
+                    {details && (
+                      <>
+                        <td className="pr-2" title={`Vote insoumis : ${fr(l.noteVote)} · réserve de voix : ${fr(l.noteReserve)}`}>
+                          <Note v={l.f1} />
+                        </td>
+                        <td className="pr-2">
+                          <Note v={data.bilan ? l.f2 : null} />
+                        </td>
+                        <td className="pr-2">
+                          <Note v={l.f3} />
+                        </td>
+                      </>
+                    )}
                     <td className="pr-2 text-right tabular-nums">
                       {fr(l.reservoir)} <span className="text-xs text-[var(--ink-2)]">({fr(l.reservoirPct, 1)} %)</span>
                     </td>
