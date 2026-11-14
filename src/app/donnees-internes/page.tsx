@@ -19,7 +19,17 @@ const KINDS: { id: string; title: string; help: string; xlsx?: boolean }[] = [
   {
     id: "action-populaire",
     title: "Export Action Populaire (groupes d'action)",
-    help: "Export CSV brut des groupes : les colonnes sont reconnues par leur intitulé (nom, code postal, ville, membres, date de création, type, certification, description, nombre d'actions). La commune est retrouvée par code postal et ville ; les colonnes nominatives (animateurs, contacts) sont ignorées.",
+    help: "Export CSV des groupes. Export SQL (colonnes location_citycode, certification_date, organized_events_AAAA) : commune par code INSEE, groupe actif = certifié et au moins 5 actions dans l'année ; boucles, groupes fonctionnels et thématiques écartés ; il remplace alors le nombre de groupes actifs du bilan. Ancien export : colonnes reconnues par leur intitulé (nom, code postal, ville, membres, type, certification, nombre d'actions), commune retrouvée par code postal et ville.",
+  },
+  {
+    id: "actions",
+    title: "Actions par commune (export Action Populaire)",
+    help: "Export « code_commune, commune, nb_events » : nombre d'actions par commune (code INSEE). Remplace les actions du bilan dans les fiches, le ciblage et le classement.",
+  },
+  {
+    id: "soutiens-cp",
+    title: "Soutiens JLM2027 par code postal (export Action Populaire)",
+    help: "Export « code_postal, nombre » des personnes : les codes postaux mal saisis ou étrangers sont écartés, un code postal partagé est réparti entre ses communes selon leur population. Remplace les soutiens du bilan.",
   },
   { id: "groupes", title: "Groupes d'action (format simple)", help: "Colonnes : code_commune ; nom ; membres ; statut ; description." },
   { id: "parrains", title: "Soutiens JLM2027 par commune", help: "Colonnes : code_commune ; parrains (nombre de soutiens JLM2027)." },

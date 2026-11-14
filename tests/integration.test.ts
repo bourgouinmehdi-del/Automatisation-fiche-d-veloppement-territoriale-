@@ -514,7 +514,7 @@ describe("chaîne de génération (API simulées)", () => {
     const glance = fiche.blocks.find((b) => b.type === "glance") as Extract<(typeof fiche.blocks)[number], { type: "glance" }>;
     // Chiffres clés : habitants et socio (violet), puis présence militante (rouge) ; plus de votes.
     expect(glance.items[0]).toMatchObject({ label: "Habitants", tone: "socio" });
-    expect(glance.items.filter((i) => i.tone === "militant").map((i) => i.label)).toEqual(["Groupes d'action actifs", "Soutiens JLM2027", "Actions en 2026"]);
+    expect(glance.items.filter((i) => i.tone === "militant").map((i) => i.label)).toEqual(["Groupes d'action actifs", "Soutiens JLM2027", "Actions recensées"]);
     expect(glance.items.some((i) => /^Vote/.test(i.label))).toBe(false);
     const bv = report.tables.find((t) => t.id === "lfi_bureaux")!;
     expect(bv.columns.map((c) => c.key)).toEqual(expect.arrayContaining(["lfi2", "lfi2exp"]));
