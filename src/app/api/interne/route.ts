@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { INTERNAL_FILES, bilanToCsv, internalDir, internalSummary, investie, listesLfiToCsv, parseCsv, parseGroupes, parseMunicipalesLfi, splitSheetsText } from "@/lib/collectors/interne";
+import { INTERNAL_FILES, bilanToCsv, internalDir, internalSummary, investie, listesLfiToCsv, parseCsv, parseActionsCommunes, parseGroupes, parseSoutiensCp, parseMunicipalesLfi, splitSheetsText } from "@/lib/collectors/interne";
 import { readXlsx, sheetObjects } from "@/lib/collectors/xlsx";
 import { deputationsRows, deputationsToCsv } from "@/lib/collectors/deputations";
 import { nomCle, parseMobilisables, parseNegos } from "@/lib/national/score";
@@ -43,6 +43,25 @@ export async function POST(req: Request) {
     await fs.mkdir(internalDir(), { recursive: true });
     await fs.writeFile(path.join(internalDir(), name), csv);
     return NextResponse.json({ ok: true, info: `${n.toLocaleString("fr-FR")} communes`, summary: await internalSummary() });
+  }
+  if (kind === "actions") {
+    // Export des actions par commune (code_commune, commune, nb_events) : enregistré en code_insee;actions.
+    const m = parseActionsCommunes(parseCsv(buf.toString("utf8")));
+    if (!m.size) return NextResponse.json({ error: "Aucune ligne lue : colonnes code_commune et nb_events (ou nb_actions) attendues" }, { status: 400 });
+    await fs.mkdir(internalDir(), { recursive: true });
+    await fs.writeFile(path.join(internalDir(), name), ["code_insee;actions", ...[...m].map(([k, v]) => `${k};${v}`)].join("\n") + "\n");
+    const tot = [...m.values()].reduce((s, v) => s + v, 0);
+    return NextResponse.json({ ok: true, info: `${m.size.toLocaleString("fr-FR")} communes, ${tot.toLocaleString("fr-FR")} actions`, summary: await internalSummary() });
+  }
+  if (kind === "soutiens-cp") {
+    // Export des soutiens par code postal (code_postal, nombre) : codes postaux nettoyés, adresses étrangères écartées.
+    const { parCp, ignores, actions } = parseSoutiensCp(parseCsv(buf.toString("utf8")));
+    if (actions) return NextResponse.json({ error: "Ce fichier compte des actions (colonne nb_actions), pas des soutiens : déposez plutôt l'export des actions par commune (code_commune, nb_events)." }, { status: 400 });
+    if (!parCp.size) return NextResponse.json({ error: "Aucune ligne lue : colonnes code_postal et nombre de soutiens attendues" }, { status: 400 });
+    await fs.mkdir(internalDir(), { recursive: true });
+    await fs.writeFile(path.join(internalDir(), name), ["code_postal;soutiens", ...[...parCp].map(([k, v]) => `${k};${v}`)].join("\n") + "\n");
+    const tot = [...parCp.values()].reduce((s, v) => s + v, 0);
+    return NextResponse.json({ ok: true, info: `${parCp.size.toLocaleString("fr-FR")} codes postaux, ${tot.toLocaleString("fr-FR")} soutiens (${ignores.toLocaleString("fr-FR")} sans code postal français, écartés)`, summary: await internalSummary() });
   }
   if (kind === "mobilisables") {
     // Export de Damien (électeurs mobilisables par commune) : CSV du dépôt elections_predictions_src.

@@ -16,7 +16,7 @@ import { buildInscription } from "./inscription";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
 import { listeDuClasseur, NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
-import { investie } from "../collectors/interne";
+import { gaActif, investie } from "../collectors/interne";
 import { ecartParts, ecartRatio } from "./gradation";
 import { BPE_VINTAGE, BPE_TYPES } from "../collectors/bpe";
 import { circoLabel } from "../collectors/carto";
@@ -711,11 +711,12 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const bilanArrondissement = () => {
     const gs = c.interne.groupes.filter((g) => g.code === commune.code);
     const soutiens = c.interne.parrains.get(commune.code);
-    if (!gs.length && soutiens == null) return undefined;
+    const actions = c.interne.actionsParCommune?.get(commune.code);
+    if (!gs.length && soutiens == null && actions == null) return undefined;
     const inscrits = com(e24)?.inscrits ?? com(p22)?.inscrits ?? 0;
     return {
-      actions: gs.reduce((t, g) => t + (g.actions ?? 0), 0),
-      ga: gs.filter((g) => (g.actions != null ? g.actions >= 5 : !/inactif|ferm|archiv/i.test(g.statut))).length,
+      actions: actions ?? gs.reduce((t, g) => t + (g.actions ?? 0), 0),
+      ga: gs.filter(gaActif).length,
       parrains: soutiens ?? 0,
       inscrits,
       estime: false,
@@ -2355,7 +2356,7 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     if (bilan || groupes.length) glance.push({ label: ga > 1 ? "Groupes d'action actifs" : "Groupe d'action actif", value: fmtNumber(ga), detail: tr ? ref(tr.ga) : undefined, tone: "militant" });
     const par = bilan ? bilan.parrains : parrains;
     if (par != null) glance.push({ label: "Soutiens JLM2027", value: fmtNumber(Math.round(par)), detail: tr ? ref(tr.parrains) : undefined, tone: "militant" });
-    if (bilan) glance.push({ label: "Actions en 2026", value: fmtNumber(Math.round(bilan.actions)), detail: tr ? ref(tr.actions) : undefined, tone: "militant" });
+    if (bilan) glance.push({ label: "Actions recensées", value: fmtNumber(Math.round(bilan.actions)), detail: tr ? ref(tr.actions) : undefined, tone: "militant" });
   }
 
   // Non-inscription (estimation) : adultes français recensés et inscrits.

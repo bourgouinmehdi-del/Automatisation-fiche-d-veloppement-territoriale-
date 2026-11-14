@@ -4,6 +4,7 @@ import Papa from "papaparse";
 import { config } from "../config";
 import { communeActuelle, referentiel, searchCommunes } from "./admin";
 import { detectDelimiter, findCol } from "./elections";
+import { plmInfo } from "./plm";
 import { parseDeputations, type Deputation } from "./deputations";
 
 /**
@@ -22,6 +23,12 @@ import { parseDeputations, type Deputation } from "./deputations";
  *                          converti au dépôt) : actions, groupes d'action actifs,
  *                          parrains et inscrits ; complète parrains.csv.
  *
+ *  actions.csv           — actions par commune (export « code_commune, nb_events »)
+ *  soutiens-cp.csv       — soutiens JLM2027 par code postal (export des personnes),
+ *                          répartis entre les communes du code postal selon leur population.
+ *  Ces deux fichiers et l'export des groupes (code INSEE, actions par année,
+ *  date de certification) remplacent les chiffres du classeur du bilan.
+ *
  * Seuls des agrégats par commune ou par groupe sont utilisés : les colonnes
  * nominatives éventuelles (animateurs, contacts) sont ignorées.
  * Séparateur « ; » ou « , » détecté automatiquement.
@@ -39,6 +46,8 @@ export interface Groupe {
   actions?: number | null;
   derniereAction?: string;
   source?: string;
+  /** Commune donnée par son code INSEE (export SQL des groupes) : décompte des groupes actifs fiable partout. */
+  exact?: boolean;
 }
 
 /** Bilan militant d'une commune (estimations pour les petites communes). */
@@ -64,6 +73,8 @@ export interface InternalData {
   files: string[];
   /** Historique des député·es par circonscription (« 57-06 »), 1988-2024. */
   deputations?: Map<string, Deputation[]>;
+  /** Actions par commune (export des actions), arrondissements de Paris, Lyon, Marseille compris. */
+  actionsParCommune?: Map<string, number>;
   /** Électeurs mobilisables par commune (modèle de Damien, pôle études électorales). */
   mobilisables?: Map<string, number>;
   /** Lignes non rattachées à une commune (export Action Populaire). */
@@ -80,7 +91,7 @@ export const BILAN_TRANCHES: [number, number][] = [
   [100000, Infinity],
 ];
 
-export const INTERNAL_FILES = ["parrains.csv", "groupes.csv", "action-populaire.csv", "bilan.csv", "municipales-lfi.csv", "deputations.csv", "negos.csv", "mobilisables.csv"] as const;
+export const INTERNAL_FILES = ["parrains.csv", "groupes.csv", "action-populaire.csv", "bilan.csv", "actions.csv", "soutiens-cp.csv", "municipales-lfi.csv", "deputations.csv", "negos.csv", "mobilisables.csv"] as const;
 
 export const internalDir = () => path.join(config.dataDir, "interne");
 
@@ -127,11 +138,47 @@ export function communeOf(r: Record<string, string>, cols: string[]): string | n
   return null;
 }
 
-export function parseGroupes(rows: Record<string, string>[], source: string): { groupes: Groupe[]; unmatched: number } {
+/** Types de l'export SQL qui ne sont pas des groupes d'action territoriaux. */
+const HORS_GA = /boucle|fonctionnel|th[ée]matique/i;
+
+/** Export SQL des groupes (Action Populaire) : code INSEE, date de certification, actions par année. */
+function groupeSql(r: Record<string, string>, source: string, annee: number): Groupe | null | "hors" {
+  const code = communeActuelle(String(r.location_citycode ?? "").trim().toUpperCase());
+  const nom = String(r.name ?? "").trim();
+  if (!nom) return "hors";
+  if (HORS_GA.test(String(r.type ?? ""))) return "hors";
+  if (!/^\d[\dAB]\d{3}$/.test(code)) return null;
+  // Actions de l'année en cours (la plus récente des colonnes organized_events_AAAA).
+  let col = "";
+  for (let y = annee; y >= annee - 3 && !col; y--) if (`organized_events_${y}` in r) col = `organized_events_${y}`;
+  const date = (v: unknown) => String(v ?? "").slice(0, 10) || undefined;
+  return {
+    code,
+    nom,
+    membres: num(r.members_count),
+    statut: "",
+    description: "",
+    creation: date(r.created),
+    type: String(r.type ?? "") || undefined,
+    certifie: !!String(r.certification_date ?? "").trim(),
+    actions: col ? (num(r[col]) ?? 0) : num(r.organized_events),
+    derniereAction: date(r.last_event_date),
+    source,
+    exact: true,
+  };
+}
+
+export function parseGroupes(rows: Record<string, string>[], source: string, annee = new Date().getFullYear()): { groupes: Groupe[]; unmatched: number } {
   const groupes: Groupe[] = [];
   let unmatched = 0;
   for (const r of rows) {
     const cols = Object.keys(r);
+    if ("location_citycode" in r) {
+      const g = groupeSql(r, source, annee);
+      if (g === null) unmatched++;
+      else if (g !== "hors") groupes.push(g);
+      continue;
+    }
     const code = communeOf(r, cols);
     const g = (...res: RegExp[]) => {
       const c = findCol(cols, ...res);
@@ -247,6 +294,124 @@ export function dedupeBilanGa(b: Map<string, Bilan>): Map<string, Bilan> {
  * groupes actifs (5 actions ou plus) est compté commune par commune (code INSEE retrouvé par code postal et
  * ville), plus fiable que la répartition par code postal du bilan.
  */
+/** Groupe d'action actif : certifié (quand on le sait) et au moins 5 actions. */
+export const gaActif = (g: Groupe) => (g.actions != null ? g.actions >= 5 && g.certifie !== false : !/inactif|ferm|archiv/i.test(g.statut));
+
+/** Arrondissement de Paris, Lyon, Marseille : code de la ville ; sinon null. */
+const villePlm = (code: string) => plmInfo(code)?.parent ?? null;
+
+/** Ajoute aux villes de Paris, Lyon et Marseille le total de leurs arrondissements. */
+function avecVillesPlm(m: Map<string, number>): Map<string, number> {
+  const out = new Map(m);
+  for (const [k, v] of m) {
+    const p = villePlm(k);
+    if (p) out.set(p, (out.get(p) ?? 0) + v);
+  }
+  return out;
+}
+
+/** Code postal propre (« '42130 », « 01 000 », « 13OO5 ») ou null (adresse étrangère, saisie vide). */
+export function normCp(raw: unknown): string | null {
+  const s = String(raw ?? "").trim().replace(/^['"+,.\s]+/, "").replace(/(?<=\d)[oO](?=[\doO]*$)/g, "0").replace(/[oO](?=\d)/g, "0").replace(/\s+/g, "");
+  return /^\d{5}$/.test(s) && s !== "00000" ? s : null;
+}
+
+/** Export « code_commune, nb_events » (ou nb_actions) → actions par commune actuelle. */
+export function parseActionsCommunes(rows: Record<string, string>[]): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!rows.length) return out;
+  const cols = Object.keys(rows[0]);
+  const cCode = findCol(cols, /^code_?(commune|insee)$/i);
+  const cN = findCol(cols, /^nb_?(events|actions|evenements)$/i, /^(actions|events)$/i);
+  if (!cCode || !cN) return out;
+  for (const r of rows) {
+    const raw = String(r[cCode] ?? "").trim().toUpperCase().padStart(5, "0");
+    const n = num(r[cN]);
+    if (!/^\d[\dAB]\d{3}$/.test(raw) || !n) continue;
+    const k = communeActuelle(raw);
+    out.set(k, (out.get(k) ?? 0) + n);
+  }
+  return out;
+}
+
+/** Export des personnes « code_postal, nombre » → soutiens JLM2027 par code postal. */
+export function parseSoutiensCp(rows: Record<string, string>[]): { parCp: Map<string, number>; ignores: number; actions?: boolean } {
+  const parCp = new Map<string, number>();
+  let ignores = 0;
+  if (!rows.length) return { parCp, ignores };
+  const cols = Object.keys(rows[0]);
+  const cCp = findCol(cols, /code.?postal|^cp$|zip/i);
+  const cN = findCol(cols, /soutien|parrain/i, /^nb_/i, /nombre|count|total/i);
+  if (!cCp || !cN) return { parCp, ignores };
+  // « code_postal, nb_actions » : des actions par code postal, pas des soutiens.
+  if (/action|event/i.test(cN)) return { parCp, ignores, actions: true };
+  for (const r of rows) {
+    const n = num(r[cN]);
+    if (!n) continue;
+    const cp = normCp(r[cCp]);
+    if (!cp) {
+      ignores += n;
+      continue;
+    }
+    parCp.set(cp, (parCp.get(cp) ?? 0) + n);
+  }
+  return { parCp, ignores };
+}
+
+/**
+ * Soutiens par code postal → par commune : un code postal partagé entre plusieurs communes est réparti selon
+ * leur population (ces communes sont « estimées »). Arrondissements de Paris, Lyon, Marseille : leur code
+ * postal ; la ville reçoit le total de ses arrondissements.
+ */
+export function repartirSoutiens(parCp: Map<string, number>): { parCommune: Map<string, number>; estimees: Set<string> } {
+  const r = referentiel();
+  const membres = new Map<string, { code: string; pop: number }[]>();
+  for (const c of r.communes) {
+    if (c.type !== "commune-actuelle" && c.type !== "arrondissement-municipal") continue;
+    for (const cp of c.codesPostaux ?? []) membres.set(cp, [...(membres.get(cp) ?? []), { code: c.code, pop: c.population ?? 0 }]);
+  }
+  const parCommune = new Map<string, number>();
+  const estimees = new Set<string>();
+  for (const [cp, n] of parCp) {
+    let ms = membres.get(cp) ?? [];
+    // Ville à arrondissements : le code postal va à l'arrondissement, pas à la ville entière.
+    if (ms.some((m) => villePlm(m.code))) ms = ms.filter((m) => villePlm(m.code));
+    if (!ms.length) continue;
+    const tot = ms.reduce((s, m) => s + m.pop, 0);
+    for (const m of ms) {
+      const part = tot ? (n * m.pop) / tot : n / ms.length;
+      parCommune.set(m.code, (parCommune.get(m.code) ?? 0) + part);
+      if (ms.length > 1) estimees.add(m.code);
+    }
+  }
+  return { parCommune: avecVillesPlm(parCommune), estimees };
+}
+
+/**
+ * Exports d'Action Populaire déposés (actions par commune, soutiens par code postal, groupes avec code
+ * INSEE) : remplacent les chiffres correspondants du classeur du bilan. Le nombre d'inscrits reste celui du
+ * classeur ; une commune absente du classeur garde ses chiffres hors bilan (soutiens, actions).
+ */
+export function bilanDesExports(
+  b: Map<string, Bilan>,
+  o: { actions?: Map<string, number> | null; soutiens?: { parCommune: Map<string, number>; estimees: Set<string> } | null; groupes: Groupe[] },
+): Map<string, Bilan> {
+  const exacts = o.groupes.filter((g) => g.exact);
+  const ga = exacts.length >= 10 ? avecVillesPlm(exacts.filter(gaActif).reduce((m, g) => m.set(g.code, (m.get(g.code) ?? 0) + 1), new Map<string, number>())) : null;
+  if (!o.actions && !o.soutiens && !ga) return b;
+  const out = new Map<string, Bilan>();
+  for (const [k, x] of b) {
+    out.set(k, {
+      actions: o.actions ? (o.actions.get(k) ?? 0) : x.actions,
+      ga: ga ? (ga.get(k) ?? 0) : x.ga,
+      parrains: o.soutiens ? Math.round(o.soutiens.parCommune.get(k) ?? 0) : x.parrains,
+      inscrits: x.inscrits,
+      estime: o.soutiens ? o.soutiens.estimees.has(k) : x.estime,
+    });
+  }
+  return out;
+}
+
 export function gaFromGroupes(b: Map<string, Bilan>, groupes: Groupe[]): Map<string, Bilan> {
   const withActions = groupes.filter((g) => g.actions != null);
   if (withActions.length < 10) return b;
@@ -446,6 +611,37 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
   } catch {
     /* fichier absent */
   }
+  let actions: Map<string, number> | null = null;
+  try {
+    const m = new Map<string, number>();
+    for (const r of await readCsv(path.join(dir, "actions.csv"))) {
+      const v = num(r.actions);
+      if (r.code_insee && v != null) m.set(String(r.code_insee).trim(), v);
+    }
+    if (m.size) {
+      actions = avecVillesPlm(m);
+      out.actionsParCommune = actions;
+      out.files.push("actions.csv");
+    }
+  } catch {
+    /* fichier absent */
+  }
+  let soutiens: ReturnType<typeof repartirSoutiens> | null = null;
+  try {
+    const m = new Map<string, number>();
+    for (const r of await readCsv(path.join(dir, "soutiens-cp.csv"))) {
+      const v = num(r.soutiens);
+      if (r.code_postal && v != null) m.set(String(r.code_postal).trim(), v);
+    }
+    if (m.size) {
+      soutiens = repartirSoutiens(m);
+      // Les soutiens de l'export remplacent ceux du classeur et de parrains.csv.
+      for (const [k, v] of soutiens.parCommune) out.parrains.set(k, Math.round(v));
+      out.files.push("soutiens-cp.csv");
+    }
+  } catch {
+    /* fichier absent */
+  }
   for (const f of ["groupes.csv", "action-populaire.csv"]) {
     try {
       const p = parseGroupes(await readCsv(path.join(dir, f)), f);
@@ -459,6 +655,7 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
   }
   if (out.bilan) {
     out.bilan = gaFromGroupes(out.bilan, out.groupes);
+    out.bilan = bilanDesExports(out.bilan, { actions, soutiens, groupes: out.groupes });
     const t = { actions: 0, ga: 0, parrains: 0, inscrits: 0 };
     for (const x of out.bilan.values()) {
       t.actions += x.actions;
