@@ -10,8 +10,10 @@
  *       Jadot). 60 % volume (log des voix : des portes à frapper pour une journée de convoi), 40 % taux.
  *  2. Disponibilité militante (déficit) : peu d'actions et peu de soutiens JLM2027 pour 1 000 voix
  *     Mélenchon 2022, pas de groupe d'action actif. Plus la note est haute, plus il manque de militants.
- *  3. Circonscription serrée : écart projeté (fichier des négos) ou, à défaut, écart du 1er tour des
- *     législatives 2024 entre l'union de la gauche et le premier adversaire (provisoire).
+ *     Un groupe actif ailleurs dans l'intercommunalité peut venir : note réduite (couronnes des villes militantes).
+ *  3. Circonscription serrée : écart projeté (projections internes) ou, à défaut, écart du 1er tour des
+ *     législatives 2024 entre l'union de la gauche et le premier adversaire. Au-delà de 25 points
+ *     (circonscription très perdue ou très gagnée), la note est nulle.
  *
  * Chaque indicateur est converti en rang centile (0 à 100) parmi les communes classées : la note dit
  * « mieux que X % des communes », lisible et insensible aux valeurs extrêmes.
@@ -57,6 +59,8 @@ export interface Ligne {
   soutiensPour1000: number | null;
   ecartCirco: number | null;
   ecartSource: "negos" | "lg24" | null;
+  /** Groupes d'action actifs dans les autres communes de l'intercommunalité (null sans bilan). */
+  gaInterco: number | null;
   /** Mélenchon 2022 en part des exprimés. */
   melExpPct: number;
   /* Sous-notes du potentiel (0 à 100) */
@@ -155,10 +159,22 @@ export interface Options {
   negos?: Map<string, number> | null;
   /** Électeurs mobilisables par commune (modèle de Damien, Devoirs maison) : remplace le réservoir provisoire. */
   mobilisables?: Map<string, number> | null;
+  /** Intercommunalité (EPT à Paris et petite couronne) d'une commune. */
+  interco?: (code: string) => string | null;
 }
+
+/** Écart au-delà duquel une circonscription n'est plus « serrée » (note nulle). */
+export const ECART_MAX = 25;
 
 export function classer(cs: NatCommune[], o: Options): Ligne[] {
   const proxy = ecartsLg24(cs);
+  // Groupes actifs par intercommunalité (toutes les communes du bilan, classées ou non).
+  const gaParInterco = new Map<string, number>();
+  if (o.bilan && o.interco)
+    for (const [k, m] of o.bilan) {
+      const i = o.interco(k);
+      if (i && m.ga > 0) gaParInterco.set(i, (gaParInterco.get(i) ?? 0) + m.ga);
+    }
   const mob = o.mobilisables?.size ? o.mobilisables : null;
   const base = cs
     .filter((c) => c.pr22 && c.pr22.inscrits >= o.minInscrits && c.pr22.exprimes > 0 && (!mob || mob.has(c.code)))
@@ -170,6 +186,8 @@ export function classer(cs: NatCommune[], o: Options): Ligne[] {
       const reservoir = mob ? mob.get(c.code)! : abst * melPartVotants + 0.5 * p.gauche;
       const m = o.bilan ? (o.bilan.get(c.code) ?? { ga: 0, actions: 0, soutiens: 0 }) : null;
       const neg = c.circo ? o.negos?.get(c.circo) : undefined;
+      const ic = o.interco?.(c.code) ?? null;
+      const gaInterco = m && o.interco ? Math.max(0, (ic ? (gaParInterco.get(ic) ?? 0) : 0) - m.ga) : null;
       const prox = c.circo ? proxy.get(c.circo) : undefined;
       return {
         c,
@@ -195,6 +213,7 @@ export function classer(cs: NatCommune[], o: Options): Ligne[] {
           soutiensPour1000: m ? (1000 * m.soutiens) / Math.max(p.lfi, 1) : null,
           ecartCirco: neg ?? prox ?? null,
           ecartSource: neg != null ? ("negos" as const) : prox != null ? ("lg24" as const) : null,
+          gaInterco,
           melExpPct: (100 * p.lfi) / p.exprimes,
           noteVote: 0,
           noteReserve: 0,
@@ -216,9 +235,14 @@ export function classer(cs: NatCommune[], o: Options): Ligne[] {
   // Facteur 2 : déficit militant (moins d'actions, de soutiens, pas de groupe actif).
   const act = o.bilan ? centiles(base.map((b) => -Math.log1p(b.l.actionsPour1000!))) : null;
   const sou = o.bilan ? centiles(base.map((b) => -Math.log1p(b.l.soutiensPour1000!))) : null;
-  const f2 = o.bilan ? centiles(base.map((b, i) => 0.5 * act![i]! + 0.3 * sou![i]! + 0.2 * (b.l.ga ? 0 : 100))) : null;
-  // Facteur 3 : plus l'écart est faible, plus la note est haute.
-  const f3 = centiles(base.map((b) => (b.l.ecartCirco == null ? null : -Math.abs(b.l.ecartCirco))));
+  // Sans groupe dans la commune mais avec un groupe actif ailleurs dans l'interco : il peut venir, déficit réduit.
+  const f2 = o.bilan
+    ? centiles(base.map((b, i) => (0.5 * act![i]! + 0.3 * sou![i]! + 0.2 * (b.l.ga ? 0 : 100)) * (!b.l.ga && b.l.gaInterco ? 0.6 : 1)))
+    : null;
+  // Facteur 3 : plus l'écart est faible, plus la note est haute ; nulle au-delà de ECART_MAX points.
+  const f3 = centiles(base.map((b) => (b.l.ecartCirco == null ? null : -Math.abs(b.l.ecartCirco)))).map((v, i) =>
+    v != null && Math.abs(base[i].l.ecartCirco!) > ECART_MAX ? 0 : v,
+  );
   return base.map((b, i) => {
     const l: Ligne = { ...b.l, noteVote: vote[i]!, noteReserve: reserve[i]!, f1: f1[i]!, f2: f2 ? f2[i] : null, f3: f3[i] };
     return { ...l, raisons: raisons(l, !!mob) };
@@ -231,7 +255,8 @@ export function raisons(l: Ligne, mob: boolean): string[] {
   if (l.noteVote >= 75) r.push("vote LFI fort");
   else if (l.noteVote <= 30) r.push("vote LFI faible");
   if (l.noteReserve >= 75) r.push(mob ? "beaucoup de mobilisables" : "grosse réserve de voix");
-  if (l.ga === 0) r.push("aucun groupe d'action");
+  if (l.ga === 0 && l.gaInterco) r.push("groupe actif dans l'interco");
+  else if (l.ga === 0) r.push("aucun groupe d'action");
   else if (l.f2 != null && l.f2 >= 75) r.push("peu d'actions");
   if (l.ecartCirco != null && Math.abs(l.ecartCirco) <= 5) r.push("circo serrée");
   return r;

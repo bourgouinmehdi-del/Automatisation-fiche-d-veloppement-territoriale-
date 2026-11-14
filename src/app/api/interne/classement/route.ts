@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   try {
     negos = parseNegos(parseCsv(await fs.readFile(path.join(internalDir(), "negos.csv"), "utf8")));
   } catch {
-    /* pas de fichier des négos */
+    /* pas de fichier de projections */
   }
   let mobilisables: Map<string, number> | null = null;
   try {
@@ -32,8 +32,14 @@ export async function GET(req: Request) {
   }
   const ref = referentiel();
   const communes = fusionnerCommunes(nat.communes, communeActuelle, (k) => ref.byCode.get(k)?.nom);
-  const lignes = classer(communes, { minInscrits: min, bilan, negos, mobilisables }).map((l) => ({ ...l, depNom: ref.departements.get(l.dep)?.nom ?? l.dep, regNom: ref.regions.get(l.reg)?.nom ?? "" }));
-  return NextResponse.json({ job: natJob(), builtAt: nat.builtAt, communes: communes.length, bilan: !!bilan, negos: !!negos?.size, mobilisables: mobilisables?.size ?? 0, lignes });
+  const interco = (k: string) => ref.eptByCommune.get(k)?.code ?? ref.epciByCommune.get(k)?.code ?? null;
+  // Les écarts projetés par circonscription ne quittent pas le serveur : seule la note (rang) est envoyée.
+  const lignes = classer(communes, { minInscrits: min, bilan, negos, mobilisables, interco }).map(({ ecartCirco: _e, ecartSource: _s, ...l }) => ({
+    ...l,
+    depNom: ref.departements.get(l.dep)?.nom ?? l.dep,
+    regNom: ref.regions.get(l.reg)?.nom ?? "",
+  }));
+  return NextResponse.json({ job: natJob(), builtAt: nat.builtAt, communes: communes.length, bilan: !!bilan, mobilisables: mobilisables?.size ?? 0, lignes });
 }
 
 /** Lance (ou relance) la construction du jeu de données national, en tâche de fond. */

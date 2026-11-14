@@ -159,3 +159,36 @@ describe("communes nouvelles", () => {
     expect(n.circo).toBe("99-05");
   });
 });
+
+describe("convois : interco et circonscriptions très perdues ou gagnées", () => {
+  const villes = [
+    C("99031", 8000, 5000, 1500, 300, "99-07", 1000, 1050), // circo serrée
+    C("99032", 8000, 5000, 1500, 300, "99-08", 2500, 500), // circo très gagnée
+    C("99033", 8000, 5000, 1500, 300, "99-07", 1000, 1050),
+    C("99034", 8000, 5000, 600, 300, "99-07", 1000, 1050),
+  ];
+  it("un groupe actif ailleurs dans l'interco réduit le déficit militant", () => {
+    const bilan = new Map([
+      ["99031", { ga: 0, actions: 0, soutiens: 10 }],
+      ["99033", { ga: 0, actions: 0, soutiens: 10 }],
+      ["99034", { ga: 2, actions: 50, soutiens: 80 }],
+      ["99099", { ga: 1, actions: 30, soutiens: 20 }], // commune voisine non classée
+    ]);
+    const interco = (k: string) => (k === "99031" || k === "99099" ? "EPCI-A" : k === "99034" ? "EPCI-B" : "EPCI-C");
+    const l = classer(villes, { minInscrits: 1000, bilan, interco });
+    const a = l.find((x) => x.code === "99031")!;
+    const b = l.find((x) => x.code === "99033")!;
+    expect(a.gaInterco).toBe(1);
+    expect(b.gaInterco).toBe(0);
+    expect(l.find((x) => x.code === "99034")!.gaInterco).toBe(0);
+    expect(a.raisons).toContain("groupe actif dans l'interco");
+    const sans = classer(villes, { minInscrits: 1000, bilan });
+    expect(a.f2!).toBeLessThan(sans.find((x) => x.code === "99031")!.f2!);
+  });
+  it("note circo nulle au-delà de 25 points d'écart", () => {
+    const l = classer(villes, { minInscrits: 1000 });
+    expect(Math.abs(l.find((x) => x.code === "99032")!.ecartCirco!)).toBeGreaterThan(25);
+    expect(l.find((x) => x.code === "99032")!.f3).toBe(0);
+    expect(l.find((x) => x.code === "99031")!.f3).toBeGreaterThan(0);
+  });
+});

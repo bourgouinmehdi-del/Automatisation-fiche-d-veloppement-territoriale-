@@ -53,7 +53,7 @@ const KINDS: { id: string; title: string; help: string; xlsx?: boolean }[] = [
   },
   {
     id: "negos",
-    title: "Projections des négos par circonscription",
+    title: "Projections par circonscription",
     help: "Une ligne par circonscription (code « 57-06 », ou colonnes département et numéro) et une colonne d'écart projeté en points (écart, marge, diff…). Sert au facteur « circonscription serrée » du classement national.",
     xlsx: true,
   },
