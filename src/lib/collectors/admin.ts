@@ -96,6 +96,24 @@ export function referentiel() {
 
 export const POPULATION_VINTAGE = "2023";
 
+/**
+ * Commune actuelle d'un code INSEE : une ancienne commune devenue déléguée ou associée (fusion en commune
+ * nouvelle, ex. deux villes fusionnées en 2025) renvoie au code de sa commune nouvelle. Les fichiers de
+ * résultats et certains fichiers internes gardent l'ancien code.
+ */
+export function communeActuelle(code: string): string {
+  const c = referentiel().byCode.get(code);
+  return c && c.type !== "commune-actuelle" && c.chefLieu && c.chefLieu !== code ? c.chefLieu : code;
+}
+
+/** Anciennes communes (déléguées ou associées) fondues dans une commune nouvelle. */
+export function anciennesCommunes(code: string): string[] {
+  const r = referentiel();
+  const out = new Set<string>();
+  for (const c of r.communes) if ((c.type === "commune-deleguee" || c.type === "commune-associee") && c.chefLieu === code && c.code !== code && r.byCode.get(c.code)?.type !== "commune-actuelle") out.add(c.code);
+  return [...out];
+}
+
 export interface CommuneCandidate {
   code: string;
   nom: string;

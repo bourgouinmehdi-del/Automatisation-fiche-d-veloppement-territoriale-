@@ -1,4 +1,5 @@
 import { plmBvKey, plmInfo } from "./plm";
+import { anciennesCommunes, communeActuelle } from "./admin";
 import { createReadStream, promises as fsp } from "node:fs";
 import { cachedExtract, heavyLane } from "../runtime";
 import Papa from "papaparse";
@@ -455,7 +456,9 @@ async function departmentRowsFresh(http: TrackedHttp, e: ElectionConfig, dep: st
 /** Résultats de la commune et du département (avec le détail par commune). */
 export async function collectElection(http: TrackedHttp, e: ElectionConfig, codeInsee: string, dep: string): Promise<ElectionResult[]> {
   const d = await departmentRows(http, e, dep, "commune");
-  let comRows = d.rows.filter((r) => rowCode(r, d.c, dep) === codeInsee);
+  // Commune nouvelle : les résultats des anciennes communes (publiés à leur ancien code) s'ajoutent.
+  const codes = new Set([codeInsee, ...anciennesCommunes(codeInsee)]);
+  let comRows = d.rows.filter((r) => codes.has(rowCode(r, d.c, dep)));
   // Arrondissement de Paris, Lyon ou Marseille absent du fichier par commune :
   // résultats reconstitués à partir des bureaux de la ville situés dans l'arrondissement.
   const plm = plmInfo(codeInsee);
@@ -481,7 +484,7 @@ function departementResult(e: ElectionConfig, dep: string, d: Awaited<ReturnType
   if (!a2) return null;
   const groups = new Map<string, Record<string, unknown>[]>();
   for (const r of d.rows) {
-    const k = rowCode(r, d.c, dep);
+    const k = communeActuelle(rowCode(r, d.c, dep));
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k)!.push(r);
   }

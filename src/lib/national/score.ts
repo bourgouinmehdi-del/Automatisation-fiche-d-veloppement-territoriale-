@@ -108,6 +108,47 @@ export function ecartsLg24(cs: NatCommune[]): Map<string, number> {
   return out;
 }
 
+/**
+ * Communes nouvelles : le jeu national (construit avant la correction) garde parfois l'ancienne commune à part,
+ * sans circonscription ni bilan militant (rattachés à la commune nouvelle). On additionne ses résultats à ceux
+ * de la commune nouvelle ; nom et circonscription sont ceux de la commune nouvelle.
+ */
+export function fusionnerCommunes(cs: NatCommune[], actuelle: (code: string) => string, nomDe?: (code: string) => string | undefined): NatCommune[] {
+  const groupes = new Map<string, NatCommune[]>();
+  for (const c of cs) {
+    const k = actuelle(c.code);
+    groupes.set(k, [...(groupes.get(k) ?? []), c]);
+  }
+  const out: NatCommune[] = [];
+  for (const [k, g] of groupes) {
+    if (g.length === 1 && g[0].code === k) {
+      out.push(g[0]);
+      continue;
+    }
+    const tete = g.find((c) => c.code === k) ?? [...g].sort((a, b) => (b.pr22?.inscrits ?? 0) - (a.pr22?.inscrits ?? 0))[0];
+    const somme = <T extends Record<string, number>>(xs: (T | null)[]): T | null => {
+      const ok = xs.filter((x): x is T => !!x);
+      if (!ok.length) return null;
+      const r = {} as Record<string, number>;
+      for (const x of ok) for (const [f, v] of Object.entries(x)) r[f] = (r[f] ?? 0) + v;
+      return r as T;
+    };
+    const lg = g.map((c) => c.lg24).filter((x): x is NonNullable<NatCommune["lg24"]> => !!x);
+    out.push({
+      ...tete,
+      code: k,
+      nom: nomDe?.(k) ?? tete.nom,
+      pop: g.reduce((s, c) => s + (c.pop ?? 0), 0) || null,
+      circo: tete.circo ?? g.find((c) => c.circo)?.circo ?? null,
+      circoPart: tete.circo ? tete.circoPart : (g.find((c) => c.circo)?.circoPart ?? null),
+      pr22: somme(g.map((c) => c.pr22)),
+      eu24: somme(g.map((c) => c.eu24)),
+      lg24: lg.length ? { inscrits: lg.reduce((s, x) => s + x.inscrits, 0), exprimes: lg.reduce((s, x) => s + x.exprimes, 0), nfp: lg.reduce((s, x) => s + x.nfp, 0), adv: somme(lg.map((x) => x.adv))! } : null,
+    });
+  }
+  return out;
+}
+
 export interface Options {
   minInscrits: number;
   bilan?: Map<string, Militant> | null;
