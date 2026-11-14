@@ -2,15 +2,16 @@
  * Classement national des communes (commande de Menal) : trois facteurs notés sur 100, pondérables.
  *
  *  1. Potentiel pour un convoi, à parts égales :
- *     - vote insoumis : Mélenchon 2022 et européennes 2024, en part des exprimés (une commune où LFI est
- *       faible ne doit pas finir en tête sur la seule réserve de voix, retour sur une petite commune
- *       classée première mais « terrain difficile » sur sa fiche) ;
+ *     - vote insoumis : moitié taux (Mélenchon 2022 et européennes 2024, en part des exprimés), moitié
+ *       volume (voix Mélenchon 2022, échelle logarithmique : un village à 27 % n'offre pas les portes d'une
+ *       ville au même score) ; une commune où LFI est faible ne doit pas finir en tête sur la seule
+ *       réserve de voix, et un vote Mélenchon nettement sous celui du département réduit le potentiel ;
  *     - réserve de voix : électeurs mobilisables du modèle de Damien, ou à défaut réservoir provisoire
  *       (abstentionnistes de 2022 × part de Mélenchon chez les votants + moitié des voix Roussel, Hidalgo,
  *       Jadot). 60 % volume (log des voix : des portes à frapper pour une journée de convoi), 40 % taux.
  *  2. Disponibilité militante (déficit) : peu d'actions et peu de soutiens JLM2027 pour 1 000 voix
  *     Mélenchon 2022, pas de groupe d'action actif. Plus la note est haute, plus il manque de militants.
- *     Un groupe actif ailleurs dans l'intercommunalité peut venir : note réduite (couronnes des villes militantes).
+ *     Un groupe actif à moins de 15 km (à défaut, ailleurs dans l'intercommunalité) peut venir : note réduite.
  *  3. Circonscription serrée : écart projeté (projections internes) ou, à défaut, écart du 1er tour des
  *     législatives 2024 entre l'union de la gauche et le premier adversaire. Au-delà de 25 points
  *     (circonscription très perdue ou très gagnée), la note est nulle.
@@ -59,8 +60,12 @@ export interface Ligne {
   soutiensPour1000: number | null;
   ecartCirco: number | null;
   ecartSource: "negos" | "lg24" | null;
-  /** Groupes d'action actifs dans les autres communes de l'intercommunalité (null sans bilan). */
+  /** Groupes d'action actifs proches, hors commune : à moins de 15 km, à défaut dans l'interco (null sans bilan). */
   gaInterco: number | null;
+  /** Comment ces groupes proches sont comptés. */
+  gaVoisinage: "15km" | "interco" | null;
+  /** Vote Mélenchon 2022 nettement sous celui du département (moins de 85 %). */
+  sousDep: boolean;
   /** Mélenchon 2022 en part des exprimés. */
   melExpPct: number;
   /* Sous-notes du potentiel (0 à 100) */
@@ -161,6 +166,35 @@ export interface Options {
   mobilisables?: Map<string, number> | null;
   /** Intercommunalité (EPT à Paris et petite couronne) d'une commune. */
   interco?: (code: string) => string | null;
+  /** Groupes actifs à moins de 15 km d'une commune (hors commune) ; commune absente : repli sur l'interco. */
+  gaProches?: Map<string, number> | null;
+}
+
+/** Rayon dans lequel un groupe actif peut venir aider une commune sans groupe. */
+export const RAYON_KM = 15;
+
+/**
+ * Groupes actifs à moins de `rayon` km du centre de chaque commune, sans compter ceux de la commune elle-même.
+ * Remplace l'intercommunalité, trompeuse dans les grandes métropoles (un groupe de Marseille n'est pas à côté
+ * d'une commune du pays d'Aix).
+ */
+export function groupesProches(centres: Map<string, [number, number]>, groupes: { code: string; lon: number; lat: number }[], rayon = RAYON_KM): Map<string, number> {
+  const out = new Map<string, number>();
+  const R = 6371;
+  const dLat = rayon / 111;
+  for (const [code, [lon, lat]] of centres) {
+    const dLon = rayon / (111 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
+    let n = 0;
+    for (const g of groupes) {
+      if (g.code === code || Math.abs(g.lat - lat) > dLat || Math.abs(g.lon - lon) > dLon) continue;
+      const p1 = (lat * Math.PI) / 180;
+      const p2 = (g.lat * Math.PI) / 180;
+      const a = Math.sin((p2 - p1) / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin((((g.lon - lon) * Math.PI) / 180) / 2) ** 2;
+      if (2 * R * Math.asin(Math.sqrt(a)) <= rayon) n++;
+    }
+    out.set(code, n);
+  }
+  return out;
 }
 
 /** Écart au-delà duquel une circonscription n'est plus « serrée » (note nulle). */
@@ -168,6 +202,15 @@ export const ECART_MAX = 25;
 
 export function classer(cs: NatCommune[], o: Options): Ligne[] {
   const proxy = ecartsLg24(cs);
+  // Vote Mélenchon 2022 de chaque département (communes du jeu national).
+  const depAgg = new Map<string, { lfi: number; exp: number }>();
+  for (const c of cs) {
+    if (!c.pr22) continue;
+    const a = depAgg.get(c.dep) ?? { lfi: 0, exp: 0 };
+    a.lfi += c.pr22.lfi;
+    a.exp += c.pr22.exprimes;
+    depAgg.set(c.dep, a);
+  }
   // Groupes actifs par intercommunalité (toutes les communes du bilan, classées ou non).
   const gaParInterco = new Map<string, number>();
   if (o.bilan && o.interco)
@@ -187,7 +230,11 @@ export function classer(cs: NatCommune[], o: Options): Ligne[] {
       const m = o.bilan ? (o.bilan.get(c.code) ?? { ga: 0, actions: 0, soutiens: 0 }) : null;
       const neg = c.circo ? o.negos?.get(c.circo) : undefined;
       const ic = o.interco?.(c.code) ?? null;
-      const gaInterco = m && o.interco ? Math.max(0, (ic ? (gaParInterco.get(ic) ?? 0) : 0) - m.ga) : null;
+      const proche = o.gaProches?.get(c.code);
+      const gaVoisinage = !m ? null : proche != null ? ("15km" as const) : o.interco ? ("interco" as const) : null;
+      const gaInterco = !m ? null : proche != null ? proche : o.interco ? Math.max(0, (ic ? (gaParInterco.get(ic) ?? 0) : 0) - m.ga) : null;
+      const d = depAgg.get(c.dep);
+      const sousDep = !!d && d.exp > 0 && p.lfi / p.exprimes < 0.85 * (d.lfi / d.exp);
       const prox = c.circo ? proxy.get(c.circo) : undefined;
       return {
         c,
@@ -214,6 +261,8 @@ export function classer(cs: NatCommune[], o: Options): Ligne[] {
           ecartCirco: neg ?? prox ?? null,
           ecartSource: neg != null ? ("negos" as const) : prox != null ? ("lg24" as const) : null,
           gaInterco,
+          gaVoisinage,
+          sousDep,
           melExpPct: (100 * p.lfi) / p.exprimes,
           noteVote: 0,
           noteReserve: 0,
@@ -227,11 +276,14 @@ export function classer(cs: NatCommune[], o: Options): Ligne[] {
   // Facteur 1 : vote insoumis (présidentielle 2022, européennes 2024) et réserve de voix (volume, taux).
   const mel = centiles(base.map((b) => b.l.melExpPct));
   const eu = centiles(base.map((b) => (b.c.eu24 && b.c.eu24.exprimes ? b.c.eu24.lfi / b.c.eu24.exprimes : null)));
-  const vote = centiles(base.map((_, i) => (eu[i] == null ? mel[i]! : 0.6 * mel[i]! + 0.4 * eu[i]!)));
+  const taux = centiles(base.map((_, i) => (eu[i] == null ? mel[i]! : 0.6 * mel[i]! + 0.4 * eu[i]!)));
+  const voix = centiles(base.map((b) => Math.log1p(b.c.pr22!.lfi)));
+  const vote = centiles(base.map((_, i) => 0.5 * taux[i]! + 0.5 * voix[i]!));
   const vol = centiles(base.map((b) => Math.log1p(b.reservoir)));
-  const taux = centiles(base.map((b) => b.l.reservoirPct));
-  const reserve = centiles(base.map((_, i) => 0.6 * vol[i]! + 0.4 * taux[i]!));
-  const f1 = centiles(base.map((_, i) => 0.5 * vote[i]! + 0.5 * reserve[i]!));
+  const tauxRes = centiles(base.map((b) => b.l.reservoirPct));
+  const reserve = centiles(base.map((_, i) => 0.6 * vol[i]! + 0.4 * tauxRes[i]!));
+  // Vote Mélenchon nettement sous le département : « terrain difficile » sur la fiche, potentiel réduit d'un quart.
+  const f1 = centiles(base.map((b, i) => (0.5 * vote[i]! + 0.5 * reserve[i]!) * (b.l.sousDep ? 0.75 : 1)));
   // Facteur 2 : déficit militant (moins d'actions, de soutiens, pas de groupe actif).
   const act = o.bilan ? centiles(base.map((b) => -Math.log1p(b.l.actionsPour1000!))) : null;
   const sou = o.bilan ? centiles(base.map((b) => -Math.log1p(b.l.soutiensPour1000!))) : null;
@@ -252,11 +304,12 @@ export function classer(cs: NatCommune[], o: Options): Ligne[] {
 /** Quelques mots sur ce qui fait ressortir (ou freine) la commune. */
 export function raisons(l: Ligne, mob: boolean): string[] {
   const r: string[] = [];
-  if (l.noteVote >= 75) r.push("vote LFI fort");
+  if (l.sousDep) r.push("vote LFI sous le département");
+  else if (l.noteVote >= 75) r.push("vote LFI fort");
   else if (l.noteVote <= 30) r.push("vote LFI faible");
   if (l.noteReserve >= 75) r.push(mob ? "beaucoup à remobiliser" : "grosse réserve de voix");
-  if (l.ga === 0 && l.gaInterco) r.push("groupe actif dans l'interco");
-  else if (l.ga === 0) r.push("aucun groupe d'action");
+  if (l.ga === 0 && l.gaInterco) r.push(l.gaVoisinage === "15km" ? `groupe actif à moins de ${RAYON_KM} km` : "groupe actif dans l'interco");
+  else if (l.ga === 0) r.push("aucun groupe actif");
   else if (l.f2 != null && l.f2 >= 75) r.push("peu d'actions");
   if (l.ecartCirco != null && Math.abs(l.ecartCirco) <= 5) r.push("circo serrée");
   return r;

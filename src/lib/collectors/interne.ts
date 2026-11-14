@@ -49,6 +49,48 @@ export interface Groupe {
   source?: string;
   /** Commune donnée par son code INSEE (export SQL des groupes) : décompte des groupes actifs fiable partout. */
   exact?: boolean;
+  /** Position du groupe (export SQL, colonne coordinates). */
+  lon?: number;
+  lat?: number;
+}
+
+/**
+ * Point WKB tel que l'export SQL l'écrit (représentation Python d'octets, parfois échappée deux fois :
+ * « b'\\x01\\x01…' ») → [lon, lat] ; null si illisible.
+ */
+export function pointWkb(raw: unknown): [number, number] | null {
+  const s = String(raw ?? "").trim();
+  const m = s.match(/^b(['"])([\s\S]*)\1$/);
+  if (!m) return null;
+  let inner = m[2];
+  if (inner.includes("\\\\x")) inner = inner.replace(/\\\\/g, "\\");
+  const out: number[] = [];
+  const esc: Record<string, number> = { n: 10, r: 13, t: 9, "\\": 92, "'": 39, '"': 34 };
+  for (let i = 0; i < inner.length; ) {
+    const c = inner[i];
+    if (c === "\\" && i + 1 < inner.length) {
+      const n = inner[i + 1];
+      if (n === "x") {
+        out.push(parseInt(inner.slice(i + 2, i + 4), 16));
+        i += 4;
+      } else {
+        out.push(esc[n] ?? n.charCodeAt(0));
+        i += 2;
+      }
+    } else {
+      out.push(c.charCodeAt(0) & 0xff);
+      i++;
+    }
+  }
+  const b = Buffer.from(out);
+  if (b.length < 21) return null;
+  const le = b[0] === 1;
+  const type = le ? b.readUInt32LE(1) : b.readUInt32BE(1);
+  const off = type & 0x20000000 ? 9 : 5;
+  if ((type & 0xff) !== 1 || b.length < off + 16) return null;
+  const lon = le ? b.readDoubleLE(off) : b.readDoubleBE(off);
+  const lat = le ? b.readDoubleLE(off + 8) : b.readDoubleBE(off + 8);
+  return Number.isFinite(lon) && Number.isFinite(lat) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? [lon, lat] : null;
 }
 
 /** Bilan militant d'une commune (estimations pour les petites communes). */
@@ -153,7 +195,9 @@ function groupeSql(r: Record<string, string>, source: string, annee: number): Gr
   let col = "";
   for (let y = annee; y >= annee - 3 && !col; y--) if (`organized_events_${y}` in r) col = `organized_events_${y}`;
   const date = (v: unknown) => String(v ?? "").slice(0, 10) || undefined;
+  const pt = pointWkb(r.coordinates);
   return {
+    ...(pt ? { lon: pt[0], lat: pt[1] } : {}),
     code,
     nom,
     membres: num(r.members_count),

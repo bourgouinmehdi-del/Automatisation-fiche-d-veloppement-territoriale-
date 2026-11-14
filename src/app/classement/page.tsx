@@ -43,7 +43,7 @@ const TON: Record<string, string> = {
   "beaucoup à remobiliser": "bg-[var(--tag-atout-bg)] text-[var(--tag-atout)]",
   "grosse réserve de voix": "bg-[var(--tag-atout-bg)] text-[var(--tag-atout)]",
   "circo serrée": "bg-[var(--accent-soft)] text-[var(--accent-strong)]",
-  "aucun groupe d'action": "bg-[var(--tag-vigilance-bg)] text-[var(--mark)]",
+  "aucun groupe actif": "bg-[var(--tag-vigilance-bg)] text-[var(--mark)]",
   "peu d'actions": "bg-[var(--tag-vigilance-bg)] text-[var(--mark)]",
 };
 
@@ -129,7 +129,7 @@ export default function ClassementNational() {
   }, [data, reg, dep, top, metro, parCirco, poids.p, poids.m, poids.c]);
 
   const exporter = () => {
-    const head = ["rang", "code_insee", "commune", "departement", "inscrits", "score", "note_potentiel", "note_militante", "note_circo", "note_vote_lfi", "note_reserve", "reservoir_voix", "reservoir_pct_inscrits", "melenchon_2022_pct_exprimes", "melenchon_2022_pct_inscrits", "ga_actifs", "ga_actifs_interco", "actions", "soutiens", "circo", "pourquoi", "aussi_dans_la_circo"];
+    const head = ["rang", "code_insee", "commune", "departement", "inscrits", "score", "note_potentiel", "note_militante", "note_circo", "note_vote_lfi", "note_reserve", "reservoir_voix", "reservoir_pct_inscrits", "melenchon_2022_pct_exprimes", "melenchon_2022_pct_inscrits", "ga_actifs", "ga_actifs_proches", "actions", "soutiens", "circo", "pourquoi", "aussi_dans_la_circo"];
     const rows = classees.map(({ l, s, voisines }, i) =>
       [i + 1, l.code, l.nom, l.depNom, l.inscrits, s.toFixed(1), l.f1.toFixed(0), l.f2?.toFixed(0) ?? "", l.f3?.toFixed(0) ?? "", l.noteVote.toFixed(0), l.noteReserve.toFixed(0), l.reservoir, l.reservoirPct.toFixed(1), l.melExpPct.toFixed(1), l.melPct.toFixed(1), l.ga ?? "", l.gaInterco ?? "", l.actions ?? "", l.soutiens ?? "", l.circo ?? "", l.raisons.join(", "), voisines.join(", ")].join(";"),
     );
@@ -199,7 +199,7 @@ export default function ClassementNational() {
             {(
               [
                 ["p", "Potentiel électoral", `À parts égales : le vote insoumis (2022, 2024) et ${data.mobilisables ? "les électeurs mobilisables du modèle de Damien" : "une réserve de voix provisoire"}.`],
-                ["m", "Disponibilité militante", data.bilan ? "Peu d'actions et de soutiens JLM2027 pour 1 000 voix Mélenchon, pas de groupe d'action actif dans la commune ni dans l'intercommunalité." : "Bilan militant absent : facteur désactivé."],
+                ["m", "Disponibilité militante", data.bilan ? "Peu d'actions et de soutiens JLM2027 pour 1 000 voix Mélenchon, pas de groupe d'action actif dans la commune ni à moins de 15 km." : "Bilan militant absent : facteur désactivé."],
                 ["c", "Circonscription serrée", "Plus l'écart entre la gauche et le premier adversaire est faible, plus la note est haute ; nulle au-delà de 25 points."],
               ] as const
             ).map(([k, t, d]) => (
@@ -382,10 +382,10 @@ export default function ClassementNational() {
               Chaque facteur est une note de 0 à 100 : le rang de la commune parmi les communes classées (50 = au milieu). Le score est la moyenne des notes pondérée par les curseurs ; un facteur sans données ne compte pas.
             </p>
             <p>
-              <b>Potentiel électoral</b>, à parts égales. D&apos;une part le vote insoumis : Mélenchon 2022 (60 %) et européennes 2024 (40 %), en part des exprimés, comme sur les fiches. D&apos;autre part la réserve de voix : si l&apos;export de Damien est déposé, ses électeurs mobilisables (électeurs qui votent d&apos;habitude et penchent à gauche, mais risquent de s&apos;abstenir en 2027) ; sinon, à titre provisoire, abstentionnistes de la présidentielle 2022 × part de Mélenchon chez les votants de la commune, plus la moitié des voix Roussel, Hidalgo et Jadot. La réserve compte pour 60 % en volume (échelle logarithmique : il faut assez de portes pour une journée de convoi, sans laisser gagner toujours les plus grandes villes) et 40 % en part des inscrits. Une commune où LFI est faible ne passe donc plus en tête sur sa seule réserve.
+              <b>Potentiel électoral</b>, à parts égales. D&apos;une part le vote insoumis : moitié pourcentage (Mélenchon 2022 pour 60 %, européennes 2024 pour 40 %, en part des exprimés, comme sur les fiches), moitié nombre de voix Mélenchon 2022 (il faut assez de portes pour une journée de convoi). Une commune où Mélenchon a fait nettement moins que dans son département (moins de 85 % de son score) perd un quart de sa note de potentiel : c'est un « terrain difficile » sur la fiche. D&apos;autre part la réserve de voix : si l&apos;export de Damien est déposé, ses électeurs mobilisables (électeurs qui votent d&apos;habitude et penchent à gauche, mais risquent de s&apos;abstenir en 2027) ; sinon, à titre provisoire, abstentionnistes de la présidentielle 2022 × part de Mélenchon chez les votants de la commune, plus la moitié des voix Roussel, Hidalgo et Jadot. La réserve compte pour 60 % en volume (échelle logarithmique : il faut assez de portes pour une journée de convoi, sans laisser gagner toujours les plus grandes villes) et 40 % en part des inscrits. Une commune où LFI est faible ne passe donc plus en tête sur sa seule réserve.
             </p>
             <p>
-              <b>Disponibilité militante</b> : actions recensées (50 %) et soutiens JLM2027 (30 %) pour 1 000 voix Mélenchon 2022, moins il y en a plus la note est haute ; pas de groupe d&apos;action actif (20 %). Une commune sans groupe mais avec un groupe actif ailleurs dans son intercommunalité garde 60 % de sa note : ce groupe peut venir.
+              <b>Disponibilité militante</b> : actions recensées (50 %) et soutiens JLM2027 (30 %) pour 1 000 voix Mélenchon 2022, moins il y en a plus la note est haute ; pas de groupe d&apos;action actif (20 %). Une commune sans groupe mais avec un groupe actif à moins de 15 km (à défaut, dans son intercommunalité) garde 60 % de sa note : ce groupe peut venir.
             </p>
             <p>
               <b>Circonscription serrée</b> : plus l&apos;écart entre l&apos;union de la gauche et le premier adversaire est faible, plus la note est haute ; au-delà de 25 points, la note est nulle. Une commune partagée entre plusieurs circonscriptions prend celle qui couvre la plus grande partie de son territoire.
