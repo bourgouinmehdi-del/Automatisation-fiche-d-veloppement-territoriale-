@@ -75,7 +75,7 @@ describe("potentiel pour un convoi", () => {
     expect(a.noteReserve).toBeGreaterThan(b.noteReserve);
     expect(b.noteVote).toBeGreaterThan(a.noteVote);
     expect(b.f1).toBeGreaterThanOrEqual(a.f1);
-    expect(a.raisons).toContain("vote LFI faible");
+    expect(a.raisons).toContain("vote LFI sous le département");
     expect(a.raisons).toContain("beaucoup à remobiliser");
     expect(b.raisons).toContain("vote LFI fort");
     // Mélenchon en part des exprimés, comme sur les fiches.
@@ -87,7 +87,7 @@ describe("potentiel pour un convoi", () => {
     const b = l.find((x) => x.code === "99012")!;
     expect(b.actionsPour1000).toBeCloseTo(10);
     expect(b.soutiensPour1000).toBeCloseTo(20);
-    expect(l.find((x) => x.code === "99011")!.raisons).toContain("aucun groupe d'action");
+    expect(l.find((x) => x.code === "99011")!.raisons).toContain("aucun groupe actif");
   });
   it("réserve de gauche signalée sur la fiche seulement quand elle est forte", async () => {
     const { mobilisablesRepere } = await import("@/lib/report/lfi");
@@ -190,5 +190,62 @@ describe("convois : interco et circonscriptions très perdues ou gagnées", () =
     expect(Math.abs(l.find((x) => x.code === "99032")!.ecartCirco!)).toBeGreaterThan(25);
     expect(l.find((x) => x.code === "99032")!.f3).toBe(0);
     expect(l.find((x) => x.code === "99031")!.f3).toBeGreaterThan(0);
+  });
+});
+
+describe("convois : volume de voix, département, groupes à moins de 15 km", () => {
+  it("à pourcentage égal, la commune qui a le plus de voix a une meilleure note de vote", () => {
+    const petit = C("99041", 2500, 1600, 400, 50, "99-11", 500, 520);
+    const grand = C("99042", 25000, 16000, 4000, 500, "99-12", 5000, 5200);
+    const autre = C("99043", 8000, 5000, 900, 200, "99-13", 1500, 1500);
+    const l = classer([petit, grand, autre], { minInscrits: 1000 });
+    expect(l.find((x) => x.code === "99042")!.noteVote).toBeGreaterThan(l.find((x) => x.code === "99041")!.noteVote);
+  });
+  it("vote Mélenchon nettement sous le département : potentiel réduit et raison affichée", () => {
+    // Même département 99 : 99051 vote très peu LFI par rapport aux autres.
+    const vs = [C("99051", 8000, 5000, 400, 900, "99-14", 1500, 1500), C("99052", 8000, 5000, 1600, 200, "99-14", 1500, 1500), C("99053", 8000, 5000, 1500, 200, "99-15", 1500, 1500)];
+    const l = classer(vs, { minInscrits: 1000 });
+    const a = l.find((x) => x.code === "99051")!;
+    expect(a.sousDep).toBe(true);
+    expect(a.raisons).toContain("vote LFI sous le département");
+    expect(l.find((x) => x.code === "99052")!.sousDep).toBe(false);
+  });
+  it("groupes actifs à moins de 15 km, hors commune ; prioritaire sur l'interco", async () => {
+    const { groupesProches } = await import("@/lib/national/score");
+    const centres = new Map<string, [number, number]>([
+      ["99061", [2.0, 48.0]],
+      ["99062", [2.5, 48.0]], // ~37 km à l'est
+    ]);
+    const gs = [
+      { code: "99061", lon: 2.0, lat: 48.0 }, // dans la commune : ne compte pas pour elle
+      { code: "99063", lon: 2.1, lat: 48.05 }, // ~9 km de 99061
+      { code: "99064", lon: 2.9, lat: 48.0 }, // loin de tout
+    ];
+    const p = groupesProches(centres, gs);
+    expect(p.get("99061")).toBe(1);
+    expect(p.get("99062")).toBe(0);
+    const v = [C("99061", 8000, 5000, 1500, 300, "99-16", 1000, 1050), C("99062", 8000, 5000, 1500, 300, "99-17", 1000, 1050)];
+    const bilan = new Map([
+      ["99061", { ga: 0, actions: 0, soutiens: 5 }],
+      ["99062", { ga: 0, actions: 0, soutiens: 5 }],
+    ]);
+    const l = classer(v, { minInscrits: 1000, bilan, interco: () => "EPCI", gaProches: p });
+    const a = l.find((x) => x.code === "99061")!;
+    expect(a.gaVoisinage).toBe("15km");
+    expect(a.raisons).toContain("groupe actif à moins de 15 km");
+    expect(l.find((x) => x.code === "99062")!.raisons).toContain("aucun groupe actif");
+  });
+  it("position des groupes lue dans l'export SQL (point WKB)", async () => {
+    const { pointWkb } = await import("@/lib/collectors/interne");
+    // Point fictif (2.5, 48.5), écrit comme dans l'export : octets en représentation Python, échappés deux fois.
+    const b = Buffer.alloc(21);
+    b[0] = 1;
+    b.writeUInt32LE(1, 1);
+    b.writeDoubleLE(2.5, 5);
+    b.writeDoubleLE(48.5, 13);
+    const repr = "b'" + [...b].map((x) => "\\\\x" + x.toString(16).padStart(2, "0")).join("") + "'";
+    expect(pointWkb(repr)).toEqual([2.5, 48.5]);
+    expect(pointWkb(repr.replace(/\\\\\\\\/g, "\\\\"))).toEqual([2.5, 48.5]);
+    expect(pointWkb("")).toBeNull();
   });
 });

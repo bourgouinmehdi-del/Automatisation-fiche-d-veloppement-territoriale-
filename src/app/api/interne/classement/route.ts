@@ -1,10 +1,23 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { internalDir, loadInternalData, parseCsv } from "@/lib/collectors/interne";
-import { communeActuelle, referentiel } from "@/lib/collectors/admin";
+import { gaActif, internalDir, loadInternalData, parseCsv } from "@/lib/collectors/interne";
+import { communeActuelle, franceCentres, referentiel } from "@/lib/collectors/admin";
+import { TrackedHttp } from "@/lib/collectors/context";
 import { buildNational, natJob, readNational } from "@/lib/national/donnees";
-import { classer, fusionnerCommunes, parseMobilisables, parseNegos, type Militant } from "@/lib/national/score";
+import { classer, fusionnerCommunes, groupesProches, parseMobilisables, parseNegos, type Militant } from "@/lib/national/score";
+
+/** Centres des communes (geo.api.gouv.fr, une requête, gardée en mémoire). */
+let centresMemo: Promise<Map<string, [number, number]> | null> | null = null;
+function centres() {
+  centresMemo ??= franceCentres(new TrackedHttp())
+    .then((r) => new Map(r.communes.filter((c) => c.centre).map((c) => [c.code, c.centre!.coordinates as [number, number]])))
+    .catch(() => {
+      centresMemo = null;
+      return null;
+    });
+  return centresMemo;
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,8 +46,18 @@ export async function GET(req: Request) {
   const ref = referentiel();
   const communes = fusionnerCommunes(nat.communes, communeActuelle, (k) => ref.byCode.get(k)?.nom);
   const interco = (k: string) => ref.eptByCommune.get(k)?.code ?? ref.epciByCommune.get(k)?.code ?? null;
+  // Groupes actifs à moins de 15 km (positions de l'export des groupes) ; sans positions, repli sur l'interco.
+  let gaProches: Map<string, number> | null = null;
+  const pos = (int?.groupes ?? []).filter((g) => g.lon != null && g.lat != null && gaActif(g)) as { code: string; lon: number; lat: number }[];
+  if (bilan && pos.length >= 10) {
+    const ctr = await centres();
+    if (ctr) {
+      const codes = new Set(communes.map((c) => c.code));
+      gaProches = groupesProches(new Map([...ctr].filter(([k]) => codes.has(k))), pos);
+    }
+  }
   // Les écarts projetés par circonscription ne quittent pas le serveur : seule la note (rang) est envoyée.
-  const lignes = classer(communes, { minInscrits: min, bilan, negos, mobilisables, interco }).map(({ ecartCirco: _e, ecartSource: _s, ...l }) => ({
+  const lignes = classer(communes, { minInscrits: min, bilan, negos, mobilisables, interco, gaProches }).map(({ ecartCirco: _e, ecartSource: _s, ...l }) => ({
     ...l,
     depNom: ref.departements.get(l.dep)?.nom ?? l.dep,
     regNom: ref.regions.get(l.reg)?.nom ?? "",
