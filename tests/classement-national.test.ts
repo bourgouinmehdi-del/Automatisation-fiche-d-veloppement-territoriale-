@@ -76,7 +76,7 @@ describe("potentiel pour un convoi", () => {
     expect(b.noteVote).toBeGreaterThan(a.noteVote);
     expect(b.f1).toBeGreaterThanOrEqual(a.f1);
     expect(a.raisons).toContain("vote LFI faible");
-    expect(a.raisons).toContain("beaucoup de mobilisables");
+    expect(a.raisons).toContain("beaucoup à remobiliser");
     expect(b.raisons).toContain("vote LFI fort");
     // Mélenchon en part des exprimés, comme sur les fiches.
     expect(b.melExpPct).toBeCloseTo((100 * 1300) / 3900);
