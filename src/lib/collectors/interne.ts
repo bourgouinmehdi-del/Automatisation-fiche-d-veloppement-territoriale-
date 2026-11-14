@@ -64,6 +64,8 @@ export interface InternalData {
   files: string[];
   /** Historique des député·es par circonscription (« 57-06 »), 1988-2024. */
   deputations?: Map<string, Deputation[]>;
+  /** Électeurs mobilisables par commune (modèle de Damien, pôle études électorales). */
+  mobilisables?: Map<string, number>;
   /** Lignes non rattachées à une commune (export Action Populaire). */
   unmatched?: number;
 }
@@ -400,6 +402,19 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
     }
     if (m.size) out.listesLfi = m;
     out.files.push("municipales-lfi.csv");
+  } catch {
+    /* fichier absent */
+  }
+  try {
+    const m = new Map<string, number>();
+    for (const r of await readCsv(path.join(dir, "mobilisables.csv"))) {
+      const v = num(r.mobilisables);
+      if (r.code_insee && v != null) m.set(String(r.code_insee).trim(), v);
+    }
+    if (m.size) {
+      out.mobilisables = m;
+      out.files.push("mobilisables.csv");
+    }
   } catch {
     /* fichier absent */
   }
