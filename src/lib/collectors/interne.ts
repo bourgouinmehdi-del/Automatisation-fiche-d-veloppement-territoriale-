@@ -295,6 +295,59 @@ export function dedupeBilanGa(b: Map<string, Bilan>): Map<string, Bilan> {
  * groupes actifs (5 actions ou plus) est compté commune par commune (code INSEE retrouvé par code postal et
  * ville), plus fiable que la répartition par code postal du bilan.
  */
+/** Point de comparaison du bilan : les communes les plus proches en nombre d'inscrits. */
+export interface Comparable {
+  min: number;
+  max: number;
+  communes: number;
+  actions: number;
+  ga: number;
+  parrains: number;
+  inscrits: number;
+}
+
+const triBilan = new WeakMap<Map<string, Bilan>, Bilan[]>();
+
+/**
+ * Moyenne « à taille égale » : les `k` communes dont le nombre d'inscrits est le plus proche (en rapport,
+ * pas en écart absolu), plutôt qu'une grande tranche fixe (3 500 à 10 000 inscrits mêlait des bourgs et des
+ * villes trois fois plus grandes). Arrondissements de Paris, Lyon et Marseille exclus (déjà dans leur ville).
+ */
+export function bilanComparable(b: Map<string, Bilan>, inscrits: number, k = 150): Comparable | null {
+  let tri = triBilan.get(b);
+  if (!tri) {
+    tri = [...b].filter(([code, x]) => x.inscrits > 0 && !villePlm(code)).map(([, x]) => x).sort((p, q) => p.inscrits - q.inscrits);
+    triBilan.set(b, tri);
+  }
+  if (!tri.length || inscrits <= 0) return null;
+  // Point de départ (recherche dichotomique), puis on élargit vers le voisin le plus proche en rapport.
+  let lo = 0;
+  let hi = tri.length;
+  while (lo < hi) {
+    const m = (lo + hi) >> 1;
+    if (tri[m].inscrits < inscrits) lo = m + 1;
+    else hi = m;
+  }
+  let i = lo - 1;
+  let j = lo;
+  const pris: Bilan[] = [];
+  const d = (x: Bilan) => Math.abs(Math.log(x.inscrits / inscrits));
+  while (pris.length < Math.min(k, tri.length)) {
+    if (j >= tri.length || (i >= 0 && d(tri[i]) <= d(tri[j]))) pris.push(tri[i--]);
+    else pris.push(tri[j++]);
+  }
+  const s = (f: (x: Bilan) => number) => pris.reduce((t, x) => t + f(x), 0);
+  return {
+    min: Math.min(...pris.map((x) => x.inscrits)),
+    max: Math.max(...pris.map((x) => x.inscrits)),
+    communes: pris.length,
+    actions: s((x) => x.actions),
+    ga: s((x) => x.ga),
+    parrains: s((x) => x.parrains),
+    inscrits: s((x) => x.inscrits),
+  };
+}
+
 /** Groupe d'action actif : certifié (quand on le sait) et au moins 5 actions. */
 export const gaActif = (g: Groupe) => (g.actions != null ? g.actions >= 5 && g.certifie !== false : !/inactif|ferm|archiv/i.test(g.statut));
 

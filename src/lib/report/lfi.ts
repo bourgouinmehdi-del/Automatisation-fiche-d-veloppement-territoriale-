@@ -16,7 +16,7 @@ import { buildInscription } from "./inscription";
 import { bureauxByQuartier, matchBureaux, quartierLabel, quartierOfBureau } from "../analysis/quartiers";
 import type { Quartier } from "../collectors/quartiers";
 import { listeDuClasseur, NUANCES, nuanceFamily, sameList, type MunicipalList } from "../collectors/municipales";
-import { gaActif, investie } from "../collectors/interne";
+import { bilanComparable, gaActif, investie } from "../collectors/interne";
 import { ecartParts, ecartRatio } from "./gradation";
 import { BPE_VINTAGE, BPE_TYPES } from "../collectors/bpe";
 import { circoLabel } from "../collectors/carto";
@@ -278,6 +278,26 @@ export function compareWords(a: number, b: number, more = "plus", less = "moins"
 export function voteCompare(c: number, d: number): { dir: "plus" | "moins" | "autant"; words: string; net: boolean; level: number } {
   const e = ecartParts(c, d);
   return { dir: e.dir, words: e.words, net: e.net, level: e.level };
+}
+
+/** Groupes d'action affichés en clair sur la fiche ; les suivants vont dans un menu déroulant. */
+export const GROUPES_VISIBLES = 5;
+
+/** Poids de la dernière action : 1 dans le mois, puis de moins en moins (aucune action connue : 0,05). */
+export function poidsRecence(derniere: string | undefined, now = Date.now()): number {
+  const t = derniere ? Date.parse(derniere) : NaN;
+  if (!Number.isFinite(t)) return 0.05;
+  const jours = (now - t) / 86400000;
+  return jours <= 31 ? 1 : jours <= 92 ? 0.6 : jours <= 183 ? 0.35 : jours <= 365 ? 0.15 : 0.05;
+}
+
+/**
+ * Classement des groupes d'une fiche : taille du groupe (membres) × récence de la dernière action. Un gros
+ * groupe qui n'agit plus passe après un groupe moyen qui a agi cette semaine ; à égalité, le plus d'actions.
+ */
+export function trierGroupes<G extends { membres: number | null; derniereAction?: string; actions?: number | null }>(gs: G[], now = Date.now()): G[] {
+  const score = (g: G) => Math.max(1, g.membres ?? 1) * poidsRecence(g.derniereAction, now);
+  return [...gs].sort((a, b) => score(b) - score(a) || (b.actions ?? 0) - (a.actions ?? 0));
 }
 
 /**
@@ -2343,8 +2363,10 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   const dl24 = d24 ? score("EU24", d24, "lfi") : null;
   const m22 = c22 ? score("PR22T1", c22, "lfi") : null;
   const dm22 = d22 ? score("PR22T1", d22, "lfi") : null;
+  // Point de comparaison : les 150 communes les plus proches en nombre d'inscrits (bilan militant).
+  const comparable = bilan && c.interne.bilan ? bilanComparable(c.interne.bilan, bilan.inscrits) : null;
   {
-    const tr = bilan ? c.interne.bilanTranches?.find((t) => bilan.inscrits >= t.min && bilan.inscrits < t.max && t.inscrits) : undefined;
+    const tr = comparable;
     // Moins de 10 : une décimale (« 0,4 groupe » dit plus que « 0 »).
     const ref = (n: number) => {
       if (!tr) return undefined;
@@ -2501,6 +2523,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
     ].filter(Boolean);
     return `${B(`« ${g.nom} »`)}${g.code !== commune.code ? ` (${referentiel().communes.find((x) => x.code === g.code)?.nom ?? g.code})` : ""}${meta.length ? ` — ${meta.join(", ")}` : ""}.${g.description ? ` ${g.description.replace(/\.?$/, ".")}` : ""}`;
   };
+
+  // Groupes classés : les plus gros qui ont agi le plus récemment d'abord.
+  const groupesTries = trierGroupes(groupes);
 
   /* ================================================================ section */
   if (!out.tables.length && !socio.length) return out;
@@ -2664,18 +2689,34 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
   if (municipalLfi) blocks.push({ type: "paragraph", text: municipalLfi });
   // Présence militante : après les résultats (du général au particulier).
   const presenceBlocks: Block[] = [];
-  if (groupes.length)
+  if (groupes.length) {
+    // Les cinq premiers en clair, les autres dans un menu déroulant : une longue liste noyait la fiche.
+    const n = groupesTries.length;
     presenceBlocks.push({
       type: "callout",
       tone: "accent",
-      title: groupes.length > 1 ? `${groupes.length} groupes d'action` : "Groupe d'action",
-      text: groupes.map(groupeText).join("\n"),
+      title: n > 1 ? `${n} groupes d'action, des plus actifs récemment aux moins actifs` : "Groupe d'action",
+      text: groupesTries
+        .slice(0, GROUPES_VISIBLES)
+        .map((g, k) => `${n > 1 ? `${k + 1}. ` : ""}${groupeText(g)}`)
+        .join("\n"),
     });
+    if (n > GROUPES_VISIBLES)
+      presenceBlocks.push({
+        type: "note",
+        fold: true,
+        title: `Les ${n - GROUPES_VISIBLES} autres groupes`,
+        text: groupesTries
+          .slice(GROUPES_VISIBLES)
+          .map((g, k) => `${k + GROUPES_VISIBLES + 1}. ${groupeText(g)}`)
+          .join("\n"),
+      });
+  }
   else if (sansGroupe) presenceBlocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif")} dans la commune ni dans son intercommunalité.` });
   else if (gaAilleurs) presenceBlocks.push({ type: "callout", tone: "accent", text: `${B("Aucun groupe d'action actif dans la commune.")} Dans l'intercommunalité : ${voisinsTxt}.` });
   // Point de comparaison : les communes de même taille (en inscrits), pas la moyenne nationale.
-  const tranche = bilan ? c.interne.bilanTranches?.find((t) => bilan.inscrits >= t.min && bilan.inscrits < t.max && t.inscrits) : undefined;
-  if (bilan && tranche) {
+  const tranche = comparable;
+  if (bilan && tranche && tranche.inscrits) {
     const F = tranche;
     const row = (label: string, sub: string, n: number, nF: number, per: number, unit: string) => ({
       label,
@@ -2693,9 +2734,9 @@ export function buildLfi(c: Collected, indicators: Indicator[], extra: { emploiT
         row("Soutiens JLM2027", "", bilan.parrains, F.parrains, 100, "pour 100 inscrits"),
         // Un groupe pour 100 inscrits n'aurait pas de sens : rapporté à 10 000.
         row("Groupes d'action actifs", "5 actions ou plus", bilan.ga, F.ga, 10000, "pour 10 000 inscrits"),
-        row("Actions", "en 2026", bilan.actions, F.actions, 100, "pour 100 inscrits"),
+        row("Actions", "recensées", bilan.actions, F.actions, 100, "pour 100 inscrits"),
       ],
-      note: `Trait rouge et « moyenne à taille égale » : ce qu'aurait une commune du même nombre d'inscrits au rythme moyen des communes de même taille (${tranche.max === Infinity ? `plus de ${fmtNumber(tranche.min)}` : `${fmtNumber(tranche.min)} à ${fmtNumber(tranche.max)}`} inscrits, ${fmtNumber(tranche.communes)} communes)${bilan.estime ? `. Soutiens et actions ${deNom(commune.nom)} estimés par le bilan LFI (chiffres arrondis)` : ""}. Bilan LFI par commune, ${fmtNumber(bilan.inscrits)} inscrits (européennes 2024).`,
+      note: `Trait rouge et « moyenne à taille égale » : ce qu'aurait une commune du même nombre d'inscrits au rythme moyen des ${fmtNumber(tranche.communes)} communes les plus proches en taille (${fmtNumber(tranche.min)} à ${fmtNumber(tranche.max)} inscrits)${bilan.estime ? `. Soutiens et actions ${deNom(commune.nom)} estimés par le bilan LFI (chiffres arrondis)` : ""}. Bilan LFI par commune, ${fmtNumber(bilan.inscrits)} inscrits (européennes 2024).`,
     });
   }
   // (Sans données internes : rien dans la fiche, qui s'adresse aux élus ; le signalement figure dans le journal de collecte.)

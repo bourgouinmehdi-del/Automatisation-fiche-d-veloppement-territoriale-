@@ -306,12 +306,12 @@ describe("chaîne de génération (API simulées)", () => {
     expect(pres && "rows" in pres ? pres.rows.map((r) => r.label) : []).toEqual(["Soutiens JLM2027", "Groupes d'action actifs", "Actions"]);
     if (pres && pres.type === "presence") {
       expect(pres.rows[0]).toMatchObject({ n: 300, r: 1.2 });
-      // Comparaison aux communes de même taille (10 000 à 30 000 inscrits : 60159 et 60057).
-      expect(pres.rows[0].rRef).toBeCloseTo(0.8889, 3);
-      expect(pres.rows[1].rRef).toBeCloseTo(0.6667, 3);
-      expect(pres.note).toMatch(/communes de même taille \(10\u00a0000 à 30\u00a0000 inscrits, 2 communes\)/);
+      // Comparaison aux communes les plus proches en taille (le jeu d'essai en compte moins de 150 : toutes).
+      expect(pres.rows[0].rRef).toBeCloseTo(0.8841, 3);
+      expect(pres.rows[1].rRef).toBeCloseTo(1.1016, 3);
+      expect(pres.note).toMatch(/communes les plus proches en taille \(/);
       expect(pres.rows[1].rUnit).toBe("pour 10 000 inscrits");
-      expect(Math.round(pres.rows[2].nRef)).toBe(44);
+      expect(Math.round(pres.rows[2].nRef)).toBe(25);
     }
     // Temps de trajet depuis les villes militantes proches (Choisy-au-Bac : 2 groupes actifs).
     const accT = report.tables.find((t) => t.id === "commune_acces");
