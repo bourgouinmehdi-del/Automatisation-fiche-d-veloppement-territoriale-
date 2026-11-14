@@ -292,9 +292,10 @@ export function classer(cs: NatCommune[], o: Options): Ligne[] {
     ? centiles(base.map((b, i) => (0.5 * act![i]! + 0.3 * sou![i]! + 0.2 * (b.l.ga ? 0 : 100)) * (!b.l.ga && b.l.gaInterco ? 0.6 : 1)))
     : null;
   // Facteur 3 : plus l'écart est faible, plus la note est haute ; nulle au-delà de ECART_MAX points.
-  const f3 = centiles(base.map((b) => (b.l.ecartCirco == null ? null : -Math.abs(b.l.ecartCirco)))).map((v, i) =>
-    v != null && Math.abs(base[i].l.ecartCirco!) > ECART_MAX ? 0 : v,
-  );
+  // Commune sans circonscription connue (rare) : note neutre de 50, plutôt que de faire peser davantage ses autres notes.
+  const f3brut = centiles(base.map((b) => (b.l.ecartCirco == null ? null : -Math.abs(b.l.ecartCirco))));
+  const avecCirco = f3brut.some((v) => v != null);
+  const f3 = f3brut.map((v, i) => (v == null ? (avecCirco ? 50 : null) : Math.abs(base[i].l.ecartCirco!) > ECART_MAX ? 0 : v));
   return base.map((b, i) => {
     const l: Ligne = { ...b.l, noteVote: vote[i]!, noteReserve: reserve[i]!, f1: f1[i]!, f2: f2 ? f2[i] : null, f3: f3[i] };
     return { ...l, raisons: raisons(l, !!mob) };
@@ -315,8 +316,13 @@ export function raisons(l: Ligne, mob: boolean): string[] {
   return r;
 }
 
-/** Score pondéré (0 à 100) ; un facteur absent ne compte pas, les autres poids sont rééchelonnés. */
-export function scoreOf(l: Pick<Ligne, "f1" | "f2" | "f3">, w: { p: number; m: number; c: number }): number {
+
+/**
+ * Score pondéré (0 à 100) ; un facteur absent ne compte pas, les autres poids sont rééchelonnés. Un vote Mélenchon nettement sous le département (« terrain difficile » sur la fiche)
+ * retire 15 % au score : réduire la seule note de potentiel ne suffisait pas, la commune remontait par la
+ * circonscription et le déficit militant.
+ */
+export function scoreOf(l: Pick<Ligne, "f1" | "f2" | "f3"> & { sousDep?: boolean }, w: { p: number; m: number; c: number }): number {
   const parts: [number | null, number][] = [
     [l.f1, w.p],
     [l.f2, w.m],
@@ -324,7 +330,7 @@ export function scoreOf(l: Pick<Ligne, "f1" | "f2" | "f3">, w: { p: number; m: n
   ];
   const ok = parts.filter(([v, k]) => v != null && k > 0);
   const tot = ok.reduce((s, [, k]) => s + k, 0);
-  return tot ? ok.reduce((s, [v, k]) => s + v! * k, 0) / tot : 0;
+  return tot ? (ok.reduce((s, [v, k]) => s + v! * k, 0) / tot) * (l.sousDep ? 0.85 : 1) : 0;
 }
 
 /** Fichier des négos : une ligne par circonscription, un écart projeté en points. */
