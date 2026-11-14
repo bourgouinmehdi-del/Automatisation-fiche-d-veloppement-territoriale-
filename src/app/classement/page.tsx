@@ -37,6 +37,16 @@ type Data = { job: Job; builtAt: string | null; communes?: number; bilan?: boole
 
 const fr = (v: number, d = 0) => v.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
+/** Couleur des raisons : atouts en vert, manque militant en rouge, le reste en neutre. */
+const TON: Record<string, string> = {
+  "vote LFI fort": "bg-[var(--tag-atout-bg)] text-[var(--tag-atout)]",
+  "beaucoup à remobiliser": "bg-[var(--tag-atout-bg)] text-[var(--tag-atout)]",
+  "grosse réserve de voix": "bg-[var(--tag-atout-bg)] text-[var(--tag-atout)]",
+  "circo serrée": "bg-[var(--accent-soft)] text-[var(--accent-strong)]",
+  "aucun groupe d'action": "bg-[var(--tag-vigilance-bg)] text-[var(--mark)]",
+  "peu d'actions": "bg-[var(--tag-vigilance-bg)] text-[var(--mark)]",
+};
+
 function Note({ v }: { v: number | null }) {
   if (v == null) return <span className="text-[var(--ink-3)]">—</span>;
   return (
@@ -267,64 +277,99 @@ export default function ClassementNational() {
             </button>
           </section>
 
+          <p className="mb-3 text-sm text-[var(--ink-2)]">
+            <b className="text-[var(--ink)]">{data.mobilisables ? "Électeurs à remobiliser" : "Réserve de voix"}</b> :{" "}
+            {data.mobilisables
+              ? "électeurs qui votent d'habitude et penchent à gauche, mais risquent de s'abstenir en 2027 (modèle du pôle études électorales)."
+              : "abstentionnistes de 2022 qui ressemblent aux électeurs de Mélenchon, plus une partie des voix de gauche hors LFI (estimation provisoire)."}{" "}
+            Présence militante : groupes d&apos;action actifs, actions recensées et soutiens JLM2027 dans la commune.
+          </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs text-[var(--ink-2)]">
-                <tr className="border-b border-[var(--line)]">
-                  <th className="py-2 pr-2">#</th>
-                  <th className="pr-2">Commune</th>
-                  <th className="pr-2 text-right">Score</th>
+            <table className="w-full border-separate border-spacing-y-1.5 text-sm">
+              <thead className="text-left text-xs font-semibold text-[var(--ink-2)]">
+                <tr>
+                  <th className="px-2 pb-1">#</th>
+                  <th className="px-2 pb-1">Commune</th>
+                  <th className="px-2 pb-1 text-center">Score</th>
                   {details && (
                     <>
-                      <th className="pr-2">Potentiel</th>
-                      <th className="pr-2">Militant</th>
-                      <th className="pr-2">Circo</th>
+                      <th className="px-2 pb-1">Potentiel</th>
+                      <th className="px-2 pb-1">Militant</th>
+                      <th className="px-2 pb-1">Circo</th>
                     </>
                   )}
-                  <th className="pr-2 text-right">{data.mobilisables ? "Mobilisables" : "Réservoir de voix"}</th>
-                  <th className="pr-2 text-right">Mélenchon 2022</th>
-                  <th className="pr-2 text-right">GA · actions · soutiens</th>
-                  <th>Pourquoi</th>
+                  <th className="px-2 pb-1 text-right">Vote Mélenchon 2022</th>
+                  <th className="px-2 pb-1 text-right">{data.mobilisables ? "Électeurs à remobiliser" : "Réserve de voix"}</th>
+                  <th className="px-2 pb-1">Présence militante</th>
+                  <th className="px-2 pb-1">Pourquoi</th>
                 </tr>
               </thead>
               <tbody>
                 {classees.map(({ l, s, voisines }, i) => (
-                  <tr key={l.code} className="border-b border-[var(--line)] align-top">
-                    <td className="py-1.5 pr-2 tabular-nums">{i + 1}</td>
-                    <td className="pr-2">
-                      <span className="font-semibold">{l.nom}</span> <span className="text-xs text-[var(--ink-2)]">({l.depNom}, {fr(l.inscrits)} inscrits{l.circo ? `, circo ${l.circo}` : ""})</span>{" "}
-                      <button className="text-xs text-[var(--accent)] underline" disabled={!!fiche} onClick={() => ouvrirFiche(l.code)}>
-                        {fiche === l.code ? "fiche en cours…" : "fiche"}
-                      </button>
+                  <tr key={l.code} className="align-top [&>td]:border-y [&>td]:border-[var(--line)] [&>td]:bg-[var(--surface)] [&>td:first-child]:rounded-l-lg [&>td:first-child]:border-l [&>td:last-child]:rounded-r-lg [&>td:last-child]:border-r">
+                    <td className="px-2 py-2.5 text-center text-base font-semibold tabular-nums text-[var(--ink-2)]">{i + 1}</td>
+                    <td className="min-w-[14rem] px-2 py-2.5">
+                      <div className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="text-base font-semibold text-[var(--ink)]">{l.nom}</span>
+                        <button className="text-xs text-[var(--accent)] underline" disabled={!!fiche} onClick={() => ouvrirFiche(l.code)}>
+                          {fiche === l.code ? "fiche en cours…" : "Ouvrir la fiche"}
+                        </button>
+                      </div>
+                      <div className="text-xs text-[var(--ink-2)]">
+                        {l.depNom}, {fr(l.inscrits)} inscrits{l.circo ? `, circo ${l.circo}` : ""}
+                      </div>
                       {voisines.length > 0 && (
-                        <span className="block text-xs text-[var(--ink-2)]">
-                          Aussi dans la circo : {voisines.slice(0, 5).join(", ")}
-                          {voisines.length > 5 ? ` et ${voisines.length - 5} autre${voisines.length > 6 ? "s" : ""}` : ""}
-                        </span>
+                        <div className="mt-1 text-xs text-[var(--muted)]">
+                          Aussi dans la circo : {voisines.slice(0, 4).join(", ")}
+                          {voisines.length > 4 ? ` et ${voisines.length - 4} autre${voisines.length > 5 ? "s" : ""}` : ""}
+                        </div>
                       )}
                     </td>
-                    <td className="pr-2 text-right font-semibold tabular-nums">{fr(s, 1)}</td>
+                    <td className="px-2 py-2.5 text-center">
+                      <span className="inline-block min-w-[3.2rem] rounded-full bg-[var(--accent-soft)] px-2.5 py-1 text-base font-bold tabular-nums text-[var(--accent-strong)]">{fr(s)}</span>
+                    </td>
                     {details && (
                       <>
-                        <td className="pr-2" title={`Vote insoumis : ${fr(l.noteVote)} · réserve de voix : ${fr(l.noteReserve)}`}>
+                        <td className="px-2 py-2.5" title={`Vote insoumis : ${fr(l.noteVote)} · réserve de voix : ${fr(l.noteReserve)}`}>
                           <Note v={l.f1} />
                         </td>
-                        <td className="pr-2">
+                        <td className="px-2 py-2.5">
                           <Note v={data.bilan ? l.f2 : null} />
                         </td>
-                        <td className="pr-2">
+                        <td className="px-2 py-2.5">
                           <Note v={l.f3} />
                         </td>
                       </>
                     )}
-                    <td className="pr-2 text-right tabular-nums">
-                      {fr(l.reservoir)} <span className="text-xs text-[var(--ink-2)]">({fr(l.reservoirPct, 1)} %)</span>
+                    <td className="px-2 py-2.5 text-right" title={`${fr(l.melPct, 1)} % des inscrits`}>
+                      <div className="text-base font-semibold tabular-nums">{fr(l.melExpPct)} %</div>
+                      <div className="text-xs text-[var(--muted)]">des voix</div>
                     </td>
-                    <td className="pr-2 text-right tabular-nums" title={`${fr(l.melPct, 1)} % des inscrits`}>
-                      {fr(l.melExpPct, 1)} %
+                    <td className="px-2 py-2.5 text-right">
+                      <div className="text-base font-semibold tabular-nums">{fr(l.reservoir)}</div>
+                      <div className="text-xs text-[var(--muted)]">{fr(l.reservoirPct, 1)} % des inscrits</div>
                     </td>
-                    <td className="pr-2 text-right tabular-nums">{l.ga == null ? "—" : `${l.ga} · ${l.actions} · ${l.soutiens}`}</td>
-                    <td className="text-xs text-[var(--ink-2)]">{l.raisons.join(", ")}</td>
+                    <td className="px-2 py-2.5 text-xs leading-5">
+                      {l.ga == null ? (
+                        <span className="text-[var(--muted)]">—</span>
+                      ) : (
+                        <>
+                          <div className={l.ga ? "text-[var(--ink)]" : "font-semibold text-[var(--mark)]"}>{l.ga ? `${l.ga} groupe${l.ga > 1 ? "s" : ""} actif${l.ga > 1 ? "s" : ""}` : "aucun groupe actif"}</div>
+                          <div className="text-[var(--ink-2)]">
+                            {fr(l.actions ?? 0)} action{(l.actions ?? 0) > 1 ? "s" : ""}, {fr(l.soutiens ?? 0)} soutien{(l.soutiens ?? 0) > 1 ? "s" : ""}
+                          </div>
+                        </>
+                      )}
+                    </td>
+                    <td className="px-2 py-2.5">
+                      <div className="flex flex-wrap gap-1">
+                        {l.raisons.map((r) => (
+                          <span key={r} className={`rounded-full px-2 py-0.5 text-xs ${TON[r] ?? "bg-[var(--tag-neutre-bg)] text-[var(--ink-2)]"}`}>
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

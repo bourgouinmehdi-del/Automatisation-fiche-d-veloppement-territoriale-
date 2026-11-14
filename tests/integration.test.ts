@@ -352,7 +352,7 @@ describe("chaîne de génération (API simulées)", () => {
     // Ville de plus de 10 000 habitants : pas de « pôle urbain le plus proche » (elle en est un).
     expect(access.text).toMatch(/Gare/);
     // Groupe d'action importé depuis l'export Action Populaire (code postal + ville).
-    expect(fiche.blocks.some((b) => b.type === "callout" && /Groupe d'action fictif/.test(b.text))).toBe(true);
+    expect(fiche.blocks.some((b) => b.type === "note" && b.fold && /Groupe d'action fictif/.test(b.text))).toBe(true);
   });
 
   it("demandeurs d'emploi : tableau, graphique, phrase de la fiche", () => {

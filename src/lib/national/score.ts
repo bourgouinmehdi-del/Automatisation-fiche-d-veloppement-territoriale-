@@ -254,7 +254,7 @@ export function raisons(l: Ligne, mob: boolean): string[] {
   const r: string[] = [];
   if (l.noteVote >= 75) r.push("vote LFI fort");
   else if (l.noteVote <= 30) r.push("vote LFI faible");
-  if (l.noteReserve >= 75) r.push(mob ? "beaucoup de mobilisables" : "grosse réserve de voix");
+  if (l.noteReserve >= 75) r.push(mob ? "beaucoup à remobiliser" : "grosse réserve de voix");
   if (l.ga === 0 && l.gaInterco) r.push("groupe actif dans l'interco");
   else if (l.ga === 0) r.push("aucun groupe d'action");
   else if (l.f2 != null && l.f2 >= 75) r.push("peu d'actions");
