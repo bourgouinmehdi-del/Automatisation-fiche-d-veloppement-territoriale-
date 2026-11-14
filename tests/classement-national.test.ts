@@ -138,3 +138,24 @@ describe("export de Damien (mobilisables)", () => {
     expect(l[0].reservoir).toBe(500);
   });
 });
+
+describe("communes nouvelles", () => {
+  it("une ancienne commune déléguée renvoie à sa commune nouvelle (référentiel public)", async () => {
+    const { communeActuelle, anciennesCommunes } = await import("@/lib/collectors/admin");
+    expect(communeActuelle("93059")).toBe("93066");
+    expect(communeActuelle("93066")).toBe("93066");
+    expect(anciennesCommunes("93066")).toContain("93059");
+  });
+  it("le classement additionne l'ancienne commune à la commune nouvelle", async () => {
+    const { fusionnerCommunes } = await import("@/lib/national/score");
+    const a = C("99021", 10000, 6000, 2000, 600, "99-05", 2500, 2400);
+    const b = { ...C("99022", 5000, 3000, 1500, 200, "99-05", 1200, 900), circo: null, circoPart: null };
+    const f = fusionnerCommunes([a, b, cs[1]], (k) => (k === "99022" ? "99021" : k), (k) => (k === "99021" ? "Ville nouvelle" : undefined));
+    expect(f).toHaveLength(2);
+    const n = f.find((x) => x.code === "99021")!;
+    expect(n.nom).toBe("Ville nouvelle");
+    expect(n.pr22).toEqual({ inscrits: 15000, votants: 9000, exprimes: 8800, lfi: 3500, gauche: 800 });
+    expect(n.lg24!.adv.rn).toBe(3300);
+    expect(n.circo).toBe("99-05");
+  });
+});

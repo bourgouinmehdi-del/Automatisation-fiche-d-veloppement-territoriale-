@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import Papa from "papaparse";
 import { config } from "../config";
-import { referentiel, searchCommunes } from "./admin";
+import { communeActuelle, referentiel, searchCommunes } from "./admin";
 import { detectDelimiter, findCol } from "./elections";
 import { parseDeputations, type Deputation } from "./deputations";
 
@@ -409,7 +409,9 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
     const m = new Map<string, number>();
     for (const r of await readCsv(path.join(dir, "mobilisables.csv"))) {
       const v = num(r.mobilisables);
-      if (r.code_insee && v != null) m.set(String(r.code_insee).trim(), v);
+      if (!r.code_insee || v == null) continue;
+      const k = communeActuelle(String(r.code_insee).trim());
+      m.set(k, (m.get(k) ?? 0) + v);
     }
     if (m.size) {
       out.mobilisables = m;
@@ -429,9 +431,11 @@ export async function loadInternalData(dir = internalDir()): Promise<InternalDat
     const rows = await readCsv(path.join(dir, "bilan.csv"));
     const b = new Map<string, Bilan>();
     for (const r of rows) {
-      const code = String(r.code_insee ?? "").trim();
+      // Ancienne commune fondue dans une commune nouvelle : comptée avec elle.
+      const code = communeActuelle(String(r.code_insee ?? "").trim());
       const x = { actions: num(r.nb_actions) ?? 0, ga: num(r.nb_ga_actifs) ?? 0, parrains: num(r.nb_parrains) ?? 0, inscrits: num(r.inscrits) ?? 0, estime: r.estime === "1" };
-      if (code && x.inscrits) b.set(code, x);
+      const p = b.get(code);
+      if (code && x.inscrits) b.set(code, p ? { actions: p.actions + x.actions, ga: p.ga + x.ga, parrains: p.parrains + x.parrains, inscrits: p.inscrits + x.inscrits, estime: p.estime || x.estime } : x);
     }
     if (b.size) {
       out.bilan = dedupeBilanGa(b);

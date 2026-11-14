@@ -77,7 +77,11 @@ describe("élections — lecture du fichier national", () => {
       { label: "Liste B", voix: 285 },
     ]);
     expect(dep.inscrits).toBe(370 * 1000);
-    expect(dep.byCommune).toHaveLength(370);
+    // Les anciennes communes (déléguées) sont comptées avec leur commune nouvelle.
+    const { communeActuelle } = await import("@/lib/collectors/admin");
+    const actuelles = new Set(Array.from({ length: 370 }, (_, k) => communeActuelle(`60${String(k + 1).padStart(3, "0")}`)));
+    expect(dep.byCommune).toHaveLength(actuelles.size);
+    expect(actuelles.size).toBeLessThan(370);
     expect(process.memoryUsage().heapUsed - before).toBeLessThan(400 * 1024 * 1024);
   }, 60000);
 

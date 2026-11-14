@@ -2,9 +2,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { internalDir, loadInternalData, parseCsv } from "@/lib/collectors/interne";
-import { referentiel } from "@/lib/collectors/admin";
+import { communeActuelle, referentiel } from "@/lib/collectors/admin";
 import { buildNational, natJob, readNational } from "@/lib/national/donnees";
-import { classer, parseMobilisables, parseNegos, type Militant } from "@/lib/national/score";
+import { classer, fusionnerCommunes, parseMobilisables, parseNegos, type Militant } from "@/lib/national/score";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,13 +24,16 @@ export async function GET(req: Request) {
   }
   let mobilisables: Map<string, number> | null = null;
   try {
-    mobilisables = parseMobilisables(parseCsv(await fs.readFile(path.join(internalDir(), "mobilisables.csv"), "utf8")), () => null);
+    const m = parseMobilisables(parseCsv(await fs.readFile(path.join(internalDir(), "mobilisables.csv"), "utf8")), () => null);
+    mobilisables = new Map();
+    for (const [k, v] of m) mobilisables.set(communeActuelle(k), (mobilisables.get(communeActuelle(k)) ?? 0) + v);
   } catch {
     /* pas d'export de Damien */
   }
   const ref = referentiel();
-  const lignes = classer(nat.communes, { minInscrits: min, bilan, negos, mobilisables }).map((l) => ({ ...l, depNom: ref.departements.get(l.dep)?.nom ?? l.dep, regNom: ref.regions.get(l.reg)?.nom ?? "" }));
-  return NextResponse.json({ job: natJob(), builtAt: nat.builtAt, communes: nat.communes.length, bilan: !!bilan, negos: !!negos?.size, mobilisables: mobilisables?.size ?? 0, lignes });
+  const communes = fusionnerCommunes(nat.communes, communeActuelle, (k) => ref.byCode.get(k)?.nom);
+  const lignes = classer(communes, { minInscrits: min, bilan, negos, mobilisables }).map((l) => ({ ...l, depNom: ref.departements.get(l.dep)?.nom ?? l.dep, regNom: ref.regions.get(l.reg)?.nom ?? "" }));
+  return NextResponse.json({ job: natJob(), builtAt: nat.builtAt, communes: communes.length, bilan: !!bilan, negos: !!negos?.size, mobilisables: mobilisables?.size ?? 0, lignes });
 }
 
 /** Lance (ou relance) la construction du jeu de données national, en tâche de fond. */
