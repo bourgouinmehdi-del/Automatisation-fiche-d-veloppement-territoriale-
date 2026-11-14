@@ -72,3 +72,29 @@ describe("exports Action Populaire", () => {
     expect(out.get("99002")).toEqual({ actions: 0, ga: 0, parrains: 20, inscrits: 2000, estime: false });
   });
 });
+
+describe("actions et signataires par commune", () => {
+  it("lus ensemble ; les soutiens par commune passent avant le classeur, villes PLM additionnées", async () => {
+    const { parseExportCommunes, loadInternalData } = await import("@/lib/collectors/interne");
+    const { actions, soutiens } = parseExportCommunes([
+      { code_commune: "99001", commune: "ville a", nb_events: "120", nb_signataires_2027: "300" },
+      { code_commune: "99002", commune: "ville b", nb_events: "0", nb_signataires_2027: "40" },
+    ]);
+    expect([...actions]).toEqual([["99001", 120]]);
+    expect([...soutiens!]).toEqual([
+      ["99001", 300],
+      ["99002", 40],
+    ]);
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const fs = await import("node:fs/promises");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "interne-"));
+    await fs.writeFile(path.join(dir, "bilan.csv"), "code_insee;nb_actions;nb_ga_actifs;nb_parrains;inscrits;estime\n99001;5;1;10;4000;0\n");
+    await fs.writeFile(path.join(dir, "actions.csv"), "code_insee;actions;soutiens\n99001;120;300\n99002;0;40\n75111;50;70\n75112;10;30\n");
+    const d = await loadInternalData(dir);
+    expect(d.bilan!.get("99001")).toMatchObject({ actions: 120, parrains: 300, inscrits: 4000, estime: false });
+    expect(d.parrains.get("99002")).toBe(40);
+    expect(d.parrains.get("75056")).toBe(100);
+    expect(d.actionsParCommune!.get("75056")).toBe(60);
+  });
+});
